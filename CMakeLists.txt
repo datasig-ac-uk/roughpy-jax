@@ -83,7 +83,7 @@ install(
 )
 
 install(
-  DIRECTOR roughpy_jax
+  DIRECTORY roughpy_jax
   DESTINATION ${RPJ_INSTALL_DIR}
   FILES_MATCHING
     PATTERN "*.py"
