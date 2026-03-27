@@ -1,0 +1,73 @@
+name: tests
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/tests.yml
+      - CMakeLists.txt
+      - pyproject.toml
+      - roughpy_jax/**
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/tests.yml
+      - CMakeLists.txt
+      - pyproject.toml
+      - roughpy_jax/**
+
+concurrency:
+  group: tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version:
+          - "3.11"
+          - "3.12"
+          - "3.13"
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Build wheel
+        run: uv build --wheel
+
+      - name: Create test environment
+        run: uv venv .venv
+
+      - name: Install wheel and test dependencies
+        run: |
+          uv pip install --python .venv/bin/python \
+            dist/*.whl \
+            pytest \
+            pytest-benchmark \
+            hypothesis
+
+      - name: Smoke import installed package
+        run: |
+          .venv/bin/python -c "import roughpy_jax; import roughpy_jax._rpy_jax_internals"
+
+      - name: Run test suite against installed wheel
+        run: |
+          mkdir -p .pytest-tmp
+          cd .pytest-tmp
+          ../.venv/bin/python -m pytest \
+            -c ../pyproject.toml \
+            -m "not extra" \
+            ../roughpy_jax/tests
