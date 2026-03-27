@@ -34,13 +34,7 @@ classifiers = [
 dependencies = ["roughpy>=0.3.0", "jax>=0.4.0", "jaxlib>=0.4.0"]
 
 [project.optional-dependencies]
-dev = [
-    "pytest", 
-    "pytest-benchmark"
-    "ruff",
-    "pre-commit",
-    "ty"
-]
+dev = ["pytest", "pytest-benchmark", "ruff", "pre-commit", "ty"]
 lint = ["ruff", "pre-commit"]
 typececk = ["jax", "ty"]
 jax = ["jax>=0.4.0", "jaxlib>=0.4.0"]
@@ -51,7 +45,6 @@ benchmarks = ["asv", "virtualenv", "psutil"]
 cmake.version = ">=3.30"
 ninja.version = ">=1.11"
 wheel.packages = []
-cmake.verbose = true
 logging.level = "INFO"
 cmake.build-type = "Release"
 experimental = true
