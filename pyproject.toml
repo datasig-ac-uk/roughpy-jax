@@ -3,7 +3,7 @@ requires = [
     "scikit-build-core[pyproject]>=0.10",
     "roughpy>=0.3.0",
     "jax>=0.4.0",
-    "jaxlib>=0.4.0",
+    "jaxlib>=0.4.0"
 ]
 build-backend = "scikit_build_core.build"
 

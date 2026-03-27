@@ -27,29 +27,37 @@ find_package(Python 3.11 REQUIRED COMPONENTS
 
 execute_process(
   COMMAND "${Python_EXECUTABLE}"
-          "-c \"from jax import ffi; print(ffi.include_dir())\""
+          -c "from jax import ffi; print(ffi.include_dir())"
+  RESULT_VARIABLE XLA_DIR_RESULT
   OUTPUT_STRIP_TRAILING_WHITESPACE OUTPUT_VARIABLE XLA_DIR
+  ERROR_VARIABLE XLA_DIR_ERROR
 )
+message(STATUS "XLA_DIR=${XLA_DIR}")
+if (NOT XLA_DIR_RESULT EQUAL 0 OR XLA_DIR STREQUAL "")
+  message(FATAL_ERROR "Failed to locate JAX FFI headers: ${XLA_DIR_ERROR}")
+endif()
 
 add_library(XLA::FFI INTERFACE IMPORTED)
 set_target_properties(XLA::FFI PROPERTIES 
-  INTERFACE_INCLUDE_DIR "${XLA_DIR}")
+  INTERFACE_INCLUDE_DIRECTORIES "${XLA_DIR}")
 
 
 execute_process(
   COMMAND "${Python_EXECUTABLE}"
-          "-c \"import roughpy; print(roughpy.get_include())\""
+          -c "import roughpy; print(roughpy.get_include())"
+  RESULT_VARIABLE RPY_COMPUTE_DIR_RESULT
   OUTPUT_STRIP_TRAILING_WHITESPACE OUTPUT_VARIABLE RPY_COMPUTE_DIR
+  ERROR_VARIABLE RPY_COMPUTE_DIR_ERROR
 )
+message(STATUS "RPC_DIR=${RPY_COMPUTE_DIR}")
+if (NOT RPY_COMPUTE_DIR_RESULT EQUAL 0 OR RPY_COMPUTE_DIR STREQUAL "")
+  message(FATAL_ERROR "Failed to locate RoughPy headers: ${RPY_COMPUTE_DIR_ERROR}")
+endif()
 
 add_library(RoughPy::Compute INTERFACE IMPORTED)
 set_target_properties(RoughPy::Compute PROPERTIES
-  INTERFACE_INCLUDE_DIR "${RPY_COMPUTE_DIR}")
+  INTERFACE_INCLUDE_DIRECTORIES "${RPY_COMPUTE_DIR}")
 
-
-add_library(PythonCAPI::Compat INTERFACE IMPORTED)
-set_target_properties(PythonCAPI::Compat PROPERTIES
-  INTERFACE_INCLUDE_DIR extern/capi-compat)
 
 
 if (DEFINED SKBUILD_SABI_VERSION)
@@ -67,7 +75,6 @@ set_target_properties(Roughpy_JAXModule PROPERTIES
 target_link_libraries(Roughpy_JAXModule PRIVATE
     XLA::FFI
     RoughPy::Compute
-    PythonCAPI::Compat
 )
 
 
@@ -92,5 +99,4 @@ install(
     PATTERN "src/*" EXCLUDE
     PATTERN "tests/*" EXCLUDE
 )
-
 

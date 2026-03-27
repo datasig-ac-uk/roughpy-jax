@@ -18,6 +18,18 @@ namespace rpy::jax::cpu {
 
 namespace ffi = xla::ffi;
 
+template <typename Basis>
+auto data_size_to_degree(const Basis& basis, int32_t degree) -> typename Basis::Index
+{
+    if (degree < 0) {
+        return 0;
+    }
+    if (degree >= basis.depth) {
+        return basis.size();
+    }
+    return basis.degree_begin[degree + 1];
+}
+
 template <typename... BufferType>
 bool all_buffers_match_type(xla::ffi::DataType expected_type, const BufferType&... buffer) {
     return ((buffer.element_type() == expected_type) && ...);

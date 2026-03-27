@@ -1,5 +1,5 @@
 
-target_sources(RoughPy_JaxModule PRIVATE
+target_sources(Roughpy_JAXModule PRIVATE
     src/cpu/batching_loop.hpp
     src/cpu/dense_ft_adj_mul.cpp
     src/cpu/dense_ft_adj_mul.h
@@ -15,5 +15,8 @@ target_sources(RoughPy_JaxModule PRIVATE
     src/roughpy_jax_module.c
 )
 
+target_include_directories(Roughpy_JAXModule PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+)
 
 

@@ -6,7 +6,6 @@
 #define PY_SSIZE_T_CLEAN
 #include <Python.h> 
 #include <xla/ffi/api/c_api.h>
-#include <pythoncapi_compat.h>
 
 #include "cpu/dense_ft_antipode.h"
 #include "cpu/dense_ft_exp.h"
@@ -85,7 +84,7 @@ static PyMethodDef rpy_jax_methods[] = {
 
 static PyModuleDef_Slot rpy_jax_slots[] = {
     {Py_mod_exec, make_jax_function_dict}, // Needed Py_mod_exec as init doesn't exist 
-#if PY_VERSION_HEX >= 0x030C0000  /* Python 3.12.0+ */
+#if PY_VERSION_HEX >= 0x030C0000 && (!defined(Py_LIMITED_API) || Py_LIMITED_API+0 >= 0x030C0000)
     {Py_mod_multiple_interpreters, Py_MOD_MULTIPLE_INTERPRETERS_NOT_SUPPORTED},
 #endif
     {0, NULL}
