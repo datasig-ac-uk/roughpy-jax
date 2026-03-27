@@ -34,7 +34,7 @@ classifiers = [
 dependencies = ["roughpy>=0.3.0", "jax>=0.4.0", "jaxlib>=0.4.0"]
 
 [project.optional-dependencies]
-dev = ["pytest", "pytest-benchmark", "ruff", "pre-commit", "ty"]
+dev = ["pytest", "pytest-benchmark", "ruff", "pre-commit", "ty", "hypothesis"]
 lint = ["ruff", "pre-commit"]
 typececk = ["jax", "ty"]
 jax = ["jax>=0.4.0", "jaxlib>=0.4.0"]
