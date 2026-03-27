@@ -45,6 +45,12 @@ benchmarks = ["asv", "virtualenv", "psutil"]
 cmake.version = ">=3.30"
 ninja.version = ">=1.11"
 wheel.packages = ["roughpy_jax"]
+wheel.exclude = [
+    "roughpy_jax/tests/**",
+    "roughpy_jax/src/**",
+    "roughpy_jax/__pycache__/**",
+    "roughpy_jax/**/*.pyc",
+]
 logging.level = "INFO"
 cmake.build-type = "Release"
 experimental = true
