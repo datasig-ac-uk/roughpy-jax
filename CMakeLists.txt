@@ -69,7 +69,7 @@ endif()
 
 
 set_target_properties(Roughpy_JAXModule PROPERTIES
-    OUTPUT_NAME _rpj_jax_internals
+    OUTPUT_NAME _rpy_jax_internals
     )
 
 target_link_libraries(Roughpy_JAXModule PRIVATE
@@ -91,7 +91,7 @@ install(
 
 install(
   DIRECTORY roughpy_jax
-  DESTINATION ${RPJ_INSTALL_DIR}
+  DESTINATION .
   FILES_MATCHING
     PATTERN "*.py"
     PATTERN "*.pyi"
@@ -99,4 +99,3 @@ install(
     PATTERN "src/*" EXCLUDE
     PATTERN "tests/*" EXCLUDE
 )
-

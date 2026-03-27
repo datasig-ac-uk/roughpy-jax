@@ -44,7 +44,7 @@ benchmarks = ["asv", "virtualenv", "psutil"]
 [tool.scikit-build]
 cmake.version = ">=3.30"
 ninja.version = ">=1.11"
-wheel.packages = []
+wheel.packages = ["roughpy_jax"]
 logging.level = "INFO"
 cmake.build-type = "Release"
 experimental = true
