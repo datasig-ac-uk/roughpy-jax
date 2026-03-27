@@ -1,0 +1,47 @@
+[build-system]
+requires = ["scikit-build-core[pyproject]>=0.10"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "roughpy-jax"
+version = "0.0.0"
+description = "JAX bindings and operations for RoughPy"
+readme = "README.md"
+authors = [{ name = "The RoughPy Authors", email = "info@datasig.ac.uk" }]
+license = { text = "BSD-3-Clause" }
+requires-python = ">=3.11"
+keywords = ["rough-paths", "signatures", "jax", "streams"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Developers",
+    "Topic :: Scientific/Engineering :: Mathematics",
+    "License :: OSI Approved :: BSD License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX",
+    "Operating System :: Unix",
+    "Operating System :: MacOS",
+]
+dependencies = ["roughpy", "jax>=0.4.0", "jaxlib>=0.4.0"]
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-benchmark"]
+
+[tool.scikit-build]
+cmake.version = ">=3.26"
+ninja.version = ">=1.11"
+wheel.packages = []
+cmake.verbose = true
+logging.level = "INFO"
+cmake.build-type = "Release"
+experimental = true
+wheel.py-api = "cp311"
+
+[tool.pytest.ini_options]
+testpaths = ["roughpy_jax/tests"]
+filterwarnings = ["ignore::DeprecationWarning"]
+markers = ["extra: non-essential longer running tests, including jit tests"]
