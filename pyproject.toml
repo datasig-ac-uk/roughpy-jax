@@ -1,5 +1,10 @@
 [build-system]
-requires = ["scikit-build-core[pyproject]>=0.10"]
+requires = [
+    "scikit-build-core[pyproject]>=0.10",
+    "roughpy>=0.3.0",
+    "jax>=0.4.0",
+    "jaxlib>=0.4.0",
+]
 build-backend = "scikit_build_core.build"
 
 [project]
@@ -26,13 +31,24 @@ classifiers = [
     "Operating System :: Unix",
     "Operating System :: MacOS",
 ]
-dependencies = ["roughpy", "jax>=0.4.0", "jaxlib>=0.4.0"]
+dependencies = ["roughpy>=0.3.0", "jax>=0.4.0", "jaxlib>=0.4.0"]
 
 [project.optional-dependencies]
-dev = ["pytest", "pytest-benchmark"]
+dev = [
+    "pytest", 
+    "pytest-benchmark"
+    "ruff",
+    "pre-commit",
+    "ty"
+]
+lint = ["ruff", "pre-commit"]
+typececk = ["jax", "ty"]
+jax = ["jax>=0.4.0", "jaxlib>=0.4.0"]
+benchmarks = ["asv", "virtualenv", "psutil"]
+
 
 [tool.scikit-build]
-cmake.version = ">=3.26"
+cmake.version = ">=3.30"
 ninja.version = ">=1.11"
 wheel.packages = []
 cmake.verbose = true
