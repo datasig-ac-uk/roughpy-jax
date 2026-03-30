@@ -1,9 +1,9 @@
 # roughpy-jax
 
-`roughpy-jax` provides JAX bindings and operations for RoughPy. It is aimed at
-working with dense algebraic objects such as free tensors, shuffle tensors, and
-elements of the free Lie algebra, while integrating with JAX arrays,
-transformations, and differentiation.
+`roughpy-jax` provides JAX bindings and operations for RoughPy. It provides
+stream classes and dense algebraic objects (such as free tensors, shuffle 
+tensors, and elements of the free Lie algebra) for computational rough path 
+theory, and supports JAX JIT-compilation and differentiation.
 
 This library is currently in an alpha stage. The API is still evolving, and
 some features are incomplete or subject to change as the package matures.
@@ -96,6 +96,9 @@ dependent.
 
 Only very basic interval support is currently implemented. This area still
 needs to be expanded.
+
+It might not be possible to convert RoughPy objects directly to roughpy-jax 
+equivalents.
 
 ## JAX Notes
 
