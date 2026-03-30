@@ -18,7 +18,9 @@
 namespace rpy::jax::cpu {
 
 namespace ffi = xla::ffi;
-using DegreeBeginIndex = typename rpy::compute::BasisBase::Index;
+
+// TODO: This is awful, replace it with something more robust.
+using DegreeBeginIndex = std::conditional_t<sizeof(typename rpy::compute::BasisBase::Index) == sizeof(int64_t), int64_t, int32_t>;
 using DegreeBeginSpan = ffi::Span<const DegreeBeginIndex>;
 
 template <typename Basis>
