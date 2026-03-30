@@ -9,7 +9,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "roughpy-jax"
-version = "0.0.0"
+version = "1.0.0"
 description = "JAX bindings and operations for RoughPy"
 readme = "README.md"
 authors = [{ name = "The RoughPy Authors", email = "info@datasig.ac.uk" }]

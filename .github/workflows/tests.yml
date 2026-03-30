@@ -25,45 +25,24 @@ concurrency:
 
 jobs:
   tests:
-    runs-on: ubuntu-latest
+    name: ${{ matrix.os }}${{ matrix.arch_name && format(' ({0})', matrix.arch_name) || '' }}
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        python-version:
-          - "3.11"
-          - "3.12"
-          - "3.13"
+        include:
+          - os: ubuntu-latest
+            arch_name: x86_64
+          - os: windows-latest
+            arch_name: AMD64
+          - os: macos-14
+            arch_name: arm64
 
     steps:
       - uses: actions/checkout@v6
 
-      - uses: actions/setup-python@v6
-        with:
-          python-version: ${{ matrix.python-version }}
-
-      - uses: astral-sh/setup-uv@v6
-        with:
-          enable-cache: true
-
-      - name: Build wheel
-        run: uv build --wheel
-
-      - name: Create test environment
-        run: uv venv .venv
-
-      - name: Install wheel and test dependencies
-        run: |
-          uv pip install --python .venv/bin/python \
-            dist/*.whl \
-            pytest \
-            pytest-benchmark \
-            hypothesis
-
-      - name: Run test suite against installed wheel
-        run: |
-          mkdir -p .pytest-tmp
-          cd .pytest-tmp
-          ../.venv/bin/python -m pytest \
-            -c ../pyproject.toml \
-            -m "not extra" \
-            ../roughpy_jax/tests
+      - uses: pypa/cibuildwheel@v3.2.1
+        env:
+          CIBW_ARCHS_LINUX: auto64
+          CIBW_ARCHS_WINDOWS: auto64
+          CIBW_ARCHS_MACOS: native
