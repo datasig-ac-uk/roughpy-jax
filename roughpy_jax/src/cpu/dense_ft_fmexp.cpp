@@ -63,7 +63,7 @@ ffi::Error cpu_dense_ft_fmexp_impl(
         ffi::AnyBuffer exponent,
         int32_t width,
         int32_t depth,
-        ffi::Span<const int64_t> degree_begin,
+        DegreeBeginSpan degree_begin,
         int32_t mul_max_deg,
         int32_t exp_max_deg,
         int32_t mul_min_deg,
@@ -108,7 +108,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
                 .Arg<xla::ffi::AnyBuffer>()
                 .Attr<int32_t>("width")
                 .Attr<int32_t>("depth")
-                .Attr<xla::ffi::Span<const int64_t>>("degree_begin")
+                .Attr<rpy::jax::cpu::DegreeBeginSpan>("degree_begin")
                 .Attr<int32_t>("mul_max_deg")
                 .Attr<int32_t>("exp_max_deg")
                 .Attr<int32_t>("mul_min_deg")

@@ -4,7 +4,10 @@ from typing import Literal, TypeVar
 
 import jax
 import numpy as np
+import numpy.typing as npt
 from roughpy import compute as rpc
+
+DegreeBeginArray = npt.NDArray[np.intp]
 
 
 @typing.runtime_checkable
@@ -18,7 +21,7 @@ class Basis(typing.Protocol, Hashable):
 
     width: np.int32
     depth: np.int32
-    degree_begin: np.ndarray[np.int64.dtype]
+    degree_begin: DegreeBeginArray
 
     def size(self) -> int: ...
     def __eq__(self, other: object) -> bool: ...

@@ -10,6 +10,7 @@ from jax import Array
 
 from .bases import (
     Basis,
+    DegreeBeginArray,
     check_basis_compat,
     result_basis,
     to_lie_basis,
@@ -485,7 +486,7 @@ class Operation:
         return {
             "width": np.int32(self.basis.width),
             "depth": np.int32(self.basis.depth),
-            "degree_begin": self.basis.degree_begin,
+            "degree_begin": np.asarray(self.basis.degree_begin, dtype=np.intp),
             **self.static_args,
         }
 
@@ -575,7 +576,7 @@ def _dense_ft_mul_level_accumulator(
     lhs_data: Array,
     rhs_data: Array,
     out_degree: np.int32,
-    degree_begin: np.ndarray[np.int64.dtype],
+    degree_begin: DegreeBeginArray,
     lhs_max_degree: np.int32,
     rhs_max_degree: np.int32,
     lhs_min_degree: np.int32 = 0,
@@ -619,7 +620,7 @@ def _dense_ft_mul_level_accumulator(
 def _fallback_dense_ft_mul(
     lhs_data: Array,
     rhs_data: Array,
-    degree_begin: np.ndarray[np.int64.dtype],
+    degree_begin: DegreeBeginArray,
     lhs_max_degree: np.int32,
     rhs_max_degree: np.int32,
     out_max_degree: np.int32,
@@ -650,9 +651,7 @@ def _fallback_dense_ft_mul(
     return mul
 
 
-def _fallback_dense_ft_exp(
-    arg_data: Array, degree_begin: np.ndarray[np.int64.dtype], arg_max_deg: np.int32
-):
+def _fallback_dense_ft_exp(arg_data: Array, degree_begin: DegreeBeginArray, arg_max_deg: np.int32):
     # Use Horner's method to compute exp(x) = Σ((x^n) / n!)
     out = jnp.zeros_like(arg_data).at[0].add(1)
 
@@ -680,7 +679,7 @@ def _fallback_dense_antipode(
     arg_data: Array,
     width: np.int32,
     depth: np.int32,
-    degree_begin: np.ndarray[np.int64.dtype],
+    degree_begin: DegreeBeginArray,
     no_sign: bool = False,
 ):
     def transpose_level(i):
@@ -699,7 +698,7 @@ def _fallback_ft_adj_lmul(
     op_data: Array,
     arg_data: Array,
     depth: np.int32,
-    degree_begin: np.ndarray[np.int64.dtype],
+    degree_begin: DegreeBeginArray,
     op_max_deg: np.int32,
     arg_max_deg: np.int32,
     op_min_deg: np.int32 = 0,
@@ -765,7 +764,7 @@ class DenseFTFma(Operation, DenseOperation):
         c_data: Array,
         width: np.int32,
         depth: np.int32,
-        degree_begin: np.ndarray[np.int64.dtype],
+        degree_begin: DegreeBeginArray,
         a_max_deg: np.int32,
         b_max_deg: np.int32,
         c_max_deg: np.int32,
@@ -799,7 +798,7 @@ class DenseFTMul(Operation, DenseOperation):
         rhs_data: Array,
         width: np.int32,
         depth: np.int32,
-        degree_begin: np.ndarray[np.int64.dtype],
+        degree_begin: DegreeBeginArray,
         lhs_max_deg: np.int32,
         rhs_max_deg: np.int32,
         lhs_min_deg: np.int32 = 0,
@@ -829,7 +828,7 @@ class DenseAntipode(Operation, DenseOperation):
         arg_data: Array,
         width: np.int32,
         depth: np.int32,
-        degree_begin: np.ndarray[np.int64.dtype],
+        degree_begin: DegreeBeginArray,
         arg_max_deg: np.int32,
         no_sign: bool = False,
     ) -> tuple[Array]:
@@ -862,7 +861,7 @@ class DenseSTFma(Operation, DenseOperation):
         c_data: Array,
         width: np.int32,
         depth: np.int32,
-        degree_begin: np.ndarray[np.int64.dtype],
+        degree_begin: DegreeBeginArray,
         a_max_deg: np.int32,
         b_max_deg: np.int32,
         c_max_deg: np.int32,
@@ -899,7 +898,7 @@ class DenseFTAdjLeftMul(Operation, DenseOperation):
         arg_data: Array,
         width: np.int32,
         depth: np.int32,
-        degree_begin: np.ndarray[np.int64.dtype],
+        degree_begin: DegreeBeginArray,
         op_max_deg: np.int32,
         arg_max_deg: np.int32,
         op_min_deg: np.int32 = 0,
@@ -933,7 +932,7 @@ class DenseFTAdjRightMul(Operation, DenseOperation):
         arg_data: Array,
         width: np.int32,
         depth: np.int32,
-        degree_begin: np.ndarray[np.int64.dtype],
+        degree_begin: DegreeBeginArray,
         op_max_deg: np.int32,
         arg_max_deg: np.int32,
         op_min_deg: np.int32 = 0,
@@ -997,7 +996,7 @@ class DenseLieToTensor(Operation, DenseOperation):
         arg_data: Array,
         width: np.int32,
         depth: np.int32,
-        degree_begin: np.ndarray[np.int64.dtype],
+        degree_begin: DegreeBeginArray,
         l2t_data: np.ndarray[np.float32],
         l2t_indices: np.ndarray[np.int64],
         l2t_indptr: np.ndarray[np.int64],
@@ -1051,7 +1050,7 @@ class DenseTensorToLie(Operation, DenseOperation):
         arg_data: Array,
         width: np.int32,
         depth: np.int32,
-        degree_begin: np.ndarray[np.int64.dtype],
+        degree_begin: DegreeBeginArray,
         t2l_data: np.ndarray[np.float32 | np.float64],
         t2l_indices: np.ndarray[np.int64],
         t2l_indptr: np.ndarray[np.int64],
@@ -1085,7 +1084,7 @@ class DenseFTExp(Operation, DenseOperation):
         arg_data: Array,
         width: np.int32,
         depth: np.int32,
-        degree_begin: np.ndarray[np.int64.dtype],
+        degree_begin: DegreeBeginArray,
         arg_max_deg: np.int32,
     ) -> tuple[Array]:
         exp = _fallback_dense_ft_exp(arg_data, degree_begin, arg_max_deg)
@@ -1113,7 +1112,7 @@ class DenseFTFMExp(Operation, DenseOperation):
         exponent: Array,
         width: np.int32,
         depth: np.int32,
-        degree_begin: np.ndarray[np.int64.dtype],
+        degree_begin: DegreeBeginArray,
         mul_max_deg: np.int32,
         exp_max_deg: np.int32,
         mul_min_deg: np.int32,
@@ -1154,7 +1153,7 @@ class DenseFTLog(Operation, DenseOperation):
         arg_data: Array,
         width: np.int32,
         depth: np.int32,
-        degree_begin: np.ndarray[np.int64.dtype],
+        degree_begin: DegreeBeginArray,
         arg_max_deg: np.int32,
     ) -> tuple[Array]:
         # log(1 + x) = Σ(((-1)^n) * (x^n) / n)
@@ -1199,7 +1198,7 @@ class DenseTensorPairing(Operation, DenseOperation):
         argument_data: Array,
         width: np.int32,
         depth: np.int32,
-        degree_begin: np.ndarray[np.int64.dtype],
+        degree_begin: DegreeBeginArray,
         functional_max_degree: np.int32,
         argument_max_degree: np.int32,
     ) -> tuple[Array]:
@@ -1235,7 +1234,7 @@ class DenseLiePairing(Operation, DenseOperation):
         argument_data: Array,
         width: np.int32,
         depth: np.int32,
-        degree_begin: np.ndarray[np.int64.dtype],
+        degree_begin: DegreeBeginArray,
         functional_max_degree: np.int32,
         argument_max_degree: np.int32,
     ) -> tuple[Array]:

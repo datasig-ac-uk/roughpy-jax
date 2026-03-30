@@ -1,6 +1,7 @@
 #ifndef ROUGHPY_JAX_CPU_XLA_COMMON_HPP
 #define ROUGHPY_JAX_CPU_XLA_COMMON_HPP
 
+#include <cstddef>
 #include <type_traits>
 #include <vector>
 
@@ -17,6 +18,8 @@
 namespace rpy::jax::cpu {
 
 namespace ffi = xla::ffi;
+using DegreeBeginIndex = typename rpy::compute::BasisBase::Index;
+using DegreeBeginSpan = ffi::Span<const DegreeBeginIndex>;
 
 template <typename Basis>
 auto data_size_to_degree(const Basis& basis, int32_t degree) -> typename Basis::Index

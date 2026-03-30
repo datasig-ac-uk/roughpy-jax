@@ -5,6 +5,7 @@ project(RoughPy_JAX VERSION 0.0.1 LANGUAGES C CXX)
 
 include(GNUInstallDirs)
 
+option(RPJ_INPLACE_BUILD "build the library in-place" ON)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
@@ -71,6 +72,13 @@ endif()
 set_target_properties(Roughpy_JAXModule PROPERTIES
     OUTPUT_NAME _rpy_jax_internals
     )
+
+if(RPJ_INPLACE_BUILD)
+    message(STATUS "Library artifact will be placed in roughpy_jax directory")
+    set_target_properties(Roughpy_JAXModule PROPERTIES
+            RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/roughpy_jax"
+            LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/roughpy_jax")
+endif()
 
 target_link_libraries(Roughpy_JAXModule PRIVATE
     XLA::FFI
