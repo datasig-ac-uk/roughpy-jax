@@ -56,6 +56,18 @@ cmake.build-type = "Release"
 experimental = true
 wheel.py-api = "cp311"
 
+[tool.cibuildwheel]
+build = "cp311-*"
+skip = [
+    "*-musllinux_*",
+    "*-manylinux_i686",
+    "*-win32",
+]
+build-verbosity = 1
+test-requires = ["pytest", "pytest-benchmark", "hypothesis"]
+test-sources = ["roughpy_jax/tests"]
+test-command = "pytest -c {project}/pyproject.toml -m \"not extra\" roughpy_jax/tests"
+
 [tool.pytest.ini_options]
 testpaths = ["roughpy_jax/tests"]
 filterwarnings = ["ignore::DeprecationWarning"]
