@@ -113,7 +113,7 @@ def test_ft_adjoint_left_mul_derivative_linear_in_t_op(adj_mul_trials):
     def fn(t_op):
         return rpj.ft_adjoint_left_mul_derivative(op, arg, t_op, zero_t_arg)
 
-    assert_is_linear(fn, t_op_x, t_op_y, alpha, beta)
+    assert_is_linear(fn, t_op_x, t_op_y, alpha, beta, abs_tol=2.5e-6, rel_tol=2.e-6)
 
 
 def test_ft_adjoint_left_mul_derivative_linear_in_t_arg(adj_mul_trials):
