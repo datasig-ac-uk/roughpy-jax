@@ -68,7 +68,7 @@ ffi::Error cpu_dense_ft_antipode_impl(
 
 
     DenseFTAntipodeStaticArgs static_args {
-        TensorBasis{ degree_begin.begin(), width, depth},
+        TensorBasis{ cast_db_array(degree_begin.begin()), width, depth},
         max_deg,
         no_sign
     };

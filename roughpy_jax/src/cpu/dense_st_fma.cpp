@@ -94,7 +94,7 @@ ffi::Error cpu_dense_st_fma_impl(
 ) noexcept {
 
     DenseSTFmaStaticArgs static_args {
-        TensorBasis { degree_begin.begin(), width, depth },
+        TensorBasis { cast_db_array(degree_begin.begin()), width, depth },
         a_max_deg,
         b_max_deg,
         c_max_deg,
@@ -140,7 +140,7 @@ ffi::Error cpu_dense_st_mul_impl(
     ) noexcept
 {
     DenseSTFmaStaticArgs static_args {
-        TensorBasis { degree_begin.begin(), width, depth },
+        TensorBasis { cast_db_array(degree_begin.begin()), width, depth },
         depth,
         lhs_max_deg,
         rhs_max_deg,

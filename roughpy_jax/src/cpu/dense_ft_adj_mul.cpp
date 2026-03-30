@@ -67,7 +67,7 @@ ffi::Error cpu_dense_ft_adj_lmul_impl(
     ) noexcept
 {
     DenseFTAdjLMulStaticArgs static_args {
-        TensorBasis { degree_begin.begin(), width, depth },
+        TensorBasis { cast_db_array(degree_begin.begin()), width, depth },
         op_max_deg,
         arg_max_deg
     };
@@ -188,7 +188,7 @@ ffi::Error cpu_dense_ft_adj_rmul_impl(
     ) noexcept
 {
     DenseFTAdjLMulStaticArgs static_args {
-        TensorBasis { degree_begin.begin(), width, depth },
+        TensorBasis { cast_db_array(degree_begin.begin()), width, depth },
         op_max_deg,
         arg_max_deg
     };

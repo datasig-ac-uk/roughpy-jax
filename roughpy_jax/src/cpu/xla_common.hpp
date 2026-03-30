@@ -23,6 +23,19 @@ namespace ffi = xla::ffi;
 using DegreeBeginIndex = std::conditional_t<sizeof(typename rpy::compute::BasisBase::Index) == sizeof(int64_t), int64_t, int32_t>;
 using DegreeBeginSpan = ffi::Span<const DegreeBeginIndex>;
 
+template <typename T>
+/// This is a solution to a problem that shouldn't exist. Unfortunately, only
+/// long long (=int64_t) is a registered type in the XLA decoder logic, and on
+/// MacOs ptrdiff_t resolves to a long, even though this is the same size it is
+/// a different type. This function just casts the pointer to a ptrdiff_t, after
+/// checking it is the right size.
+constexpr auto cast_db_array(const T* db_in) noexcept -> const typename compute::BasisBase::Index*{
+    using Index = typename compute::BasisBase::Index;
+    static_assert(sizeof(T) == sizeof(Index), "mismatch integer size");
+    static_assert(std::is_signed_v<T> == std::is_signed_v<Index>, "different signedness");
+    return reinterpret_cast<const Index*>(db_in);
+}
+
 template <typename Basis>
 auto data_size_to_degree(const Basis& basis, int32_t degree) -> typename Basis::Index
 {

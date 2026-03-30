@@ -57,7 +57,7 @@ ffi::Error cpu_dense_ft_exp_impl(
     }
 
     DenseFTExpStaticArgs static_args {
-        TensorBasis {degree_begin.begin(), width, depth},
+        TensorBasis {cast_db_array(degree_begin.begin()), width, depth},
         arg_max_degree
     };
 

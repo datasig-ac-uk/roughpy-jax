@@ -88,7 +88,7 @@ ffi::Error cpu_dense_ft_fma_impl(
 {
 
     DenseFTFmaStaticArgs static_args{
-            TensorBasis{degree_begin.begin(), width, depth},
+            TensorBasis{cast_db_array(degree_begin.begin()), width, depth},
             a_max_deg,
             b_max_deg,
             c_max_deg,
@@ -133,7 +133,7 @@ ffi::Error cpu_dense_ft_mul_impl(
 {
 
     DenseFTFmaStaticArgs static_args{
-            TensorBasis{degree_begin.begin(), width, depth},
+            TensorBasis{cast_db_array(degree_begin.begin()), width, depth},
             std::min(depth, lhs_max_deg + rhs_max_deg),
             lhs_max_deg,
             rhs_max_deg,

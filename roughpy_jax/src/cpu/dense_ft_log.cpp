@@ -53,7 +53,7 @@ ffi::Error cpu_dense_ft_log_impl(
 ) {
 
     DenseFTLogStaticArgs  static_args {
-        TensorBasis { degree_begin.begin(), width, depth},
+        TensorBasis { cast_db_array(degree_begin.begin()), width, depth},
         arg_max_deg
     };
 

@@ -60,7 +60,7 @@ ffi::Error cpu_dense_st_adj_mul(
 ) noexcept
 {
     DenseSTAdjMulStaticArgs static_args{
-            TensorBasis{degree_begin.begin(), width, depth},
+            TensorBasis{cast_db_array(degree_begin.begin()), width, depth},
             op_max_deg,
             arg_max_deg
     };
