@@ -2,6 +2,15 @@ name: release
 
 on:
   workflow_dispatch:
+    inputs:
+      publish_target:
+        description: Choose whether to publish to PyPI or TestPyPI
+        required: true
+        default: publish
+        type: choice
+        options:
+          - publish
+          - testpypi
 
 concurrency:
   group: release-${{ github.ref }}
@@ -71,7 +80,7 @@ jobs:
       contents: write
       id-token: write
     environment:
-      name: pypi
+      name: ${{ inputs.publish_target == 'testpypi' && 'testpypi' || 'pypi' }}
 
     steps:
       - uses: actions/download-artifact@v4
@@ -109,11 +118,21 @@ jobs:
           version="$(printf '%s\n' "$(basename "${wheel}")" | cut -d- -f2)"
           printf 'tag=v%s\n' "${version}" >> "${GITHUB_OUTPUT}"
 
-      - uses: pypa/gh-action-pypi-publish@release/v1
+      - name: Publish to PyPI
+        if: inputs.publish_target == 'publish'
+        uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dist
 
+      - name: Publish to TestPyPI
+        if: inputs.publish_target == 'testpypi'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist
+          repository-url: https://test.pypi.org/legacy/
+
       - name: Create GitHub release
+        if: inputs.publish_target == 'publish'
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.release_version.outputs.tag }}
