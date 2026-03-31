@@ -28,7 +28,7 @@ def lie_increment(draw, min_width=1, max_width=6, min_depth=1, max_depth=4):
             )
         )
     )
-    return lie_to_tensor(Lie(data, basis))  # type: ignore
+    return lie_to_tensor(Lie(data, basis))
 
 
 @st.composite
