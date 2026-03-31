@@ -6,8 +6,7 @@ import numpy as np
 
 from roughpy_jax.bases import BasisT, TensorBasis
 
-AlgebraT = TypeVar("AlgebraT")
-_T = TypeVar("_T")
+AlgebraT = TypeVar("AlgebraT", bound="DenseAlgebra")
 
 
 def get_batch_shape(operand) -> tuple[int, ...]:
@@ -116,7 +115,7 @@ def _pad_final_dim(data: jax.Array, size: int) -> jax.Array:
 
 
 def _algebra_add(
-    a: AlgebraT, b: AlgebraT, *, impl: Callable[[jax.Array, ...], jax.Array]
+    a: AlgebraT, b: AlgebraT, *, impl: Callable[[jax.Array, jax.Array], jax.Array]
 ) -> AlgebraT:
     """
     Apply a pointwise binary operation to two compatible dense algebra objects.
@@ -307,11 +306,11 @@ class DenseAlgebra(Generic[BasisT]):
 
     @classmethod
     def zero(
-        cls: type[_T],
+        cls: type[AlgebraT],
         basis: BasisT,
         dtype: jax.typing.DTypeLike = jnp.dtype("float32"),
         batch_dims: tuple[int, ...] = tuple(),
-    ) -> _T:
+    ) -> AlgebraT:
         """
         Construct the additive identity in the given basis.
 
@@ -344,11 +343,11 @@ class DenseTensor(DenseAlgebra[TensorBasis]):
 
     @classmethod
     def identity(
-        cls: Type[_T],
+        cls: Type[AlgebraT],
         basis: TensorBasis,
         dtype: jax.typing.DTypeLike = jnp.dtype("float32"),
         batch_dims: tuple[int, ...] = tuple(),
-    ) -> _T:
+    ) -> AlgebraT:
         """
             Construct the multiplicative identity in a tensor basis.
 
@@ -372,7 +371,7 @@ class DenseTensor(DenseAlgebra[TensorBasis]):
 DenseTensor.DualVector = DenseTensor
 
 
-def zero_like(algebra: _T, dtype: jax.typing.DTypeLike | None = None) -> _T:
+def zero_like(algebra: AlgebraT, dtype: jax.typing.DTypeLike | None = None) -> AlgebraT:
     """
     Construct a zero element with the same type, shape, and basis as ``algebra``.
 
@@ -389,7 +388,7 @@ def zero_like(algebra: _T, dtype: jax.typing.DTypeLike | None = None) -> _T:
     return type(algebra)(data, algebra.basis)
 
 
-def identity_like(tensor: _T, dtype: jax.typing.DTypeLike | None = None) -> _T:
+def identity_like(tensor: AlgebraT, dtype: jax.typing.DTypeLike | None = None) -> AlgebraT:
     """
     Creates an identity-like object based on the structure and type of the provided tensor. The resulting object retains
     the basis of the input tensor but modifies its data to follow an identity pattern. The primary element indicating
