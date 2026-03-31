@@ -2,6 +2,7 @@ import jax
 import jax.numpy as jnp
 import pytest
 import roughpy_jax as rpj
+from roughpy_jax.algebra import FreeTensor, ft_fmexp, lie_to_tensor, to_log_signature
 from roughpy_jax.intervals import IntervalType, Partition, RealInterval
 from roughpy_jax.streams import PiecewiseAbelianStream
 
@@ -118,6 +119,38 @@ class TestPiecewiseAbelianStream:
         expected_log_sig = rpj.cbh(0.5 * pas_data.l1, 0.5 * pas_data.l2)
 
         assert jnp.allclose(log_sig.data, expected_log_sig.data, atol=1e-6)
+
+    def test_log_signature_multi_piece_stream(self):
+        lie_basis = rpj.LieBasis(26, 3)
+        tensor_basis = rpj.to_tensor_basis(lie_basis)
+        indices = (0, 1, 4, 19)
+
+        def make_lie(index):
+            data = jnp.zeros((lie_basis.size(),), dtype=jnp.float32)
+            data = data.at[index].set(1.0)
+            return rpj.Lie(data, lie_basis)
+
+        lies = tuple(make_lie(index) for index in indices)
+        stream = PiecewiseAbelianStream(
+            _data=lies,
+            _partition=Partition([0.0, 1.0, 2.0, 3.0, 4.0], IntervalType.ClOpen),
+            _lie_basis=lie_basis,
+            _group_basis=tensor_basis,
+        )
+        query_interval = RealInterval(0.0, 4.0, IntervalType.ClOpen)
+
+        actual_log_sig = stream.log_signature(query_interval)
+
+        expected_signature = FreeTensor.identity(tensor_basis, dtype=jnp.float32)
+        for lie in lies:
+            expected_signature = ft_fmexp(
+                expected_signature,
+                lie_to_tensor(lie),
+                tensor_basis,
+            )
+        expected_log_sig = to_log_signature(expected_signature)
+
+        assert jnp.allclose(actual_log_sig.data, expected_log_sig.data, atol=1e-6)
 
     def test_stream_metadata(self, pas_data):
         """Test that the stream exposes dtype and batch metadata."""
