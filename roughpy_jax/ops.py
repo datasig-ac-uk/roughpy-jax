@@ -668,7 +668,7 @@ def _fallback_dense_ft_exp(arg_data: Array, degree_begin: DegreeBeginArray, arg_
             rhs_data=arg_data,
             degree_begin=degree_begin,
             out_max_degree=arg_max_deg,
-            lhs_min_degree=np.int32(0),
+            lhs_min_degree=INT32_ZERO,
             lhs_max_degree=max_level,
             rhs_min_degree=np.int32(1),
             rhs_max_degree=max_level,
@@ -1197,9 +1197,9 @@ class DenseFTLog(Operation, DenseOperation):
                 rhs_data=arg_data,
                 degree_begin=degree_begin,
                 out_max_degree=arg_max_deg,
-                lhs_min_degree=np.int32(0),
+                lhs_min_degree=INT32_ZERO,
                 lhs_max_degree=max_level,
-                rhs_min_degree=1,
+                rhs_min_degree=np.int32(1),
                 rhs_max_degree=max_level,
             )
 
