@@ -14,7 +14,7 @@ from roughpy_jax.algebra import (
     to_log_signature,
     to_signature,
 )
-from roughpy_jax.bases import Basis
+from roughpy_jax.bases import LieBasis, TensorBasis, Basis
 from roughpy_jax.intervals import Interval, Partition, RealInterval, intersection
 
 from .concepts import Stream
@@ -27,8 +27,8 @@ class PiecewiseAbelianStream(Stream[DenseLie, DenseFreeTensor]):
 
     _data: tuple[DenseLie, ...]
     _partition: Partition
-    _lie_basis: Basis
-    _group_basis: Basis
+    _lie_basis: LieBasis
+    _group_basis: TensorBasis
 
     def __post_init__(self):
         """Validate the piecewise abelian stream."""
