@@ -710,7 +710,7 @@ def ft_exp_adjoint_derivative(
         scale = 1.0 / d
         # noinspection PyTypeChecker
         r_data[d - 1] = scale * ft_mul(x, r_data[d])
-        r_data[d - 1].data = r_data[d - 1].data.at[..., 0].add(1)
+        r_data[d - 1].data = r_data[d - 1].data.at[..., 0].add(1)  # ty: ignore[invalid-assignment, unresolved-attribute]
 
     ct_x_data = jnp.zeros((*batch_dims, basis.size()), dtype=dtype)
     ct_x = DenseShuffleTensor(ct_x_data, basis)
@@ -739,7 +739,7 @@ def _ft_exp_vjp_fwd(
 def _ft_exp_vjp_bwd(
     residuals: tuple[Any, ...],
     ct_result_data: DenseShuffleTensor,
-) -> tuple[jax.Array | None, ...]:
+) -> tuple[Any, ...]:
     x, result = residuals
 
     ct_result = from_jax_cotangent(type(x), ct_result_data, result.basis)
@@ -836,7 +836,7 @@ def ft_log_adjoint_derivative(
     rs = [None for _ in range(depth)] + [zero]
     for d in range(depth, 0, -1):
         sign = -1 if d % 2 == 0 else 1
-        r_data = rs[d].data.at[..., 0].add(sign / d)
+        r_data = rs[d].data.at[..., 0].add(sign / d)  # ty: ignore[unresolved-attribute]
         r = DenseFreeTensor(r_data, basis)
         rs[d - 1] = ft_mul(x, r)
 
@@ -846,7 +846,7 @@ def ft_log_adjoint_derivative(
 
     for d in range(1, depth + 1):
         sign = -1 if d % 2 == 0 else 1
-        u_d_data = rs[d].data.at[..., 0].add(sign / d)
+        u_d_data = rs[d].data.at[..., 0].add(sign / d)  # ty: ignore[unresolved-attribute]
         u_d = DenseFreeTensor(u_d_data, basis)
 
         ct_x = ct_x + ft_adjoint_right_mul(u_d, ct_r_d)
@@ -864,7 +864,7 @@ def _ft_log_vjp_fwd(
 
 def _ft_log_vjp_bwd(
     residuals: tuple[Any, ...], ct_result_data: Any
-) -> tuple[jax.Array | None, ...]:
+) -> tuple[Any, ...]:
     x, _ = residuals
 
     ct_result = from_jax_cotangent(type(x), ct_result_data, x.basis)
@@ -1012,7 +1012,7 @@ def _ft_fmexp_vjp_fwd(
 
 def _ft_fmexp_vjp_bwd(
     residuals, ct_result_data: jax.Array
-) -> tuple[jax.Array | None, ...]:
+) -> tuple[Any, ...]:
     multiplier, exponent, _ = residuals
 
     ct_result = from_jax_cotangent(type(multiplier), ct_result_data, multiplier.basis)
@@ -1526,7 +1526,7 @@ def _lie_pairing_vjp_fwd(
     return result, (functional, argument)
 
 
-def _lie_pairing_vjp_bwd(residuals, ct_result) -> tuple[jax.Array, ...]:
+def _lie_pairing_vjp_bwd(residuals, ct_result) -> tuple[Any, ...]:
     functional, argument = residuals
 
     ct_functional, ct_argument = lie_pairing_adjoint_derivative(
@@ -1685,7 +1685,7 @@ def cbh(*lie_pieces: DenseLie, lie_basis: LieBasis | None = None) -> DenseLie:
     if lie_basis is not None:
         bases = [lie_basis, *bases]
 
-    basis = result_basis(bases, strategy="max_depth" if lie_basis is None else "first")
+    basis = result_basis(*bases, strategy="max_depth" if lie_basis is None else "first")
     dtype = jnp.result_type(*(lie.dtype for lie in lie_pieces))
     batch_dims = get_common_batch_shape(*lie_pieces)
 
