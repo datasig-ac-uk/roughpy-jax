@@ -581,8 +581,8 @@ def _dense_ft_mul_level_accumulator(
     degree_begin: DegreeBeginArray,
     lhs_max_degree: np.int32,
     rhs_max_degree: np.int32,
-    lhs_min_degree: np.int32 = 0,
-    rhs_min_degree: np.int32 = 0,
+    lhs_min_degree: np.int32 = np.int32(0),
+    rhs_min_degree: np.int32 = np.int32(0),
 ):
     """
     Compute the accumulated multiplication for a level of the free tensor at out_degree
@@ -626,8 +626,8 @@ def _fallback_dense_ft_mul(
     lhs_max_degree: np.int32,
     rhs_max_degree: np.int32,
     out_max_degree: np.int32,
-    lhs_min_degree: np.int32 = 0,
-    rhs_min_degree: np.int32 = 0,
+    lhs_min_degree: np.int32 = np.int32(0),
+    rhs_min_degree: np.int32 = np.int32(0),
 ):
     """
     Multiply two dense free tensors with given data and degree
@@ -703,8 +703,8 @@ def _fallback_ft_adj_lmul(
     degree_begin: DegreeBeginArray,
     op_max_deg: np.int32,
     arg_max_deg: np.int32,
-    op_min_deg: np.int32 = 0,
-    arg_min_deg: np.int32 = 0,
+    op_min_deg: np.int32 = np.int32(0),
+    arg_min_deg: np.int32 = np.int32(0),
 ):
     out_min_deg = 0
     out_max_deg = depth + 1
@@ -770,8 +770,8 @@ class DenseFTFma(Operation, DenseOperation):
         a_max_deg: np.int32,
         b_max_deg: np.int32,
         c_max_deg: np.int32,
-        b_min_deg: np.int32 = 0,
-        c_min_deg: np.int32 = 0,
+        b_min_deg: np.int32 = np.int32(0),
+        c_min_deg: np.int32 = np.int32(0),
     ) -> tuple[Array, ...]:
         # result = b * c + a
         mul = _fallback_dense_ft_mul(
@@ -803,8 +803,8 @@ class DenseFTMul(Operation, DenseOperation):
         degree_begin: DegreeBeginArray,
         lhs_max_deg: np.int32,
         rhs_max_deg: np.int32,
-        lhs_min_deg: np.int32 = 0,
-        rhs_min_deg: np.int32 = 0,
+        lhs_min_deg: np.int32 = np.int32(0),
+        rhs_min_deg: np.int32 = np.int32(0),
     ) -> tuple[Array]:
         mul = _fallback_dense_ft_mul(
             lhs_data,
@@ -867,8 +867,8 @@ class DenseSTFma(Operation, DenseOperation):
         a_max_deg: np.int32,
         b_max_deg: np.int32,
         c_max_deg: np.int32,
-        b_min_deg: np.int32 = 0,
-        c_min_deg: np.int32 = 0,
+        b_min_deg: np.int32 = np.int32(0),
+        c_min_deg: np.int32 = np.int32(0),
     ) -> tuple[Array]:
         raise NotImplementedError(
             "st_fma is not implemented for native JAX, use CPU backend"
@@ -903,8 +903,8 @@ class DenseFTAdjLeftMul(Operation, DenseOperation):
         degree_begin: DegreeBeginArray,
         op_max_deg: np.int32,
         arg_max_deg: np.int32,
-        op_min_deg: np.int32 = 0,
-        arg_min_deg: np.int32 = 0,
+        op_min_deg: np.int32 = np.int32(0),
+        arg_min_deg: np.int32 = np.int32(0),
     ) -> tuple[Array]:
         lmul = _fallback_ft_adj_lmul(
             op_data,
@@ -937,8 +937,8 @@ class DenseFTAdjRightMul(Operation, DenseOperation):
         degree_begin: DegreeBeginArray,
         op_max_deg: np.int32,
         arg_max_deg: np.int32,
-        op_min_deg: np.int32 = 0,
-        arg_min_deg: np.int32 = 0,
+        op_min_deg: np.int32 = np.int32(0),
+        arg_min_deg: np.int32 = np.int32(0),
     ) -> tuple[Array]:
         op_antipode = _fallback_dense_antipode(op_data, width, depth, degree_begin)
         arg_antipode = _fallback_dense_antipode(arg_data, width, depth, degree_begin)
