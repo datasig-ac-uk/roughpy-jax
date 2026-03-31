@@ -304,7 +304,7 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
         return _extend_cache_from_base(lies, resolution, stream.lie_basis)
 
     @classmethod
-    def from_stream(cls: type[T], stream: Stream, resolution: int) -> T:
+    def from_stream(cls: type[T], stream: Stream[Lie, FreeTensor], resolution: int) -> T:
         lie_basis = stream.lie_basis
         group_basis = stream.group_basis
         support = stream.support
