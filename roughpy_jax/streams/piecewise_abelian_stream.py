@@ -1,10 +1,13 @@
 from dataclasses import dataclass
+from functools import partial
 
 import jax
 import jax.numpy as jnp
 from jax import lax
 
 from roughpy_jax.algebra import (
+    DenseFreeTensor,
+    DenseLie,
     FreeTensor,
     ft_fmexp,
     lie_to_tensor,
@@ -14,24 +17,15 @@ from roughpy_jax.algebra import (
 from roughpy_jax.bases import Basis
 from roughpy_jax.intervals import Interval, Partition, RealInterval, intersection
 
-from .concepts import GroupT, LieT, Stream
+from .concepts import Stream
 
 
-def _pas_dataclass(cls):
-    """Helper to apply the dataclass and register_dataclass decorators in the correct order."""
-    cls = dataclass(cls, frozen=True)
-    return jax.tree_util.register_dataclass(
-        cls,
-        data_fields=["_data", "_partition"],
-        meta_fields=["_lie_basis", "_group_basis"],
-    )
-
-
-@_pas_dataclass
-class PiecewiseAbelianStream(Stream[LieT, GroupT]):
+@partial(jax.tree_util.register_dataclass, data_fields=["_data", "_partition"],meta_fields=["_lie_basis", "_group_basis"],)
+@dataclass(frozen=True)
+class PiecewiseAbelianStream(Stream[DenseLie, DenseFreeTensor]):
     """A stream representing a piecewise abelian path."""
 
-    _data: tuple[LieT, ...]
+    _data: tuple[DenseLie, ...]
     _partition: Partition
     _lie_basis: Basis
     _group_basis: Basis
@@ -74,7 +68,7 @@ class PiecewiseAbelianStream(Stream[LieT, GroupT]):
         return self._data[0].data.shape[:-1]
 
     @jax.jit
-    def log_signature(self, interval: Interval) -> LieT:
+    def log_signature(self, interval: Interval) -> DenseLie:
         """
         Compute the log signature over an interval.
 
@@ -139,7 +133,7 @@ class PiecewiseAbelianStream(Stream[LieT, GroupT]):
         return to_log_signature(result)
 
     @jax.jit
-    def signature(self, interval: Interval) -> GroupT:
+    def signature(self, interval: Interval) -> DenseFreeTensor:
         """
         Compute the signature over an interval.
 
@@ -152,8 +146,19 @@ class PiecewiseAbelianStream(Stream[LieT, GroupT]):
         return to_signature(log_sig, tensor_basis=self._group_basis)
 
 
-def to_piecewise_abelian(
-    stream: Stream[LieT, GroupT], partition: Partition
-) -> PiecewiseAbelianStream[LieT, GroupT]:
+def to_piecewise_abelian_stream(
+    stream: Stream[DenseLie, DenseFreeTensor], partition: Partition
+) -> PiecewiseAbelianStream:
     """Convert a stream to a piecewise abelian stream."""
-    ...
+    data = tuple(
+        stream.log_signature(interval) for interval in partition.to_intervals()
+    )
+    new_stream = PiecewiseAbelianStream(
+        _data=data,
+        _partition=partition,
+        _lie_basis=stream.lie_basis,
+        _group_basis=stream.group_basis,
+    )
+
+    return new_stream
+
