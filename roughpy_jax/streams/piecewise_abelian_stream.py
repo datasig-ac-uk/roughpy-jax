@@ -14,13 +14,17 @@ from roughpy_jax.algebra import (
     to_log_signature,
     to_signature,
 )
-from roughpy_jax.bases import LieBasis, TensorBasis, Basis
+from roughpy_jax.bases import Basis, LieBasis, TensorBasis
 from roughpy_jax.intervals import Interval, Partition, RealInterval, intersection
 
 from .concepts import Stream
 
 
-@partial(jax.tree_util.register_dataclass, data_fields=["_data", "_partition"],meta_fields=["_lie_basis", "_group_basis"],)
+@partial(
+    jax.tree_util.register_dataclass,
+    data_fields=["_data", "_partition"],
+    meta_fields=["_lie_basis", "_group_basis"],
+)
 @dataclass(frozen=True)
 class PiecewiseAbelianStream(Stream[DenseLie, DenseFreeTensor]):
     """A stream representing a piecewise abelian path."""
@@ -85,7 +89,9 @@ class PiecewiseAbelianStream(Stream[DenseLie, DenseFreeTensor]):
                 "or single-element endpoint arrays"
             )
         if inf.shape or sup.shape:
-            interval = RealInterval(inf.reshape(()), sup.reshape(()), interval.interval_type)
+            interval = RealInterval(
+                inf.reshape(()), sup.reshape(()), interval.interval_type
+            )
 
         initial = FreeTensor.identity(
             self._group_basis,
@@ -116,20 +122,16 @@ class PiecewiseAbelianStream(Stream[DenseLie, DenseFreeTensor]):
             )
 
         intervals = self._partition.to_intervals()
-        all_tensors = [initial] + [
-            get_piece((x, p)) for x, p in zip(self._data, intervals, strict=True)
-        ]
 
         # Stack all tensors along a leading axis into a single batched FreeTensor.
-        batched = jax.tree.map(lambda *arrs: jnp.stack(arrs), *all_tensors)
+        pieces = [get_piece((x, p)) for x, p in zip(self._data, intervals, strict=True)]
+        batched = jax.tree.map(lambda *arrs: jnp.stack(arrs), *pieces)
 
-        result_batched = lax.associative_scan(
-            lambda a, b: ft_fmexp(a, b, self._group_basis),
-            batched,
-        )
+        def combine(carry, piece):
+            updated = ft_fmexp(carry, piece, self._group_basis)
+            return updated, None
 
-        # Take the last prefix (the full product over all selected pieces).
-        result = jax.tree.map(lambda x: x[-1], result_batched)
+        result, _ = lax.scan(combine, initial, batched)
         return to_log_signature(result)
 
     @jax.jit
