@@ -53,8 +53,6 @@ def _get_lie_sparse_matrices(lie_basis, dtype):
 class EmptyStaticArgs(TypedDict): ...
 
 
-OperationT = TypeVar("OperationT")
-
 
 def _batched_fallback_wrapper(single_tensor_fn):
     """
