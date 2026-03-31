@@ -53,7 +53,7 @@ def word_to_increments(word):
 
 def word_to_stream(word):
     if STREAM_KIND == "lie_increment":
-        timestamps = jnp.linspace(0.0, 1.0, len(word), dtype=jnp.float32)
+        timestamps = jnp.arange(len(word), dtype=jnp.float32) / jnp.float32(len(word))
         return LieIncrementStream.from_increments(
             timestamps=timestamps,
             data=word_to_increments(word),
@@ -65,7 +65,7 @@ def word_to_stream(word):
         n = len(word)
         data = tuple(_make_lie(letter) for letter in word)
         # JAX-jitted methods require array-like endpoint leaves; `range` is not valid here.
-        endpoints = (np.arange(n + 1, dtype=np.float32) / np.float32(n)).tolist()
+        endpoints = jnp.arange(n + 1, dtype=jnp.float32).tolist()
         partition = Partition(endpoints, IntervalType.ClOpen)
         return PiecewiseAbelianStream(
             _data=data,
