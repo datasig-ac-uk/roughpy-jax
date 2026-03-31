@@ -1,9 +1,10 @@
-FROM ubuntu:24.04
+FROM python:3.12-slim
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+WORKDIR /workspaces/roughpy-jax
 
 RUN DEBIAN_FRONTEND=noninteractive TZ=Etc/GMT apt-get update && apt-get install -y \
-    python3 \
-    python3-venv \
-    python3-pip \
+    build-essential \
     git \
     openssh-client \
     gdb \
@@ -15,47 +16,19 @@ RUN DEBIAN_FRONTEND=noninteractive TZ=Etc/GMT apt-get update && apt-get install 
     libtool \
     libtool-bin \
     pkg-config \
-    nvidia-cuda-toolkit \
-    nvidia-driver-535-server
+    wbritish \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /tools
+COPY pyproject.toml /workspaces/roughpy-jax/
 
-# Create new venv at container root and install libs
-RUN python3 -m venv /tools/venv
-ENV PATH /tools/venv/bin:$PATH
-RUN pip install --upgrade pip setuptools wheel
-RUN pip install \
-    cmake \
-    ninja \
-    "pybind11<3.0.0" \
-    "numpy>=2.0.0" \
-    "jax" \
-    hypothesis \
-    absl-py \
-    pytest \
-    pytest-cov \ 
-    pytest-benchmark \
-    asv \
-    pre-commit \ 
-    ruff \ 
-    ty
+# Create the project environment during image build, but do not compile the
+# heavy native RoughPy dependency here. We'll build it interactively if needed.
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --extra dev \
+    --no-install-project \
+    --no-install-package roughpy-jax \
+    --no-install-package roughpy
 
-# Use system tools for vcpkg when building aarch64 (Linux on MacOS)
-ENV VCPKG_FORCE_SYSTEM_BINARIES=0
-RUN if [ "$(uname -m)" = "aarch64" ]; then \
-        echo "Setting VCPKG_FORCE_SYSTEM_BINARIES for MacOS"; \
-        export VCPKG_FORCE_SYSTEM_BINARIES=1; \
-    fi
-
-# Install vcpkg in checkout location
-RUN git clone https://github.com/Microsoft/vcpkg.git /tools/vcpkg
-RUN /tools/vcpkg/bootstrap-vcpkg.sh
-ENV VCPKG_ROOT=/tools/vcpkg
-
-# Install pre-commit hooks, need to have a repository to do so, so we copy the code first
-WORKDIR /workspaces/RoughPy
-COPY . .
-RUN pre-commit install --install-hooks
-
-# This is required to be able to run pytest in the VSCode terminal
-ENV PYTHONPATH="/workspaces/RoughPy:$PYTHONPATH"
+# Keep native CMake builds conservative inside the devcontainer.
+ENV CMAKE_BUILD_PARALLEL_LEVEL=1

@@ -1,12 +1,11 @@
 // For format details, see https://aka.ms/devcontainer.json. For config options, see the
 // README at: https://github.com/devcontainers/templates/tree/main/src/cpp
 {
-    "name": "RoughPy",
+    "name": "roughpy-jax-devcontainer",
 
     "build": {
         "dockerfile": "Dockerfile",
-        "context": "..",
-        "target": "roughpy-devcontainer:latest"
+        "context": ".."
     },
 
     "customizations": {
@@ -20,12 +19,11 @@
                 "ms-vscode.cpptools-extension-pack"
             ],
             "settings": {
-                "python.defaultInterpreterPath": "/tools/venv/bin/python",
+                "python.defaultInterpreterPath": "/workspaces/roughpy-jax/.venv/bin/python",
                 "python.languageServer": "Pylance",
                 "python.testing.pytestEnabled": true,
                 "cmake.configureArgs": [
-                    "-DCMAKE_MAKE_PROGRAM=/tools/venv/bin/ninja",
-                    "-DCMAKE_TOOLCHAIN_FILE=/tools/vcpkg/scripts/buildsystems/vcpkg.cmake"
+                    "-DCMAKE_MAKE_PROGRAM=/workspaces/roughpy-jax/.venv/bin/ninja"
                 ]
             }
         }
