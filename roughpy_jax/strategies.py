@@ -5,7 +5,7 @@ import jax.numpy as jnp
 from hypothesis import strategies as st, settings, HealthCheck
 import hypothesis.extra.numpy as hnp
 
-from . import TensorBasis, LieBasis, Lie, lie_to_tensor, ft_exp
+from . import LieBasis, Lie, lie_to_tensor, ft_exp
 from .intervals import RealInterval, IntervalType
 
 # test case generation is slow, suppress warning
