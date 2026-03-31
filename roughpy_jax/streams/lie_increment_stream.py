@@ -247,9 +247,9 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
         self,
         cache: jnp.ndarray,
         lie_basis: LieBasis,
+        resolution: int,
         support: Interval | None = None,
         group_basis: TensorBasis | None = None,
-        resolution: int | None = None,
         interval_type: IntervalType = IntervalType.ClOpen,
     ):
         if cache.ndim < 2:
@@ -315,7 +315,7 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
         if (fun := getattr(stream, "__dyadic_cache__", None)) is not None:
             cache = jnp.asarray(fun(resolution))
         else:
-            cache = cls._stream_to_cache(stream, resolution)
+            cache = cls._stream_to_cache(stream, resolution)  # ty: ignore[unresolved-attribute]
 
         new_stream = cls(
             cache=cache,
@@ -325,7 +325,7 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
             resolution=resolution,
         )
 
-        new_stream.__base_stream__ = stream
+        new_stream.__base_stream__ = stream  # ty: ignore[unresolved-attribute]
 
         return new_stream
 
@@ -504,14 +504,6 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
     def _query_dyadic(self, k: int, n: int) -> Lie:
         level_start = (1 << (self._resolution + 1)) - (1 << (n + 1))
         return Lie(self._cache[level_start + k, ...], self._lie_basis)
-
-    def _query_cache(self, query: RealInterval) -> Lie:
-        """
-        Stub for dyadic cache lookup.
-
-        This should return a JAX array shaped like (..., LieDim) containing
-        the log-signature over [inf, sup] at the given resolution.
-        """
 
     def _reparamterise(self, interval: Interval) -> RealInterval:
         inf = self.support.inf
