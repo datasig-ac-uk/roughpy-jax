@@ -541,7 +541,7 @@ class Operation:
             if (impl_name := get_impl(platform)) is not None
         }
 
-    def convert_args_dtypes(self, *data_args):
+    def convert_args_dtypes(self, *data_args: jax.Array):
         """
         Converts the data types of the provided arguments to match the instance's data
         dtype attribute. This operation ensures the consistency of data types within
