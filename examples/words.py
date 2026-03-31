@@ -6,7 +6,8 @@ from jax import numpy as jnp
 
 # import roughpy as rp
 import roughpy_jax as rpj
-from roughpy_jax.streams import LieIncrementStream
+from roughpy_jax.intervals import IntervalType, Partition
+from roughpy_jax.streams import LieIncrementStream, PiecewiseAbelianStream
 
 # This should work on Debian and Ubuntu without any additional steps. On other distributions, such as Arch Linux, you
 # may need to install an additional package (on Arch, the "words" package).
@@ -20,12 +21,26 @@ ALPHABET_SIZE = 26
 MAX_DEPTH = 3
 RESOLUTION = 2
 WORDS_LIMIT = int(os.getenv("WORDS_LIMIT", "0"))
+STREAM_KIND = os.getenv("WORDS_STREAM_KIND", "lie_increment").strip().lower()
 DEFAULT_WORDS_PATHS = (
     Path("/usr/share/dict/words"),
     Path("/usr/dict/words"),
     Path("/usr/share/dict/web2"),
 )
 LIE_BASIS = rpj.LieBasis(width=ALPHABET_SIZE, depth=MAX_DEPTH)
+TENSOR_BASIS = rpj.to_tensor_basis(LIE_BASIS)
+VALID_STREAM_KINDS = ("lie_increment", "piecewise_abelian")
+
+if STREAM_KIND not in VALID_STREAM_KINDS:
+    raise ValueError(
+        f"WORDS_STREAM_KIND must be one of {VALID_STREAM_KINDS}, got: {STREAM_KIND!r}"
+    )
+
+    
+def _make_lie(letter):
+    data = jnp.zeros((LIE_BASIS.size(),), dtype=jnp.float32)
+    data = data.at[ord(letter) - 97].set(1.0)
+    return rpj.Lie(data, LIE_BASIS)
 
 
 def word_to_increments(word):
@@ -37,20 +52,48 @@ def word_to_increments(word):
 
 
 def word_to_stream(word):
-    timestamps = jnp.linspace(0.0, 1.0, len(word), dtype=jnp.float32)
-    return LieIncrementStream.from_increments(
-        timestamps=timestamps,
-        data=word_to_increments(word),
-        input_data_basis=None,
-        resolution=RESOLUTION,
-        lie_basis=LIE_BASIS,
-    )
+    if STREAM_KIND == "lie_increment":
+        timestamps = jnp.linspace(0.0, 1.0, len(word), dtype=jnp.float32)
+        return LieIncrementStream.from_increments(
+            timestamps=timestamps,
+            data=word_to_increments(word),
+            input_data_basis=None,
+            resolution=RESOLUTION,
+            lie_basis=LIE_BASIS,
+        )
+    elif STREAM_KIND == "piecewise_abelian":
+        n = len(word)
+        data = tuple(_make_lie(letter) for letter in word)
+        # JAX-jitted methods require array-like endpoint leaves; `range` is not valid here.
+        endpoints = (np.arange(n + 1, dtype=np.float32) / np.float32(n)).tolist()
+        partition = Partition(endpoints, IntervalType.ClOpen)
+        return PiecewiseAbelianStream(
+            _data=data,
+            _partition=partition,
+            _lie_basis=LIE_BASIS,
+            _group_basis=TENSOR_BASIS,
+        )
+    else:
+        raise ValueError(f"Invalid stream kind: {STREAM_KIND!r}")
+
+
+def stream_log_signature(stream):
+    if STREAM_KIND == "piecewise_abelian":
+        return stream.log_signature(stream.support)
+    return stream.log_signature()
+
+
+def stream_signature(stream):
+    if STREAM_KIND == "piecewise_abelian":
+        return stream.signature(stream.support)
+    return stream.signature()
 
 
 if WORDS_LIMIT > 0:
     word_list = set(sorted(word_list)[:WORDS_LIMIT])
 
 print(f"There are {len(word_list)} words")
+print(f"Using stream kind: {STREAM_KIND}")
 
 from collections import defaultdict
 from time import time
@@ -73,7 +116,7 @@ start = time()
 full_log_signatures = {}
 for _, bucket in sorted(streams_by_length.items()):
     for word, stream in bucket:
-        full_log_signatures[word] = stream.log_signature()
+        full_log_signatures[word] = stream_log_signature(stream)
 elapsed = time() - start
 print(f"Computed full log signatures in {elapsed} seconds")
 
@@ -128,7 +171,7 @@ print(f"There are {len(active_words)} words whose level 3 signatures are necessa
 
 
 def compute_3(word_stream):
-    signature = word_stream[1].signature()
+    signature = stream_signature(word_stream[1])
     return str(np.asarray(signature.data).round(6)), word_stream[0]
 
 
