@@ -1,6 +1,7 @@
 from pathlib import Path
+import os
 
-# import numpy as np
+import numpy as np
 from jax import numpy as jnp
 
 # import roughpy as rp
@@ -18,6 +19,7 @@ with open("/usr/share/dict/words", "rt") as fd:
 ALPHABET_SIZE = 26
 MAX_DEPTH = 3
 RESOLUTION = 2
+WORDS_LIMIT = int(os.getenv("WORDS_LIMIT", "0"))
 DEFAULT_WORDS_PATHS = (
     Path("/usr/share/dict/words"),
     Path("/usr/dict/words"),
@@ -27,42 +29,40 @@ LIE_BASIS = rpj.LieBasis(width=ALPHABET_SIZE, depth=MAX_DEPTH)
 
 
 def word_to_stream(word):
-    incr_array = jnp.zeros((len(word), 26), dtype=jnp.float32)
-    for i, letter in enumerate(word):
-        assert 97 <= ord(letter) <= 122, f"{letter} is not allowed"
-        incr_array = incr_array.at[i, ord(letter) - 97].set(1)
+    rows = np.arange(len(word), dtype=np.int32)
+    cols = np.fromiter((ord(letter) - 97 for letter in word), dtype=np.int32, count=len(word))
+    incr_array = np.zeros((len(word), 26), dtype=np.float32)
+    incr_array[rows, cols] = 1.0
 
     return LieIncrementStream.from_increments(
         timestamps=jnp.linspace(0.0, 1.0, len(word), dtype=jnp.float32),
-        data=incr_array, 
+        data=jnp.asarray(incr_array),
         input_data_basis=None,
         resolution=RESOLUTION,
         lie_basis=LIE_BASIS
         )
 
 
+if WORDS_LIMIT > 0:
+    word_list = set(sorted(word_list)[:WORDS_LIMIT])
+
 print(f"There are {len(word_list)} words")
+
+from collections import defaultdict
+from time import time
 
 word_streams = {word: word_to_stream(word) for word in word_list}
 
 print(f"Computed streams for {len(word_streams)} words")
 
-from collections import defaultdict
-from concurrent.futures import ThreadPoolExecutor
-from functools import partial
-from time import time
-
-
-def compute(word_stream, *, depth):
-    """"Helper function for to get (key, word) results"""
-    return str(word_stream[1].log_signature(depth=depth)), word_stream[0]
+def log_signature_key(stream, depth):
+    return str(stream.log_signature().change_depth(depth))
 
 
 start = time()
 anagrams = defaultdict(list)
-with ThreadPoolExecutor(max_workers=8) as pool:
-    for key, word in pool.map(partial(compute, depth=1), word_streams.items()):
-        anagrams[key].append(word)
+for word, stream in word_streams.items():
+    anagrams[log_signature_key(stream, depth=1)].append(word)
 
 elapsed = time() - start
 
@@ -81,9 +81,8 @@ print(f"There are {len(word_streams)} words with at least one anagram")
 
 start = time()
 anagrams2 = defaultdict(list)
-with ThreadPoolExecutor() as pool:
-    for key, word in pool.map(partial(compute, depth=2), word_streams.items()):
-        anagrams2[key].append(word)
+for word, stream in word_streams.items():
+    anagrams2[log_signature_key(stream, depth=2)].append(word)
 
 elapsed = time() - start
 
@@ -103,9 +102,8 @@ def compute_3(word_stream):
 
 start = time()
 anagrams3 = defaultdict(list)
-with ThreadPoolExecutor() as pool:
-    for key, word in pool.map(compute_3, word_streams.items()):
-        anagrams3[key].append(word)
+for key, word in map(compute_3, word_streams.items()):
+    anagrams3[key].append(word)
 
 elapsed = time() - start
 print(f"Computation took {elapsed} seconds")
