@@ -1063,7 +1063,7 @@ def lie_to_tensor_adjoint_derivative(
 
 
 def _lie_to_tensor_vjp_fwd(arg: DenseLie, scale_factor=None):
-    result = lie_to_tensor_derivative(arg, scale_factor)
+    result = lie_to_tensor(arg, scale_factors=scale_factor)
     return result, (arg, scale_factor)
 
 
@@ -1076,7 +1076,7 @@ def _lie_to_tensor_vjp_bwd(
         DenseFreeTensor, ct_result_data, to_tensor_basis(arg.basis)
     )
     ct_l2t_adjoint_deriv = lie_to_tensor_adjoint_derivative(
-        arg, ct_result, scale_factor
+        arg, ct_result, scale_factor=scale_factor
     )
 
     return (to_jax_cotangent(type(arg), ct_l2t_adjoint_deriv),)
