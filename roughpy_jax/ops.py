@@ -356,7 +356,7 @@ class Operation:
         if preferred_basis is not None:
             return result_basis(preferred_basis, *bases, strategy="first")
 
-        return result_basis(bases, strategy="max_depth")
+        return result_basis(*bases, strategy="max_depth")
 
     @classmethod
     def __init_subclass__(cls, **kwargs):
