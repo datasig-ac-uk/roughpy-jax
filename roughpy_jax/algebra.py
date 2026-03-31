@@ -4,6 +4,15 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
+from roughpy_jax.bases import (
+    LieBasis,
+    TensorBasis,
+    check_basis_compat,
+    result_basis,
+    to_lie_basis,
+    to_tensor_basis,
+)
+from roughpy_jax.compressed import csr_matvec
 from roughpy_jax.dense_algebra import (
     DenseAlgebra,
     DenseTensor,
@@ -12,21 +21,12 @@ from roughpy_jax.dense_algebra import (
 )
 from roughpy_jax.ops import Operation
 
-from .bases import (
-    LieBasis,
-    TensorBasis,
-    check_basis_compat,
-    result_basis,
-    to_lie_basis,
-    to_tensor_basis,
-)
-from .compressed import csr_matvec
 
 T = TypeVar("T")
-AlgebraT = TypeVar("AlgebraT")
-FreeTensorT = TypeVar("FreeTensorT")
-ShuffleTensorT = TypeVar("ShuffleTensorT")
-LieT = TypeVar("LieT")
+AlgebraT = TypeVar("AlgebraT", bound=DenseAlgebra)
+FreeTensorT = TypeVar("FreeTensorT", bound=DenseTensor)
+ShuffleTensorT = TypeVar("ShuffleTensorT", bound=DenseTensor)
+LieT = TypeVar("LieT", bound=DenseAlgebra)
 
 
 @jax.tree_util.register_pytree_node_class
