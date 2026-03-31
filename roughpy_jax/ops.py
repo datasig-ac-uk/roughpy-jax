@@ -189,7 +189,7 @@ class Operation:
     # when deriving from this class.
     #
     # Users should not interact with this directly
-    __all_operations: ClassVar[dict[tuple[str, str], type[OperationT]]] = {}
+    __all_operations: ClassVar[dict[tuple[str, str], type['Operation']]] = {}
 
     # The supported layout for data for algebra objects. At the moment all
     # operations only support densely represented objects. In the future,
