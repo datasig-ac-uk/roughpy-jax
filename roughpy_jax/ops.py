@@ -22,7 +22,6 @@ from .compressed import csc_matvec
 # Potentially useful to have cached versions to the l2t and t2l matrices as JAX
 # arrays, as these are used in many operations and converting from the C++
 # buffers to JAX arrays can be expensive.
-global _lie_sparse_matrix_cache
 _lie_sparse_matrix_cache: dict[
     tuple,
     tuple[
@@ -38,6 +37,7 @@ def _get_lie_sparse_matrices(lie_basis, dtype):
     l2t_arrays = (data, indices, indptr) for the Lie-to-tensor sparse matrix.
     t2l_arrays = (data, indices, indptr) for the tensor-to-Lie sparse matrix.
     """
+    global _lie_sparse_matrix_cache
     key = (lie_basis.width, lie_basis.depth, str(dtype))
     if key not in _lie_sparse_matrix_cache:
         # Get l2t FIRST and convert to JAX arrays before t2l can overwrite the buffer
