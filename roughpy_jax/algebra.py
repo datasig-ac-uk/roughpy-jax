@@ -1,4 +1,4 @@
-from typing import Any, TypeAlias, TypeVar
+from typing import Any, TypeAlias, TypeVar, overload
 
 import jax
 import jax.numpy as jnp
@@ -125,6 +125,30 @@ def to_jax_cotangent(
     return primal_cls(cotangent.data, cotangent.basis)
 
 
+@overload
+def from_jax_cotangent(
+    primal_cls: type["DenseFreeTensor"],
+    cotangent: DenseAlgebra | jax.Array,
+    basis,
+) -> "DenseShuffleTensor": ...
+
+
+@overload
+def from_jax_cotangent(
+    primal_cls: type["DenseShuffleTensor"],
+    cotangent: DenseAlgebra | jax.Array,
+    basis,
+) -> "DenseFreeTensor": ...
+
+
+@overload
+def from_jax_cotangent(
+    primal_cls: type["DenseLie"],
+    cotangent: DenseAlgebra | jax.Array,
+    basis,
+) -> "DenseLie": ...
+
+
 def from_jax_cotangent(
     primal_cls: type[DenseAlgebra], cotangent: DenseAlgebra | jax.Array, basis
 ) -> DenseAlgebra:
@@ -191,7 +215,7 @@ def ft_fma(
 
     out_data = op(a.data, b.data, c.data)
 
-    return DenseFreeTensor(*out_data, op.basis)
+    return DenseFreeTensor(out_data[0], op.basis)
 
 
 def ft_fma_derivative(
@@ -288,7 +312,7 @@ def ft_mul(a: DenseFreeTensor, b: DenseFreeTensor) -> DenseFreeTensor:
 
     out_data = op(a.data, b.data)
 
-    return DenseFreeTensor(*out_data, op.basis)
+    return DenseFreeTensor(out_data[0], op.basis)
 
 
 def ft_mul_derivative(
@@ -369,7 +393,7 @@ def antipode(a: TensorT) -> TensorT:
     out_data = op(a.data)
     out_basis = op.basis
 
-    return out_class(*out_data, out_basis)
+    return out_class(out_data[0], out_basis)
 
 
 def antipode_derivative(a: TensorT, t_a: TensorT) -> TensorT:
@@ -456,7 +480,7 @@ def st_fma(
     )
     out_data = op(a.data, b.data, c.data)
 
-    return DenseShuffleTensor(*out_data, op.basis)
+    return DenseShuffleTensor(out_data[0], op.basis)
 
 
 def st_fma_derivative(
@@ -547,7 +571,7 @@ def st_mul(lhs: DenseShuffleTensor, rhs: DenseShuffleTensor) -> DenseShuffleTens
 
     out_data = op(lhs.data, rhs.data)
 
-    return DenseShuffleTensor(*out_data, op.basis)
+    return DenseShuffleTensor(out_data[0], op.basis)
 
 
 def st_mul_derivative(
@@ -622,7 +646,7 @@ def ft_exp(x: DenseFreeTensor, out_basis: TensorBasis | None = None) -> DenseFre
     out_data = op(x.data)
     out_basis = op.basis
 
-    return DenseFreeTensor(*out_data, out_basis)
+    return DenseFreeTensor(out_data[0], out_basis)
 
 
 def ft_exp_derivative(
@@ -759,7 +783,7 @@ def ft_log(x: DenseFreeTensor, out_basis: TensorBasis | None = None) -> DenseFre
     out_data = op(x.data)
     out_basis = op.basis
 
-    return DenseFreeTensor(*out_data, out_basis)
+    return DenseFreeTensor(out_data[0], out_basis)
 
 
 def ft_log_derivative(
@@ -889,7 +913,7 @@ def ft_fmexp(
     out_data = op(multiplier.data, exponent.data)
     out_basis = op.basis
 
-    return DenseFreeTensor(*out_data, out_basis)
+    return DenseFreeTensor(out_data[0], out_basis)
 
 
 def ft_fmexp_derivative(
@@ -1030,7 +1054,7 @@ def lie_to_tensor(arg: DenseLie, scale_factor=None) -> DenseFreeTensor:
     out_data = op(arg.data)
     out_basis = op.basis
 
-    return DenseFreeTensor(*out_data, out_basis)
+    return DenseFreeTensor(out_data[0], out_basis)
 
 
 def lie_to_tensor_derivative(
@@ -1107,7 +1131,7 @@ def tensor_to_lie(arg: DenseFreeTensor, scale_factor=None) -> DenseLie:
     out_data = op(arg.data)
     out_basis = op.basis
 
-    return DenseLie(*out_data, out_basis)
+    return DenseLie(out_data[0], out_basis)
 
 
 def tensor_to_lie_derivative(
@@ -1200,7 +1224,7 @@ def ft_adjoint_left_mul(
     out_data = op_call(op.data, arg.data)
     out_basis = op.basis
 
-    return DenseShuffleTensor(*out_data, out_basis)
+    return DenseShuffleTensor(out_data[0], out_basis)
 
 
 def ft_adjoint_left_mul_derivative(
@@ -1281,7 +1305,7 @@ def ft_adjoint_right_mul(
     out_data = op_call(op.data, arg.data)
     out_basis = op.basis
 
-    return DenseShuffleTensor(*out_data, out_basis)
+    return DenseShuffleTensor(out_data[0], out_basis)
 
 
 def ft_adjoint_right_mul_derivative(
