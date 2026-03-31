@@ -156,9 +156,8 @@ def to_piecewise_abelian_stream(
     new_stream = PiecewiseAbelianStream(
         _data=data,
         _partition=partition,
-        _lie_basis=stream.lie_basis,
-        _group_basis=stream.group_basis,
+        _lie_basis=stream.lie_basis,  # ty: ignore[invalid-argument-type]
+        _group_basis=stream.group_basis,  # ty: ignore[invalid-argument-type]
     )
 
     return new_stream
-
