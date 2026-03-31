@@ -285,7 +285,7 @@ class Operation:
     @classmethod
     def get_operation(
         cls, fn_name: str, layout: str = "dense"
-    ) -> type[OperationT] | None:
+    ) -> type[OperationT]:
         """
         Retrieves a registered operation class based on the function name and layout.
 
@@ -302,7 +302,11 @@ class Operation:
         :rtype: Optional[type[Operation]]
         """
         key = (fn_name, layout)
-        return Operation.__all_operations.get(key, None)
+        if (op := Operation.__all_operations.get(key, None)) is not None:
+            return op
+
+        raise RuntimeError(f"No operation with name \"{fn_name}\" for layout \"{layout}\" "
+                           f"has been defined")
 
     @classmethod
     def make_result_dtypes(cls, basis, dtype, batch_dims):
