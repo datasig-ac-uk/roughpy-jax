@@ -1,7 +1,7 @@
 import collections.abc as cabc
 from collections.abc import Callable
 from functools import partial
-from typing import Any, ClassVar, TypedDict
+from typing import TYPE_CHECKING, Any, ClassVar, TypedDict
 
 import jax
 import jax.numpy as jnp
@@ -225,7 +225,7 @@ class Operation:
     # of all the required and optional arguments. This will be passed to the
     # FFI calls by ** unpacking. Using a TypedDict gives some level of
     # argument checking
-    StaticArgs: ClassVar[type[TypedDict]]
+    StaticArgs: ClassVar[type[Any]]
 
     ## The following instance attributes are used by the class upon call to
     ## select from available implementations and populate static arguments.
@@ -239,7 +239,7 @@ class Operation:
     # the configuration of batching
     batch_dims: tuple[int, ...]
     # dictionary of static arguments
-    static_args: type[TypedDict]
+    static_args: cabc.Mapping[str, Any]
 
     # For FFI calls, the shape of the output array(s)
     result_shape_dtypes: tuple[jax.ShapeDtypeStruct, ...]
@@ -392,7 +392,7 @@ class Operation:
         self.ffi_call_args = self.default_ffi_call_args | (ffi_call_args or {})
         self.static_args = self.make_static_args(kwargs)
 
-    def make_static_args(self, kwargs) -> type[TypedDict]:
+    def make_static_args(self, kwargs) -> cabc.Mapping[str, Any]:
         """
         Construct static args from class kwargs.
 
@@ -990,7 +990,7 @@ class DenseLieToTensor(Operation, DenseOperation):
 
         return basis
 
-    def make_static_args(self, kwargs) -> type[TypedDict]:
+    def make_static_args(self, kwargs) -> cabc.Mapping[str, Any]:
         arg_basis = self.bases[0]
         tensor_basis = self.basis
 
@@ -1047,7 +1047,7 @@ class DenseTensorToLie(Operation, DenseOperation):
 
         return basis
 
-    def make_static_args(self, kwargs) -> type[TypedDict]:
+    def make_static_args(self, kwargs) -> cabc.Mapping[str, Any]:
         lie_basis = self.basis
 
         t2l_data, t2l_indices, t2l_indptr = _get_lie_sparse_matrices(
@@ -1296,11 +1296,16 @@ class DenseSTAdjMul(Operation, DenseOperation):
         arg_min_deg: np.int32
 
 
+cpu_functions: Any
+
 # Register all CPU implementations for dense operations
-try:
-    from ._rpy_jax_internals import cpu_functions
-except ImportError as e:
-    raise ImportError("RoughPy JAX CPU backend is not installed correctly") from e
+if TYPE_CHECKING:
+    cpu_functions = {}
+else:
+    try:
+        from ._rpy_jax_internals import cpu_functions
+    except ImportError as e:
+        raise ImportError("RoughPy JAX CPU backend is not installed correctly") from e
 
 Operation.register_all(
     platform="cpu",
