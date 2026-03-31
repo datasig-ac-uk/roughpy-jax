@@ -77,18 +77,6 @@ def word_to_stream(word):
         raise ValueError(f"Invalid stream kind: {STREAM_KIND!r}")
 
 
-def stream_log_signature(stream):
-    if STREAM_KIND == "piecewise_abelian":
-        return stream.log_signature(stream.support)
-    return stream.log_signature()
-
-
-def stream_signature(stream):
-    if STREAM_KIND == "piecewise_abelian":
-        return stream.signature(stream.support)
-    return stream.signature()
-
-
 if WORDS_LIMIT > 0:
     word_list = set(sorted(word_list)[:WORDS_LIMIT])
 
@@ -116,7 +104,7 @@ start = time()
 full_log_signatures = {}
 for _, bucket in sorted(streams_by_length.items()):
     for word, stream in bucket:
-        full_log_signatures[word] = stream_log_signature(stream)
+        full_log_signatures[word] = stream.log_signature(stream.support)
 elapsed = time() - start
 print(f"Computed full log signatures in {elapsed} seconds")
 
@@ -171,8 +159,9 @@ print(f"There are {len(active_words)} words whose level 3 signatures are necessa
 
 
 def compute_3(word_stream):
-    signature = stream_signature(word_stream[1])
-    return str(np.asarray(signature.data).round(6)), word_stream[0]
+    word, stream = word_stream
+    signature = stream.signature(stream.support)
+    return str(np.asarray(signature.data).round(6)), word
 
 
 start = time()
