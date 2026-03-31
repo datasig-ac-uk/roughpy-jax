@@ -285,7 +285,7 @@ class Operation:
     @classmethod
     def get_operation(
         cls, fn_name: str, layout: str = "dense"
-    ) -> type[OperationT]:
+    ) -> type['Operation']:
         """
         Retrieves a registered operation class based on the function name and layout.
 
