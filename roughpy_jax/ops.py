@@ -404,7 +404,7 @@ class Operation:
         for name, value in static_args.items():
             if name.endswith("_deg") or name.endswith("_degree"):
                 static_args[name] = np.int32(min(value, max_degree))
-        return self.StaticArgs(**static_args)
+        return self.StaticArgs(**static_args)  # type: ignore[call-arg]  # noqa: PGH004, RUF100
 
     def get_min_supported_cpu_dtype(
         self, target_dtype: jnp.dtype
