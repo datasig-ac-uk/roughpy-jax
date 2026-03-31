@@ -155,7 +155,7 @@ active_words = {
     for word in words
 }
 
-print(f"There are {len(active_words)} words whose level 3 signatures are necessary")
+print(f"There are {len(active_words)} words whose level 2 signatures are necessary")
 
 
 def compute_3(word_stream):
@@ -178,4 +178,4 @@ for key, words in anagrams3.items():
     if len(words) == 1:
         active_words.discard(words[0])
 
-print(f"There are {len(active_words)} words whose level 4 signatures are necessary")
+print(f"There are {len(active_words)} words whose level 3 signatures are necessary")
