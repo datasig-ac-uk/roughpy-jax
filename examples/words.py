@@ -45,6 +45,7 @@ print(f"There are {len(word_list)} words")
 
 word_streams = {word: word_to_stream(word) for word in word_list}
 
+print(f"Computed streams for {len(word_streams)} words")
 
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
