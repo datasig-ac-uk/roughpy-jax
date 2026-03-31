@@ -1,5 +1,5 @@
 import typing
-from collections.abc import Hashable, Iterable
+from collections.abc import Iterable
 from typing import Literal, TypeVar
 
 import jax
@@ -11,7 +11,7 @@ DegreeBeginArray = npt.NDArray[np.intp]
 
 
 @typing.runtime_checkable
-class Basis(typing.Protocol, Hashable):
+class Basis(typing.Protocol):
     """
     Structural protocol shared by basis objects used in ``roughpy_jax``.
 
@@ -19,11 +19,12 @@ class Basis(typing.Protocol, Hashable):
     and degree offsets needed to construct compatible tensor or Lie bases.
     """
 
-    width: np.int32
-    depth: np.int32
+    width: np.int32 | int
+    depth: np.int32 | int
     degree_begin: DegreeBeginArray
 
     def size(self) -> int: ...
+    def __hash__(self) -> int: ...
     def __eq__(self, other: object) -> bool: ...
 
 

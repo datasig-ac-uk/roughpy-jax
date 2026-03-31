@@ -22,7 +22,7 @@ def shuffle_deriv_trials(request):
     yield DerivativeTrialsHelper(request.param, width=4, depth=3)
 
 
-def _word_to_idx_fn(width: int) -> Callable[[...], int]:
+def _word_to_idx_fn(width: int) -> Callable[..., int]:
     def inner(*letters) -> int:
         idx = 0
         for letter in letters:

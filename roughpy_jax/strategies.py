@@ -5,7 +5,7 @@ import jax.numpy as jnp
 from hypothesis import strategies as st, settings, HealthCheck
 import hypothesis.extra.numpy as hnp
 
-from . import TensorBasis, LieBasis, Lie, lie_to_tensor, ft_exp
+from . import LieBasis, Lie, lie_to_tensor, ft_exp
 from .intervals import RealInterval, IntervalType
 
 # test case generation is slow, suppress warning
@@ -28,7 +28,7 @@ def lie_increment(draw, min_width=1, max_width=6, min_depth=1, max_depth=4):
             )
         )
     )
-    return lie_to_tensor(Lie(data, basis))  # type: ignore
+    return lie_to_tensor(Lie(data, basis))
 
 
 @st.composite
