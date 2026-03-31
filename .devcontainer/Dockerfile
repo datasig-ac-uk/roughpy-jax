@@ -3,6 +3,9 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 WORKDIR /workspaces/roughpy-jax
 
+ENV VIRTUAL_ENV=/opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
 RUN DEBIAN_FRONTEND=noninteractive TZ=Etc/GMT apt-get update && apt-get install -y \
     build-essential \
     git \
@@ -20,15 +23,22 @@ RUN DEBIAN_FRONTEND=noninteractive TZ=Etc/GMT apt-get update && apt-get install 
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-COPY pyproject.toml /workspaces/roughpy-jax/
+COPY pyproject.toml .pre-commit-config.yaml /workspaces/roughpy-jax/
 
-# Create the project environment during image build, but do not compile the
-# heavy native RoughPy dependency here. We'll build it interactively if needed.
+RUN uv venv ${VIRTUAL_ENV}
+
+# Resolve the project dependencies into a stable virtual environment that lives
+# outside the bind-mounted workspace. Build RoughPy from source now, but defer
+# the editable roughpy-jax install until the container has been created.
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --extra dev \
+    uv sync --active --extra dev \
     --no-install-project \
-    --no-install-package roughpy-jax \
-    --no-install-package roughpy
+    --no-binary-package roughpy
 
-# Keep native CMake builds conservative inside the devcontainer.
-ENV CMAKE_BUILD_PARALLEL_LEVEL=1
+# Install the build backend and toolchain into the runtime environment so the
+# editable roughpy-jax install can reuse the already-installed RoughPy package.
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --python ${VIRTUAL_ENV}/bin/python \
+    "scikit-build-core[pyproject]>=0.10" \
+    "cmake>=3.30" \
+    "ninja>=1.11"

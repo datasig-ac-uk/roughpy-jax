@@ -19,15 +19,16 @@
                 "ms-vscode.cpptools-extension-pack"
             ],
             "settings": {
-                "python.defaultInterpreterPath": "/workspaces/roughpy-jax/.venv/bin/python",
+                "python.defaultInterpreterPath": "/opt/venv/bin/python",
                 "python.languageServer": "Pylance",
                 "python.testing.pytestEnabled": true,
                 "cmake.configureArgs": [
-                    "-DCMAKE_MAKE_PROGRAM=/workspaces/roughpy-jax/.venv/bin/ninja"
+                    "-DCMAKE_MAKE_PROGRAM=/opt/venv/bin/ninja"
                 ]
             }
         }
     },
+    "postCreateCommand": "uv pip install --python /opt/venv/bin/python --no-build-isolation -e /workspaces/roughpy-jax && /opt/venv/bin/pre-commit install",
     // mount ssh folder for git access
     "mounts": [
         "source=${localEnv:HOME}/.ssh,target=/root/.ssh,type=bind,consistency=cached"

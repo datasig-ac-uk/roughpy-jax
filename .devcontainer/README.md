@@ -8,7 +8,7 @@ When you open the cloned RoughPy folder in VSCode, it will detect the `.devconta
 
 VSCode will restart inside a container that mounts your checkout folder to `/workspaces/<dirname>`. Be mindful that editing files is affecting this folder on your machine.
 
-The devcontainer `Dockerfile` sets up a root `/tools` folder that contains a `venv` with build dependencies pre-installed, and a clone of `vcpkg`; both of which are added to `$PATH`.
+The devcontainer `Dockerfile` sets up a persistent Python environment in `/opt/venv`, outside the bind-mounted workspace. RoughPy and the Python-side development dependencies are installed into that environment during image build, and `roughpy-jax` itself is installed from the mounted checkout in the devcontainer `postCreateCommand`.
 
 On the first run, the project will need to be configured in CMake and additional build dependencies will be fetched by vcpkg. You must wait for this to finish before you can build and run any tests. Progress can be tracked under 'CMake/Build' in the VSCode 'Output' panel.
 
