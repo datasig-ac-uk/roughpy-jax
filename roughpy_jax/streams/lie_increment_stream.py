@@ -468,8 +468,8 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
         return cls(
             cache,
             lie_basis,
-            support,
-            resolution=resolution,
+            resolution,
+            support=support,
             group_basis=tensor_basis,
             **kwargs,
         )
