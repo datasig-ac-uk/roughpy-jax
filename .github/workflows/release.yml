@@ -134,4 +134,4 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.release_version.outputs.tag }}
-        run: gh release create "${RELEASE_TAG}" dist/* --generate-notes --target "${GITHUB_SHA}" --title "${RELEASE_TAG}"
+        run: gh release create "${RELEASE_TAG}" dist/* --generate-notes --target "${GITHUB_SHA}" --title "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}"
