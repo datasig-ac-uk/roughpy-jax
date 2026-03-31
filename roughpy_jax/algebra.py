@@ -21,12 +21,8 @@ from roughpy_jax.dense_algebra import (
 )
 from roughpy_jax.ops import Operation
 
-
-T = TypeVar("T")
 AlgebraT = TypeVar("AlgebraT", bound=DenseAlgebra)
-FreeTensorT = TypeVar("FreeTensorT", bound=DenseTensor)
-ShuffleTensorT = TypeVar("ShuffleTensorT", bound=DenseTensor)
-LieT = TypeVar("LieT", bound=DenseAlgebra)
+TensorT = TypeVar("TensorT", bound=DenseTensor)
 
 
 @jax.tree_util.register_pytree_node_class
@@ -59,7 +55,7 @@ ShuffleTensor: TypeAlias = DenseShuffleTensor
 Lie: TypeAlias = DenseLie
 
 
-def _remove_unit_term(tensor: AlgebraT) -> AlgebraT:
+def _remove_unit_term(tensor: TensorT) -> TensorT:
     if not isinstance(tensor.basis, TensorBasis):
         raise TypeError("object must be a tensor")
 
@@ -67,7 +63,7 @@ def _remove_unit_term(tensor: AlgebraT) -> AlgebraT:
     return type(tensor)(new_data, tensor.basis)
 
 
-def as_free_tensor(tensor: FreeTensor | ShuffleTensor) -> FreeTensor:
+def as_free_tensor(tensor: TensorT) -> FreeTensor:
     """
     Converts a given tensor to a FreeTensor instance if it is not already of that type.
 
@@ -80,7 +76,7 @@ def as_free_tensor(tensor: FreeTensor | ShuffleTensor) -> FreeTensor:
     return FreeTensor(tensor.data, tensor.basis)
 
 
-def as_shuffle_tensor(tensor: FreeTensor | ShuffleTensor) -> ShuffleTensor:
+def as_shuffle_tensor(tensor: TensorT) -> ShuffleTensor:
     """
     Convert a tensor into a ShuffleTensor instance if it is not already of that type.
 
@@ -161,7 +157,9 @@ def from_jax_cotangent(
 
 
 @jax.custom_vjp
-def ft_fma(a: FreeTensorT, b: FreeTensorT, c: FreeTensorT) -> FreeTensorT:
+def ft_fma(
+    a: DenseFreeTensor, b: DenseFreeTensor, c: DenseFreeTensor
+) -> DenseFreeTensor:
     """
     Free tensor fused multiply-add
 
@@ -197,13 +195,13 @@ def ft_fma(a: FreeTensorT, b: FreeTensorT, c: FreeTensorT) -> FreeTensorT:
 
 
 def ft_fma_derivative(
-    a: FreeTensorT,
-    b: FreeTensorT,
-    c: FreeTensorT,
-    t_a: FreeTensorT,
-    t_b: FreeTensorT,
-    t_c: FreeTensorT,
-) -> FreeTensorT:
+    a: DenseFreeTensor,
+    b: DenseFreeTensor,
+    c: DenseFreeTensor,
+    t_a: DenseFreeTensor,
+    t_b: DenseFreeTensor,
+    t_c: DenseFreeTensor,
+) -> DenseFreeTensor:
     """
     Free tensor fused multiply-add derivative
 
@@ -215,15 +213,16 @@ def ft_fma_derivative(
     :param t_c: tangent perturbation at c
     :return: derivative in tangent direction (s_a, s_b, s_c)
     """
+    _ = a
     return t_a + ft_mul_derivative(b, c, t_b, t_c)
 
 
 def ft_fma_adjoint_derivative(
-    a: FreeTensorT,
-    b: FreeTensorT,
-    c: FreeTensorT,
-    ct_result: DenseAlgebra | jax.Array,
-) -> tuple[FreeTensorT, FreeTensorT, FreeTensorT]:
+    a: DenseFreeTensor,
+    b: DenseFreeTensor,
+    c: DenseFreeTensor,
+    ct_result: DenseShuffleTensor,
+) -> tuple[DenseShuffleTensor, DenseShuffleTensor, DenseShuffleTensor]:
     """
     Free tensor fused multiply-add adjoint derivative
 
@@ -233,29 +232,34 @@ def ft_fma_adjoint_derivative(
     :param ct_result: cotangent from the output
     :return: (cotangent for a, cotangent for b, cotangent for c)
     """
-    ct_result = from_jax_cotangent(type(a), ct_result, a.basis)
-
-    ct_a = to_jax_cotangent(type(a), ct_result)
+    ct_a = ct_result
     ct_b, ct_c = ft_mul_adjoint_derivative(b, c, ct_result)
     return ct_a, ct_b, ct_c
 
 
-def _ft_fma_vjp_fwd(a: FreeTensorT, b: FreeTensorT, c: FreeTensorT):
+def _ft_fma_vjp_fwd(
+    a: DenseFreeTensor, b: DenseFreeTensor, c: DenseFreeTensor
+):
     result = ft_fma(a, b, c)
     return result, (a, b, c)
 
 
-def _ft_fma_vjp_bwd(residuals, ct_result_data) -> tuple[jax.Array, ...]:
+def _ft_fma_vjp_bwd(residuals, ct_result_data) -> tuple[Any, ...]:
     a, b, c = residuals
-    ct_a, ct_b, ct_c = ft_fma_adjoint_derivative(a, b, c, ct_result_data)
-    return ct_a, ct_b, ct_c
+    ct_result = from_jax_cotangent(type(a), ct_result_data, a.basis)
+    ct_a, ct_b, ct_c = ft_fma_adjoint_derivative(a, b, c, ct_result)
+    return (
+        to_jax_cotangent(type(a), ct_a),
+        to_jax_cotangent(type(b), ct_b),
+        to_jax_cotangent(type(c), ct_c),
+    )
 
 
 ft_fma.defvjp(_ft_fma_vjp_fwd, _ft_fma_vjp_bwd)
 
 
 @jax.custom_vjp
-def ft_mul(a: FreeTensorT, b: FreeTensorT) -> FreeTensorT:
+def ft_mul(a: DenseFreeTensor, b: DenseFreeTensor) -> DenseFreeTensor:
     """
     Free tensor multiply
 
@@ -288,8 +292,11 @@ def ft_mul(a: FreeTensorT, b: FreeTensorT) -> FreeTensorT:
 
 
 def ft_mul_derivative(
-    lhs: FreeTensorT, rhs: FreeTensorT, t_lhs: FreeTensorT, t_rhs: FreeTensorT
-) -> FreeTensorT:
+    lhs: DenseFreeTensor,
+    rhs: DenseFreeTensor,
+    t_lhs: DenseFreeTensor,
+    t_rhs: DenseFreeTensor,
+) -> DenseFreeTensor:
     """
     Free tensor multiply derivative (product rule).
 
@@ -305,8 +312,8 @@ def ft_mul_derivative(
 
 
 def ft_mul_adjoint_derivative(
-    lhs: FreeTensorT, rhs: FreeTensorT, ct_result: DenseAlgebra | jax.Array
-) -> tuple[FreeTensorT, FreeTensorT]:
+    lhs: DenseFreeTensor, rhs: DenseFreeTensor, ct_result: DenseShuffleTensor
+) -> tuple[DenseShuffleTensor, DenseShuffleTensor]:
     """
     Free tensor multiply adjoint derivative.
 
@@ -318,32 +325,28 @@ def ft_mul_adjoint_derivative(
     :param ct_result: cotangent from the output
     :return: (cotangent for lhs, cotangent for rhs)
     """
-    ct_result = from_jax_cotangent(type(lhs), ct_result, lhs.basis)
-
     ct_lhs = ft_adjoint_right_mul(rhs, ct_result)
     ct_rhs = ft_adjoint_left_mul(lhs, ct_result)
-    return (
-        to_jax_cotangent(type(lhs), ct_lhs),
-        to_jax_cotangent(type(rhs), ct_rhs),
-    )
+    return ct_lhs, ct_rhs
 
 
-def _ft_mul_vjp_fwd(lhs: FreeTensorT, rhs: FreeTensorT):
+def _ft_mul_vjp_fwd(lhs: DenseFreeTensor, rhs: DenseFreeTensor):
     result = ft_mul(lhs, rhs)
     return result, (lhs, rhs)
 
 
-def _ft_mul_vjp_bwd(residuals, ct_result_data) -> tuple[jax.Array, ...]:
+def _ft_mul_vjp_bwd(residuals, ct_result_data) -> tuple[Any, ...]:
     lhs, rhs = residuals
-    ct_lhs, ct_rhs = ft_mul_adjoint_derivative(lhs, rhs, ct_result_data)
-    return ct_lhs, ct_rhs
+    ct_result = from_jax_cotangent(type(lhs), ct_result_data, lhs.basis)
+    ct_lhs, ct_rhs = ft_mul_adjoint_derivative(lhs, rhs, ct_result)
+    return (to_jax_cotangent(type(lhs), ct_lhs), to_jax_cotangent(type(rhs), ct_rhs))
 
 
 ft_mul.defvjp(_ft_mul_vjp_fwd, _ft_mul_vjp_bwd)
 
 
 @jax.custom_vjp
-def antipode(a: AlgebraT) -> AlgebraT:
+def antipode(a: TensorT) -> TensorT:
     """
     Antipode of a free tensor
 
@@ -369,7 +372,7 @@ def antipode(a: AlgebraT) -> AlgebraT:
     return out_class(*out_data, out_basis)
 
 
-def antipode_derivative(a: FreeTensorT, t_a: FreeTensorT) -> FreeTensorT:
+def antipode_derivative(a: TensorT, t_a: TensorT) -> TensorT:
     """
     Antipode derivative of free tensor perturbation `t_a` at `a`
 
@@ -385,12 +388,13 @@ def antipode_derivative(a: FreeTensorT, t_a: FreeTensorT) -> FreeTensorT:
     :param t_a: tangent pertubation at `a`
     :return: derivative of `t_a` at `a`
     """
+    _ = a # required by interface
     return antipode(t_a)
 
 
 def antipode_adjoint_derivative(
-    a: FreeTensorT, ct_result: DenseAlgebra | jax.Array
-) -> FreeTensorT:
+    a: DenseTensor, ct_result: DenseTensor
+) -> DenseTensor:
     """
     Antipode adjoint derivative of a free tensor
 
@@ -402,26 +406,28 @@ def antipode_adjoint_derivative(
     :param ct_result: cotangent perturbation at `a`
     :return: adjoint derivative of `ct_result` at `a`
     """
-    ct_result = from_jax_cotangent(type(a), ct_result, a.basis)
-    return to_jax_cotangent(type(a), antipode(ct_result))
+    return antipode(ct_result)
 
 
-def _antipode_vjp_fwd(a: FreeTensorT):
+def _antipode_vjp_fwd(a: DenseTensor):
     result = antipode(a)
     return result, (a,)
 
 
-def _antipode_vjp_bwd(residuals, ct_result_data: jax.Array) -> tuple[jax.Array, ...]:
+def _antipode_vjp_bwd(residuals, ct_result_data: jax.Array) -> tuple[Any, ...]:
     (a,) = residuals
-    ct_antipode = antipode_adjoint_derivative(a, ct_result_data)
-    return (ct_antipode,)
+    ct_result = from_jax_cotangent(type(a), ct_result_data, a.basis)
+    ct_antipode = antipode_adjoint_derivative(a, ct_result)
+    return (to_jax_cotangent(type(a), ct_antipode),)
 
 
 antipode.defvjp(_antipode_vjp_fwd, _antipode_vjp_bwd)
 
 
 @jax.custom_vjp
-def st_fma(a: ShuffleTensorT, b: ShuffleTensorT, c: ShuffleTensorT) -> ShuffleTensorT:
+def st_fma(
+    a: DenseShuffleTensor, b: DenseShuffleTensor, c: DenseShuffleTensor
+) -> DenseShuffleTensor:
     """
     Shuffle tensor fused multiply-add
 
@@ -454,13 +460,13 @@ def st_fma(a: ShuffleTensorT, b: ShuffleTensorT, c: ShuffleTensorT) -> ShuffleTe
 
 
 def st_fma_derivative(
-    a: ShuffleTensorT,
-    b: ShuffleTensorT,
-    c: ShuffleTensorT,
-    t_a: ShuffleTensorT,
-    t_b: ShuffleTensorT,
-    t_c: ShuffleTensorT,
-) -> ShuffleTensorT:
+    a: DenseShuffleTensor,
+    b: DenseShuffleTensor,
+    c: DenseShuffleTensor,
+    t_a: DenseShuffleTensor,
+    t_b: DenseShuffleTensor,
+    t_c: DenseShuffleTensor,
+) -> DenseShuffleTensor:
     """Compute the derivative of `st_fma` in the supplied tangent direction."""
     check_basis_compat(a.basis, b.basis, c.basis, t_a.basis, t_b.basis, t_c.basis)
     get_common_batch_shape(a, b, c, t_a, t_b, t_c)
@@ -469,44 +475,51 @@ def st_fma_derivative(
 
 
 def st_fma_adjoint_derivative(
-    a: ShuffleTensorT,
-    b: ShuffleTensorT,
-    c: ShuffleTensorT,
-    ct_result: DenseAlgebra | jax.Array,
-) -> tuple[ShuffleTensorT, ShuffleTensorT, ShuffleTensorT]:
+    a: DenseShuffleTensor,
+    b: DenseShuffleTensor,
+    c: DenseShuffleTensor,
+    ct_result: DenseFreeTensor,
+) -> tuple[DenseFreeTensor, DenseFreeTensor, DenseFreeTensor]:
     """Compute the JAX-facing cotangents for `st_fma`."""
-    ct_result = from_jax_cotangent(type(a), ct_result, a.basis)
     check_basis_compat(a.basis, b.basis, c.basis, ct_result.basis)
     get_common_batch_shape(a, b, c, ct_result)
 
-    ct_a = to_jax_cotangent(type(a), ct_result)
+    ct_a = ct_result
     ct_b, ct_c = st_mul_adjoint_derivative(b, c, ct_result)
 
     return ct_a, ct_b, ct_c
 
 
 def _st_fma_vjp_fwd(
-    a: ShuffleTensorT, b: ShuffleTensorT, c: ShuffleTensorT
-) -> tuple[ShuffleTensorT, tuple[ShuffleTensorT, ShuffleTensorT, ShuffleTensorT]]:
+    a: DenseShuffleTensor, b: DenseShuffleTensor, c: DenseShuffleTensor
+) -> tuple[
+    DenseShuffleTensor,
+    tuple[DenseShuffleTensor, DenseShuffleTensor, DenseShuffleTensor],
+]:
     result = st_fma(a, b, c)
     return result, (a, b, c)
 
 
 def _st_fma_vjp_bwd(
-    residuals: tuple[ShuffleTensorT, ShuffleTensorT, ShuffleTensorT],
+    residuals: tuple[DenseShuffleTensor, DenseShuffleTensor, DenseShuffleTensor],
     ct_result_data: jax.Array | DenseFreeTensor | DenseShuffleTensor,
-) -> tuple[jax.Array, ...]:
+) -> tuple[Any, ...]:
     a, b, c = residuals
-    ct_a, ct_b, ct_c = st_fma_adjoint_derivative(a, b, c, ct_result_data)
+    ct_result = from_jax_cotangent(type(a), ct_result_data, a.basis)
+    ct_a, ct_b, ct_c = st_fma_adjoint_derivative(a, b, c, ct_result)
 
-    return ct_a, ct_b, ct_c
+    return (
+        to_jax_cotangent(type(a), ct_a),
+        to_jax_cotangent(type(b), ct_b),
+        to_jax_cotangent(type(c), ct_c),
+    )
 
 
 st_fma.defvjp(_st_fma_vjp_fwd, _st_fma_vjp_bwd)
 
 
 @jax.custom_vjp
-def st_mul(lhs: ShuffleTensorT, rhs: ShuffleTensorT) -> ShuffleTensorT:
+def st_mul(lhs: DenseShuffleTensor, rhs: DenseShuffleTensor) -> DenseShuffleTensor:
     """
     Shuffle tensor product
 
@@ -538,11 +551,11 @@ def st_mul(lhs: ShuffleTensorT, rhs: ShuffleTensorT) -> ShuffleTensorT:
 
 
 def st_mul_derivative(
-    lhs: ShuffleTensorT,
-    rhs: ShuffleTensorT,
-    t_lhs: ShuffleTensorT,
-    t_rhs: ShuffleTensorT,
-) -> ShuffleTensorT:
+    lhs: DenseShuffleTensor,
+    rhs: DenseShuffleTensor,
+    t_lhs: DenseShuffleTensor,
+    t_rhs: DenseShuffleTensor,
+) -> DenseShuffleTensor:
     """Compute the derivative of `st_mul` in the supplied tangent direction."""
     check_basis_compat(lhs.basis, rhs.basis, t_lhs.basis, t_rhs.basis)
     get_common_batch_shape(lhs, rhs, t_lhs, t_rhs)
@@ -552,20 +565,16 @@ def st_mul_derivative(
 
 
 def st_mul_adjoint_derivative(
-    lhs: ShuffleTensorT, rhs: ShuffleTensorT, ct_result: DenseAlgebra | jax.Array
-) -> tuple[ShuffleTensorT, ShuffleTensorT]:
+    lhs: DenseShuffleTensor, rhs: DenseShuffleTensor, ct_result: DenseFreeTensor
+) -> tuple[DenseFreeTensor, DenseFreeTensor]:
     """Compute the JAX-facing cotangents for `st_mul`."""
-    ct_result = from_jax_cotangent(type(lhs), ct_result, lhs.basis)
     check_basis_compat(lhs.basis, rhs.basis, ct_result.basis)
     get_common_batch_shape(lhs, rhs, ct_result)
 
     ct_lhs = st_adjoint_mul(rhs, ct_result)
     ct_rhs = st_adjoint_mul(lhs, ct_result)
 
-    return (
-        to_jax_cotangent(type(lhs), ct_lhs),
-        to_jax_cotangent(type(rhs), ct_rhs),
-    )
+    return ct_lhs, ct_rhs
 
 
 def _st_mul_vjp_fwd(lhs, rhs):
@@ -575,8 +584,12 @@ def _st_mul_vjp_fwd(lhs, rhs):
 
 def _st_mul_vjp_bwd(residuals, ct_result):
     lhs, rhs = residuals
-    ct_lhs, ct_rhs = st_mul_adjoint_derivative(lhs, rhs, ct_result)
-    return ct_lhs, ct_rhs
+    ct_result_math = from_jax_cotangent(type(lhs), ct_result, lhs.basis)
+    ct_lhs, ct_rhs = st_mul_adjoint_derivative(lhs, rhs, ct_result_math)
+    return (
+        to_jax_cotangent(type(lhs), ct_lhs),
+        to_jax_cotangent(type(rhs), ct_rhs),
+    )
 
 
 st_mul.defvjp(_st_mul_vjp_fwd, _st_mul_vjp_bwd)
@@ -584,7 +597,7 @@ st_mul.defvjp(_st_mul_vjp_fwd, _st_mul_vjp_bwd)
 
 # @partial(jax.custom_vjp, nondiff_argnums=(1,))
 @jax.custom_vjp
-def ft_exp(x: FreeTensorT, out_basis: TensorBasis | None = None) -> FreeTensorT:
+def ft_exp(x: DenseFreeTensor, out_basis: TensorBasis | None = None) -> DenseFreeTensor:
     """
     Free tensor exponent
 
@@ -613,10 +626,10 @@ def ft_exp(x: FreeTensorT, out_basis: TensorBasis | None = None) -> FreeTensorT:
 
 
 def ft_exp_derivative(
-    x: FreeTensorT,
-    t_x: FreeTensorT,
+    x: DenseFreeTensor,
+    t_x: DenseFreeTensor,
     out_basis: TensorBasis | None = None,
-) -> FreeTensorT:
+) -> DenseFreeTensor:
     """Compute the derivative of `ft_exp` in the supplied tangent direction."""
     check_basis_compat(x.basis, t_x.basis)
     batch_dims = get_common_batch_shape(x, t_x)
@@ -650,13 +663,12 @@ def ft_exp_derivative(
 
 
 def ft_exp_adjoint_derivative(
-    x: FreeTensorT,
-    ct_result: DenseAlgebra | jax.Array,
+    x: DenseFreeTensor,
+    ct_result: DenseShuffleTensor,
     out_basis: TensorBasis | None = None,
-) -> tuple[FreeTensorT]:
+) -> tuple[DenseShuffleTensor]:
     """Compute the JAX-facing cotangent for `ft_exp`."""
     ct_basis = out_basis or x.basis
-    ct_result = from_jax_cotangent(type(x), ct_result, ct_basis)
     check_basis_compat(x.basis, ct_result.basis)
     batch_dims = get_common_batch_shape(x, ct_result)
     dtype = jnp.result_type(x.dtype, ct_result.dtype)
@@ -689,12 +701,12 @@ def ft_exp_adjoint_derivative(
     # so the adjoint derivative needs to apply this to the resulting cotangent.
     ct_x = _remove_unit_term(ct_x)
 
-    return (to_jax_cotangent(type(x), ct_x),)
+    return (ct_x,)
 
 
 def _ft_exp_vjp_fwd(
-    x: FreeTensorT, out_basis: TensorBasis | None = None
-) -> FreeTensorT:
+    x: DenseFreeTensor, out_basis: TensorBasis | None = None
+) -> tuple[DenseFreeTensor, tuple[DenseFreeTensor, DenseFreeTensor]]:
 
     result = ft_exp(x, out_basis=out_basis)
     return result, (x, result)
@@ -702,19 +714,20 @@ def _ft_exp_vjp_fwd(
 
 def _ft_exp_vjp_bwd(
     residuals: tuple[Any, ...],
-    ct_result_data: ShuffleTensorT,
+    ct_result_data: DenseShuffleTensor,
 ) -> tuple[jax.Array | None, ...]:
     x, result = residuals
 
-    (ct_x,) = ft_exp_adjoint_derivative(x, ct_result_data, out_basis=result.basis)
-    return ct_x, None
+    ct_result = from_jax_cotangent(type(x), ct_result_data, result.basis)
+    (ct_x,) = ft_exp_adjoint_derivative(x, ct_result, out_basis=result.basis)
+    return to_jax_cotangent(type(x), ct_x), None
 
 
 ft_exp.defvjp(_ft_exp_vjp_fwd, _ft_exp_vjp_bwd)
 
 
 @jax.custom_vjp
-def ft_log(x: FreeTensorT, out_basis: TensorBasis | None = None) -> FreeTensorT:
+def ft_log(x: DenseFreeTensor, out_basis: TensorBasis | None = None) -> DenseFreeTensor:
     """
     Free tensor logarithm
 
@@ -750,9 +763,9 @@ def ft_log(x: FreeTensorT, out_basis: TensorBasis | None = None) -> FreeTensorT:
 
 
 def ft_log_derivative(
-    x: FreeTensorT,
-    t_x: FreeTensorT,
-) -> FreeTensorT:
+    x: DenseFreeTensor,
+    t_x: DenseFreeTensor,
+) -> DenseFreeTensor:
     """Compute the derivative of `ft_log` in the supplied tangent direction."""
     check_basis_compat(x.basis, t_x.basis)
     batch_dims = get_common_batch_shape(x, t_x)
@@ -781,11 +794,10 @@ def ft_log_derivative(
 
 
 def ft_log_adjoint_derivative(
-    x: FreeTensorT,
-    ct_result: DenseAlgebra | jax.Array,
-) -> tuple[FreeTensorT]:
+    x: DenseFreeTensor,
+    ct_result: DenseShuffleTensor,
+) -> tuple[DenseShuffleTensor]:
     """Compute the JAX-facing cotangent for `ft_log`."""
-    ct_result = from_jax_cotangent(type(x), ct_result, x.basis)
     check_basis_compat(x.basis, ct_result.basis)
     batch_dims = get_common_batch_shape(x, ct_result)
     dtype = jnp.result_type(x.dtype, ct_result.dtype)
@@ -816,12 +828,12 @@ def ft_log_adjoint_derivative(
         ct_x = ct_x + ft_adjoint_right_mul(u_d, ct_r_d)
         ct_r_d = ft_adjoint_left_mul(x, ct_r_d)
 
-    return (to_jax_cotangent(type(x), ct_x),)
+    return (ct_x,)
 
 
 def _ft_log_vjp_fwd(
-    x: FreeTensorT, out_basis: TensorBasis | None = None
-) -> tuple[FreeTensorT, tuple[Any, ...]]:
+    x: DenseFreeTensor, out_basis: TensorBasis | None = None
+) -> tuple[DenseFreeTensor, tuple[Any, ...]]:
     result = ft_log(x, out_basis=out_basis)
     return result, (x, result)
 
@@ -831,8 +843,9 @@ def _ft_log_vjp_bwd(
 ) -> tuple[jax.Array | None, ...]:
     x, _ = residuals
 
-    (ct_x,) = ft_log_adjoint_derivative(x, ct_result_data)
-    return (ct_x, None)
+    ct_result = from_jax_cotangent(type(x), ct_result_data, x.basis)
+    (ct_x,) = ft_log_adjoint_derivative(x, ct_result)
+    return (to_jax_cotangent(type(x), ct_x), None)
 
 
 ft_log.defvjp(_ft_log_vjp_fwd, _ft_log_vjp_bwd)
@@ -840,8 +853,10 @@ ft_log.defvjp(_ft_log_vjp_fwd, _ft_log_vjp_bwd)
 
 @jax.custom_vjp
 def ft_fmexp(
-    multiplier: FreeTensorT, exponent: FreeTensorT, out_basis: TensorBasis | None = None
-) -> FreeTensorT:
+    multiplier: DenseFreeTensor,
+    exponent: DenseFreeTensor,
+    out_basis: TensorBasis | None = None,
+) -> DenseFreeTensor:
     """
     Free tensor fused multiply-exponential
 
@@ -878,11 +893,11 @@ def ft_fmexp(
 
 
 def ft_fmexp_derivative(
-    multiplier: FreeTensorT,
-    exponent: FreeTensorT,
-    t_multiplier: FreeTensorT,
-    t_exponent: FreeTensorT,
-) -> FreeTensorT:
+    multiplier: DenseFreeTensor,
+    exponent: DenseFreeTensor,
+    t_multiplier: DenseFreeTensor,
+    t_exponent: DenseFreeTensor,
+) -> DenseFreeTensor:
     """Compute the derivative of `ft_fmexp` in the supplied tangent direction."""
     check_basis_compat(
         multiplier.basis, exponent.basis, t_multiplier.basis, t_exponent.basis
@@ -912,12 +927,11 @@ def ft_fmexp_derivative(
 
 
 def ft_fmexp_adjoint_derivative(
-    multiplier: FreeTensorT,
-    exponent: FreeTensorT,
-    ct_result: DenseAlgebra | jax.Array,
-) -> tuple[FreeTensorT, FreeTensorT]:
+    multiplier: DenseFreeTensor,
+    exponent: DenseFreeTensor,
+    ct_result: DenseShuffleTensor,
+) -> tuple[DenseShuffleTensor, DenseShuffleTensor]:
     """Compute the JAX-facing cotangents for `ft_fmexp`."""
-    ct_result = from_jax_cotangent(type(multiplier), ct_result, multiplier.basis)
     check_basis_compat(multiplier.basis, exponent.basis, ct_result.basis)
     get_common_batch_shape(multiplier, exponent, ct_result)
 
@@ -960,14 +974,13 @@ def ft_fmexp_adjoint_derivative(
 
     ct_exponent = _remove_unit_term(ct_exponent)
 
-    return (
-        to_jax_cotangent(type(multiplier), ct_multiplier),
-        to_jax_cotangent(type(exponent), ct_exponent),
-    )
+    return ct_multiplier, ct_exponent
 
 
 def _ft_fmexp_vjp_fwd(
-    multiplier: FreeTensorT, exponent: FreeTensorT, out_basis: TensorBasis | None
+    multiplier: DenseFreeTensor,
+    exponent: DenseFreeTensor,
+    out_basis: TensorBasis | None,
 ):
     result = ft_fmexp(multiplier, exponent, out_basis)
     return result, (multiplier, exponent, result)
@@ -978,17 +991,22 @@ def _ft_fmexp_vjp_bwd(
 ) -> tuple[jax.Array | None, ...]:
     multiplier, exponent, _ = residuals
 
+    ct_result = from_jax_cotangent(type(multiplier), ct_result_data, multiplier.basis)
     ct_multiplier, ct_exponent = ft_fmexp_adjoint_derivative(
-        multiplier, exponent, ct_result_data
+        multiplier, exponent, ct_result
     )
-    return ct_multiplier, ct_exponent, None
+    return (
+        to_jax_cotangent(type(multiplier), ct_multiplier),
+        to_jax_cotangent(type(exponent), ct_exponent),
+        None,
+    )
 
 
 ft_fmexp.defvjp(_ft_fmexp_vjp_fwd, _ft_fmexp_vjp_bwd)
 
 
 @jax.custom_vjp
-def lie_to_tensor(arg: LieT, scale_factor=None) -> FreeTensorT:
+def lie_to_tensor(arg: DenseLie, scale_factor=None) -> DenseFreeTensor:
     """
     Compute the embedding of a Lie algebra element as a free tensor.
 
@@ -1016,10 +1034,10 @@ def lie_to_tensor(arg: LieT, scale_factor=None) -> FreeTensorT:
 
 
 def lie_to_tensor_derivative(
-    arg: LieT,
-    t_arg: LieT,
+    arg: DenseLie,
+    t_arg: DenseLie,
     scale_factor=None,
-) -> FreeTensorT:
+) -> DenseFreeTensor:
     """
     Lie to tensor derivative of free tensor perturbation `t_arg` at `arg`
     """
@@ -1027,45 +1045,45 @@ def lie_to_tensor_derivative(
 
 
 def lie_to_tensor_adjoint_derivative(
-    arg: LieT,
-    ct_result: DenseAlgebra | jax.Array,
+    arg: DenseLie,
+    ct_result: DenseFreeTensor,
     scale_factor=None,
-) -> LieT:
+) -> DenseLie:
     """
     Lie to tensor derivative of free tensor `ct_result` at `arg`
     """
-    ct_result = from_jax_cotangent(FreeTensor, ct_result, to_tensor_basis(arg.basis))
     l2t = arg.basis.get_l2t_matrix(arg.dtype)
     l2t_size = arg.basis.size()
     data = csr_matvec(l2t.data, l2t.indices, l2t.indptr, l2t_size, ct_result.data)
     if scale_factor:
         data = data * scale_factor
 
-    return to_jax_cotangent(type(arg), DenseLie(data, arg.basis))
+    return DenseLie(data, arg.basis)
 
 
-def _lie_to_tensor_vjp_fwd(arg: LieT, scale_factor=None):
+def _lie_to_tensor_vjp_fwd(arg: DenseLie, scale_factor=None):
     result = lie_to_tensor_derivative(arg, scale_factor)
     return result, (arg, scale_factor)
 
 
 def _lie_to_tensor_vjp_bwd(
     residuals, ct_result_data: jax.Array
-) -> tuple[jax.Array, ...]:
+) -> tuple[Any, ...]:
     arg, scale_factor = residuals
 
+    ct_result = from_jax_cotangent(FreeTensor, ct_result_data, to_tensor_basis(arg.basis))
     ct_l2t_adjoint_deriv = lie_to_tensor_adjoint_derivative(
-        arg, ct_result_data, scale_factor
+        arg, ct_result, scale_factor
     )
 
-    return (ct_l2t_adjoint_deriv,)
+    return (to_jax_cotangent(type(arg), ct_l2t_adjoint_deriv),)
 
 
 lie_to_tensor.defvjp(_lie_to_tensor_vjp_fwd, _lie_to_tensor_vjp_bwd)
 
 
 @jax.custom_vjp
-def tensor_to_lie(arg: FreeTensorT, scale_factor=None) -> LieT:
+def tensor_to_lie(arg: DenseFreeTensor, scale_factor=None) -> DenseLie:
     """
     Project a free tensor onto the embedding of the Lie algebra in the tensor algebra.
 
@@ -1093,10 +1111,10 @@ def tensor_to_lie(arg: FreeTensorT, scale_factor=None) -> LieT:
 
 
 def tensor_to_lie_derivative(
-    arg: FreeTensorT,
-    t_arg: FreeTensorT,
+    arg: DenseFreeTensor,
+    t_arg: DenseFreeTensor,
     scale_factor=None,
-) -> LieT:
+) -> DenseLie:
     """
     Tensor to Lie derivative of Lie perturbation `t_arg` at `arg`
 
@@ -1108,10 +1126,10 @@ def tensor_to_lie_derivative(
 
 
 def tensor_to_lie_adjoint_derivative(
-    arg: FreeTensorT,
-    ct_result: DenseAlgebra | jax.Array,
+    arg: DenseFreeTensor,
+    ct_result: DenseLie,
     scale_factor=None,
-) -> FreeTensorT:
+) -> DenseShuffleTensor:
     """
     Tensor to Lie adjoint derivative of Lie cotangent `ct_result` at `arg`
 
@@ -1119,7 +1137,6 @@ def tensor_to_lie_adjoint_derivative(
     by feeding the CSC-stored t2l matrix data into csr_matvec, which
     implicitly transposes the matrix.
     """
-    ct_result = from_jax_cotangent(Lie, ct_result, to_lie_basis(arg.basis))
     # TODO: consider changing basis resolution logic
     lie_basis = to_lie_basis(arg.basis)
     t2l = lie_basis.get_t2l_matrix(arg.dtype)
@@ -1128,31 +1145,34 @@ def tensor_to_lie_adjoint_derivative(
     if scale_factor:
         data = data * scale_factor
 
-    return to_jax_cotangent(type(arg), DenseShuffleTensor(data, arg.basis))
+    return DenseShuffleTensor(data, arg.basis)
 
 
-def _tensor_to_lie_vjp_fwd(arg: FreeTensorT, scale_factor=None):
+def _tensor_to_lie_vjp_fwd(arg: DenseFreeTensor, scale_factor=None):
     result = tensor_to_lie(arg, scale_factor)
     return result, (arg, scale_factor)
 
 
 def _tensor_to_lie_vjp_bwd(
     residuals, ct_result_data: jax.Array
-) -> tuple[jax.Array, ...]:
+) -> tuple[Any, ...]:
     arg, scale_factor = residuals
 
+    ct_result = from_jax_cotangent(Lie, ct_result_data, to_lie_basis(arg.basis))
     ct_t2l_adjoint_deriv = tensor_to_lie_adjoint_derivative(
-        arg, ct_result_data, scale_factor
+        arg, ct_result, scale_factor
     )
 
-    return (ct_t2l_adjoint_deriv, None)
+    return (to_jax_cotangent(type(arg), ct_t2l_adjoint_deriv), None)
 
 
 tensor_to_lie.defvjp(_tensor_to_lie_vjp_fwd, _tensor_to_lie_vjp_bwd)
 
 
 @jax.custom_vjp
-def ft_adjoint_left_mul(op: FreeTensorT, arg: ShuffleTensorT) -> ShuffleTensorT:
+def ft_adjoint_left_mul(
+    op: DenseFreeTensor, arg: DenseShuffleTensor
+) -> DenseShuffleTensor:
     """
     Compute the adjoint action of left free-tensor multiplication on shuffles.
 
@@ -1184,11 +1204,11 @@ def ft_adjoint_left_mul(op: FreeTensorT, arg: ShuffleTensorT) -> ShuffleTensorT:
 
 
 def ft_adjoint_left_mul_derivative(
-    op: FreeTensorT,
-    arg: ShuffleTensorT,
-    t_op: FreeTensorT,
-    t_arg: ShuffleTensorT,
-) -> ShuffleTensorT:
+    op: DenseFreeTensor,
+    arg: DenseShuffleTensor,
+    t_op: DenseFreeTensor,
+    t_arg: DenseShuffleTensor,
+) -> DenseShuffleTensor:
     """Compute the derivative of `ft_adjoint_left_mul`."""
     check_basis_compat(op.basis, arg.basis, t_op.basis, t_arg.basis)
     get_common_batch_shape(op, arg, t_op, t_arg)
@@ -1199,23 +1219,19 @@ def ft_adjoint_left_mul_derivative(
 
 
 def ft_adjoint_left_mul_adjoint_derivative(
-    op: FreeTensorT, arg: ShuffleTensorT, ct_result: DenseAlgebra | jax.Array
-) -> tuple[FreeTensorT, ShuffleTensorT]:
+    op: DenseFreeTensor, arg: DenseShuffleTensor, ct_result: DenseFreeTensor
+) -> tuple[DenseFreeTensor, DenseFreeTensor]:
     """Compute the JAX-facing cotangents for `ft_adjoint_left_mul`."""
-    ct_result = from_jax_cotangent(type(arg), ct_result, op.basis)
     check_basis_compat(op.basis, arg.basis, ct_result.basis)
     get_common_batch_shape(op, arg, ct_result)
 
     ct_op = ft_adjoint_right_mul(ct_result, arg)
     ct_arg = ft_mul(op, ct_result)
 
-    return (
-        to_jax_cotangent(type(op), ct_op),
-        to_jax_cotangent(type(arg), ct_arg),
-    )
+    return ct_op, ct_arg
 
 
-def _ft_adjoint_left_mul_vjp_fwd(op: FreeTensorT, arg: ShuffleTensorT):
+def _ft_adjoint_left_mul_vjp_fwd(op: DenseFreeTensor, arg: DenseShuffleTensor):
     result = ft_adjoint_left_mul(op, arg)
     return result, (op, arg)
 
@@ -1223,15 +1239,21 @@ def _ft_adjoint_left_mul_vjp_fwd(op: FreeTensorT, arg: ShuffleTensorT):
 def _ft_adjoint_left_mul_vjp_bwd(residuals, ct_result):
     op, arg = residuals
 
-    ct_op, ct_arg = ft_adjoint_left_mul_adjoint_derivative(op, arg, ct_result)
-    return ct_op, ct_arg
+    ct_result_math = from_jax_cotangent(type(arg), ct_result, op.basis)
+    ct_op, ct_arg = ft_adjoint_left_mul_adjoint_derivative(op, arg, ct_result_math)
+    return (
+        to_jax_cotangent(type(op), ct_op),
+        to_jax_cotangent(type(arg), ct_arg),
+    )
 
 
 ft_adjoint_left_mul.defvjp(_ft_adjoint_left_mul_vjp_fwd, _ft_adjoint_left_mul_vjp_bwd)
 
 
 @jax.custom_vjp
-def ft_adjoint_right_mul(op: FreeTensorT, arg: ShuffleTensorT) -> ShuffleTensorT:
+def ft_adjoint_right_mul(
+    op: DenseFreeTensor, arg: DenseShuffleTensor
+) -> DenseShuffleTensor:
     """
     Compute the adjoint action of right free-tensor multiplication on shuffles.
 
@@ -1263,11 +1285,11 @@ def ft_adjoint_right_mul(op: FreeTensorT, arg: ShuffleTensorT) -> ShuffleTensorT
 
 
 def ft_adjoint_right_mul_derivative(
-    op: FreeTensorT,
-    arg: ShuffleTensorT,
-    t_op: FreeTensorT,
-    t_arg: ShuffleTensorT,
-) -> ShuffleTensorT:
+    op: DenseFreeTensor,
+    arg: DenseShuffleTensor,
+    t_op: DenseFreeTensor,
+    t_arg: DenseShuffleTensor,
+) -> DenseShuffleTensor:
     """Compute the derivative of `ft_adjoint_right_mul`."""
     check_basis_compat(op.basis, arg.basis, t_op.basis, t_arg.basis)
     get_common_batch_shape(op, arg, t_op, t_arg)
@@ -1277,20 +1299,16 @@ def ft_adjoint_right_mul_derivative(
 
 
 def ft_adjoint_right_mul_adjoint_derivative(
-    op: FreeTensorT, arg: ShuffleTensorT, ct_result: DenseAlgebra | jax.Array
-) -> tuple[FreeTensorT, ShuffleTensorT]:
+    op: DenseFreeTensor, arg: DenseShuffleTensor, ct_result: DenseFreeTensor
+) -> tuple[DenseFreeTensor, DenseFreeTensor]:
     """Compute the JAX-facing cotangents for `ft_adjoint_right_mul`."""
-    ct_result = from_jax_cotangent(type(arg), ct_result, op.basis)
     check_basis_compat(op.basis, arg.basis, ct_result.basis)
     get_common_batch_shape(op, arg, ct_result)
 
     ct_op = ft_adjoint_left_mul(ct_result, arg)
     ct_arg = ft_mul(ct_result, op)
 
-    return (
-        to_jax_cotangent(type(op), ct_op),
-        to_jax_cotangent(type(arg), ct_arg),
-    )
+    return ct_op, ct_arg
 
 
 def _ft_adjoint_right_mul_vjp_fwd(op, arg):
@@ -1300,8 +1318,12 @@ def _ft_adjoint_right_mul_vjp_fwd(op, arg):
 
 def _ft_adjoint_right_mul_vjp_bwd(residuals, ct_result):
     op, arg = residuals
-    ct_op, ct_arg = ft_adjoint_right_mul_adjoint_derivative(op, arg, ct_result)
-    return ct_op, ct_arg
+    ct_result_math = from_jax_cotangent(type(arg), ct_result, op.basis)
+    ct_op, ct_arg = ft_adjoint_right_mul_adjoint_derivative(op, arg, ct_result_math)
+    return (
+        to_jax_cotangent(type(op), ct_op),
+        to_jax_cotangent(type(arg), ct_arg),
+    )
 
 
 ft_adjoint_right_mul.defvjp(
@@ -1310,7 +1332,7 @@ ft_adjoint_right_mul.defvjp(
 
 
 @jax.custom_vjp
-def tensor_pairing(functional: ShuffleTensorT, argument: FreeTensorT) -> jax.Array:
+def tensor_pairing(functional: DenseShuffleTensor, argument: DenseFreeTensor) -> jax.Array:
     """
     Computes the tensor pairing between a functional tensor and a free tensor.
 
@@ -1346,10 +1368,10 @@ def tensor_pairing(functional: ShuffleTensorT, argument: FreeTensorT) -> jax.Arr
 
 
 def tensor_pairing_derivative(
-    functional: ShuffleTensorT,
-    argument: FreeTensorT,
-    t_functional: ShuffleTensorT,
-    t_argument: FreeTensorT,
+    functional: DenseShuffleTensor,
+    argument: DenseFreeTensor,
+    t_functional: DenseShuffleTensor,
+    t_argument: DenseFreeTensor,
 ) -> jax.Array:
     """Compute the derivative of `tensor_pairing`."""
     check_basis_compat(
@@ -1376,10 +1398,10 @@ def _reshape_pairing_cotangent(
 
 
 def tensor_pairing_adjoint_derivative(
-    functional: ShuffleTensorT,
-    argument: FreeTensorT,
+    functional: DenseShuffleTensor,
+    argument: DenseFreeTensor,
     ct_result: jax.Array,
-) -> tuple[ShuffleTensorT, FreeTensorT]:
+) -> tuple[DenseFreeTensor, DenseShuffleTensor]:
     """Compute the JAX-facing cotangents for `tensor_pairing`."""
     check_basis_compat(functional.basis, argument.basis)
     batch_dims = get_common_batch_shape(functional, argument)
@@ -1389,10 +1411,7 @@ def tensor_pairing_adjoint_derivative(
     ct_functional = DenseFreeTensor(ext_ct * argument.data, functional.basis)
     ct_argument = DenseShuffleTensor(ext_ct * functional.data, argument.basis)
 
-    return (
-        to_jax_cotangent(type(functional), ct_functional),
-        to_jax_cotangent(type(argument), ct_argument),
-    )
+    return ct_functional, ct_argument
 
 
 def _tensor_pairing_vjp_fwd(functional, argument):
@@ -1406,14 +1425,17 @@ def _tensor_pairing_vjp_bwd(residual, ct_result):
         functional, argument, ct_result
     )
 
-    return ct_functional, ct_argument
+    return (
+        to_jax_cotangent(type(functional), ct_functional),
+        to_jax_cotangent(type(argument), ct_argument),
+    )
 
 
 tensor_pairing.defvjp(_tensor_pairing_vjp_fwd, _tensor_pairing_vjp_bwd)
 
 
 @jax.custom_vjp
-def lie_pairing(functional: LieT, argument: LieT) -> jax.Array:
+def lie_pairing(functional: DenseLie, argument: DenseLie) -> jax.Array:
     """
     Compute the pairing of two Lie algebra elements.
 
@@ -1442,10 +1464,10 @@ def lie_pairing(functional: LieT, argument: LieT) -> jax.Array:
 
 
 def lie_pairing_derivative(
-    functional: LieT,
-    argument: LieT,
-    t_functional: LieT,
-    t_argument: LieT,
+    functional: DenseLie,
+    argument: DenseLie,
+    t_functional: DenseLie,
+    t_argument: DenseLie,
 ) -> jax.Array:
     """Compute the derivative of `lie_pairing`."""
     check_basis_compat(
@@ -1459,8 +1481,8 @@ def lie_pairing_derivative(
 
 
 def lie_pairing_adjoint_derivative(
-    functional: LieT, argument: LieT, ct_result: jax.Array
-) -> tuple[LieT, LieT]:
+    functional: DenseLie, argument: DenseLie, ct_result: jax.Array
+) -> tuple[DenseLie, DenseLie]:
     """Compute the JAX-facing cotangents for `lie_pairing`."""
     check_basis_compat(functional.basis, argument.basis)
     batch_dims = get_common_batch_shape(functional, argument)
@@ -1470,13 +1492,12 @@ def lie_pairing_adjoint_derivative(
     ct_functional = DenseLie(ext_ct * argument.data, functional.basis)
     ct_argument = DenseLie(ext_ct * functional.data, argument.basis)
 
-    return (
-        to_jax_cotangent(type(functional), ct_functional),
-        to_jax_cotangent(type(argument), ct_argument),
-    )
+    return ct_functional, ct_argument
 
 
-def _lie_pairing_vjp_fwd(functional: LieT, argument: LieT) -> tuple[jax.Array, Any]:
+def _lie_pairing_vjp_fwd(
+    functional: DenseLie, argument: DenseLie
+) -> tuple[jax.Array, Any]:
     result = lie_pairing(functional, argument)
     return result, (functional, argument)
 
@@ -1487,7 +1508,10 @@ def _lie_pairing_vjp_bwd(residuals, ct_result) -> tuple[jax.Array, ...]:
     ct_functional, ct_argument = lie_pairing_adjoint_derivative(
         functional, argument, ct_result
     )
-    return ct_functional, ct_argument
+    return (
+        to_jax_cotangent(type(functional), ct_functional),
+        to_jax_cotangent(type(argument), ct_argument),
+    )
 
 
 lie_pairing.defvjp(_lie_pairing_vjp_fwd, _lie_pairing_vjp_bwd)
@@ -1495,9 +1519,9 @@ lie_pairing.defvjp(_lie_pairing_vjp_fwd, _lie_pairing_vjp_bwd)
 
 @jax.custom_vjp
 def st_adjoint_mul(
-    op_arg: ShuffleTensorT,
-    arg: FreeTensorT,
-) -> FreeTensorT:
+    op_arg: DenseShuffleTensor,
+    arg: DenseFreeTensor,
+) -> DenseFreeTensor:
     dtype = jnp.result_type(op_arg.dtype, arg.dtype)
     check_basis_compat(op_arg.basis, arg.basis)
     batch_dims = get_common_batch_shape(op_arg, arg)
@@ -1518,8 +1542,11 @@ def st_adjoint_mul(
 
 
 def st_adjoint_mul_derivative(
-    op: ShuffleTensorT, arg: FreeTensorT, t_op: ShuffleTensorT, t_arg: FreeTensorT
-) -> FreeTensorT:
+    op: DenseShuffleTensor,
+    arg: DenseFreeTensor,
+    t_op: DenseShuffleTensor,
+    t_arg: DenseFreeTensor,
+) -> DenseFreeTensor:
     """Compute the derivative of `st_adjoint_mul`."""
     check_basis_compat(op.basis, arg.basis, t_op.basis, t_arg.basis)
     get_common_batch_shape(op, arg, t_op, t_arg)
@@ -1530,20 +1557,16 @@ def st_adjoint_mul_derivative(
 
 
 def st_adjoint_mul_adjoint_derivative(
-    op: ShuffleTensorT, arg: FreeTensorT, ct_result: DenseAlgebra | jax.Array
-) -> tuple[ShuffleTensorT, FreeTensorT]:
+    op: DenseShuffleTensor, arg: DenseFreeTensor, ct_result: DenseShuffleTensor
+) -> tuple[DenseShuffleTensor, DenseShuffleTensor]:
     """Compute the JAX-facing cotangents for `st_adjoint_mul`."""
-    ct_result = from_jax_cotangent(type(arg), ct_result, arg.basis)
     check_basis_compat(op.basis, arg.basis, ct_result.basis)
     get_common_batch_shape(op, arg, ct_result)
 
     ct_op = st_adjoint_mul(ct_result, arg)
     ct_arg = st_mul(op, ct_result)
 
-    return (
-        to_jax_cotangent(type(op), ct_op),
-        to_jax_cotangent(type(arg), ct_arg),
-    )
+    return ct_op, ct_arg
 
 
 def _st_adjoint_mul_vjp_fwd(op, arg):
@@ -1553,16 +1576,20 @@ def _st_adjoint_mul_vjp_fwd(op, arg):
 
 def _st_adjoint_mul_vjp_bwd(residuals, ct_result):
     op, arg = residuals
-    ct_op, ct_arg = st_adjoint_mul_adjoint_derivative(op, arg, ct_result)
-    return ct_op, ct_arg
+    ct_result_math = from_jax_cotangent(type(arg), ct_result, arg.basis)
+    ct_op, ct_arg = st_adjoint_mul_adjoint_derivative(op, arg, ct_result_math)
+    return (
+        to_jax_cotangent(type(op), ct_op),
+        to_jax_cotangent(type(arg), ct_arg),
+    )
 
 
 st_adjoint_mul.defvjp(_st_adjoint_mul_vjp_fwd, _st_adjoint_mul_vjp_bwd)
 
 
 def to_signature(
-    log_signature: LieT, tensor_basis: TensorBasis | None = None
-) -> FreeTensorT:
+    log_signature: DenseLie, tensor_basis: TensorBasis | None = None
+) -> DenseFreeTensor:
     """
     Convert a log-signature in the Lie algebra to its signature.
 
@@ -1579,7 +1606,9 @@ def to_signature(
     return ft_exp(tensor, out_basis=tensor_basis)
 
 
-def to_log_signature(signature: FreeTensorT, lie_basis: LieBasis | None = None) -> LieT:
+def to_log_signature(
+    signature: DenseFreeTensor, lie_basis: LieBasis | None = None
+) -> DenseLie:
     """
     Convert a signature in the tensor algebra to its log-signature.
 
@@ -1603,7 +1632,7 @@ def to_log_signature(signature: FreeTensorT, lie_basis: LieBasis | None = None) 
     return tensor_to_lie(log_sig_tensor)
 
 
-def cbh(*lie_pieces: LieT, lie_basis: LieBasis | None = None) -> LieT:
+def cbh(*lie_pieces: DenseLie, lie_basis: LieBasis | None = None) -> DenseLie:
     """
     Compute the Campbell-Baker-Hausdorff combination of Lie elements.
 
