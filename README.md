@@ -134,6 +134,12 @@ pytest -m "not extra" roughpy_jax/tests
 Wheel builds are tested through `cibuildwheel` in CI, and release artifacts are
 validated before publishing.
 
+## Example
+
+For examples on how to use the higher level stream objects, see the `examples/` 
+folder. Here the 'words' example from the RoughPy documentation has been 
+converted to use the new Stream objects. 
+
 ## Support
 
 If you hit a bug or need a feature, open an issue on GitHub. Bug reports with a
