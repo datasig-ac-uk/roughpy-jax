@@ -33,7 +33,7 @@ def make_mock_basis(width: int, depth: int) -> MockBasis:
     return MockBasis(
         np.int32(width),
         np.int32(depth),
-        np.array([0, 1, width + 1], dtype=np.int64),
+        np.array([0, 1, width + 1], dtype=np.intp),
     )
 
 

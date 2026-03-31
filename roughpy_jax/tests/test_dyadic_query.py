@@ -1,6 +1,7 @@
 import math
 from collections import deque
 
+import jax,numpy as jnp
 import pytest
 from roughpy_jax.intervals import IntervalType, RealInterval
 from roughpy_jax.streams.lie_increment_stream import dyadic_query
@@ -12,8 +13,8 @@ def _endpoint(k: int, n: int) -> float:
 
 def _contains(query: RealInterval, value: float) -> bool:
     if query.interval_type == IntervalType.ClOpen:
-        return query.inf <= value < query.sup
-    return query.inf < value <= query.sup
+        return jnp.all(query.inf <= value < query.sup)
+    return jnp.all(query.inf < value <= query.sup)
 
 
 def _collect_endpoints(
