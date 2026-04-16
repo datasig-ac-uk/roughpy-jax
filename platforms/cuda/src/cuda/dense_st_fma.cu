@@ -1,4 +1,4 @@
-#include "dense_ft_adj_mul.h"
+#include "dense_st_fma.h"
 
 #include "xla_headers.hpp"
 
@@ -15,14 +15,18 @@ ffi::Error unimplemented() noexcept
 
 } // namespace
 
-ffi::Error cuda_dense_ft_adj_lmul_impl(
+ffi::Error cuda_dense_st_fma_impl(
     cudaStream_t,
     ffi::Result<ffi::AnyBuffer>,
+    ffi::AnyBuffer,
     ffi::AnyBuffer,
     ffi::AnyBuffer,
     int32_t,
     int32_t,
     DegreeBeginSpan,
+    int32_t,
+    int32_t,
+    int32_t,
     int32_t,
     int32_t
 ) noexcept
@@ -30,7 +34,7 @@ ffi::Error cuda_dense_ft_adj_lmul_impl(
     return unimplemented();
 }
 
-ffi::Error cuda_dense_ft_adj_rmul_impl(
+ffi::Error cuda_dense_st_mul_impl(
     cudaStream_t,
     ffi::Result<ffi::AnyBuffer>,
     ffi::AnyBuffer,
@@ -38,6 +42,8 @@ ffi::Error cuda_dense_ft_adj_rmul_impl(
     int32_t,
     int32_t,
     DegreeBeginSpan,
+    int32_t,
+    int32_t,
     int32_t,
     int32_t
 ) noexcept
@@ -48,23 +54,27 @@ ffi::Error cuda_dense_ft_adj_rmul_impl(
 } // namespace rpy::jax::cuda
 
 XLA_FFI_DEFINE_HANDLER_SYMBOL(
-    cuda_dense_ft_adj_lmul,
-    rpy::jax::cuda::cuda_dense_ft_adj_lmul_impl,
+    cuda_dense_st_fma,
+    rpy::jax::cuda::cuda_dense_st_fma_impl,
     xla::ffi::Ffi::Bind()
         .Ctx<xla::ffi::PlatformStream<cudaStream_t>>()
         .Ret<xla::ffi::AnyBuffer>()
         .Arg<xla::ffi::AnyBuffer>()
         .Arg<xla::ffi::AnyBuffer>()
+        .Arg<xla::ffi::AnyBuffer>()
         .Attr<int32_t>("width")
         .Attr<int32_t>("depth")
         .Attr<rpy::jax::cuda::DegreeBeginSpan>("degree_begin")
-        .Attr<int32_t>("op_max_deg")
-        .Attr<int32_t>("arg_max_deg")
+        .Attr<int32_t>("a_max_deg")
+        .Attr<int32_t>("b_max_deg")
+        .Attr<int32_t>("c_max_deg")
+        .Attr<int32_t>("b_min_deg")
+        .Attr<int32_t>("c_min_deg")
 );
 
 XLA_FFI_DEFINE_HANDLER_SYMBOL(
-    cuda_dense_ft_adj_rmul,
-    rpy::jax::cuda::cuda_dense_ft_adj_rmul_impl,
+    cuda_dense_st_mul,
+    rpy::jax::cuda::cuda_dense_st_mul_impl,
     xla::ffi::Ffi::Bind()
         .Ctx<xla::ffi::PlatformStream<cudaStream_t>>()
         .Ret<xla::ffi::AnyBuffer>()
@@ -73,6 +83,8 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
         .Attr<int32_t>("width")
         .Attr<int32_t>("depth")
         .Attr<rpy::jax::cuda::DegreeBeginSpan>("degree_begin")
-        .Attr<int32_t>("op_max_deg")
-        .Attr<int32_t>("arg_max_deg")
+        .Attr<int32_t>("lhs_max_deg")
+        .Attr<int32_t>("rhs_max_deg")
+        .Attr<int32_t>("lhs_min_deg")
+        .Attr<int32_t>("rhs_min_deg")
 );
