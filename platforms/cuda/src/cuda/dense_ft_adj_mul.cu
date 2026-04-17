@@ -1,55 +1,217 @@
 #include "dense_ft_adj_mul.h"
 
+
+#include <algorithm>
+#include <functional>
+
+
+#include "error_handling.cuh"
+#include "low_precision.cuh"
+#include "basis_support.cuh"
 #include "xla_headers.hpp"
 
-namespace ffi = xla::ffi;
+#include "kernels/dense_ft_antipode.cuh"
+#include "kernels/dense_ft_adj_mul.cuh"
 
-namespace rpy::jax::cuda {
+
+using namespace rpy::jax::cuda;
 
 namespace {
+namespace ffi = xla::ffi;
 
-ffi::Error unimplemented() noexcept
+using TensorBasis = rpp::StandardTensorBasis;
+using Degree = typename TensorBasis::Degree;
+using Index = typename TensorBasis::Index;
+
+
+struct DenseFtAdjMulStaticArgs {
+    TensorBasis basis;
+    int32_t op_max_deg;
+    int32_t arg_max_deg;
+};
+
+template <typename Tag>
+struct DenseFtAdjLMulFunctor {
+    using Scalar = typename Tag::Scalar;
+    using Accum = typename Tag::Accum;
+
+
+    static ffi::Error eval_adj_lmul(
+        Scalar* d_out,
+        Scalar const* d_op,
+        const Index op_stride,
+        Scalar const* d_arg,
+        const Index arg_stride,
+        const TensorBasis d_basis,
+        const unsigned block,
+        const unsigned grid,
+        cudaStream_t stream
+        ) {
+
+
+
+    }
+
+
+
+    static ffi::Error eval(
+        ffi::Result<ffi::AnyBuffer> out,
+        ffi::AnyBuffer op,
+        ffi::AnyBuffer arg,
+        DenseFtAdjMulStaticArgs static_args,
+        cudaStream_t stream
+        ) noexcept {
+
+        const auto tensor_size = static_args.basis.size();
+
+        unsigned block ;
+        if (tensor_size < 64) {
+            block = 32;
+        } else if (tensor_size >= 64) {
+            block = 64;
+        } else if (tensor_size >= 128) {
+            block = 128;
+        } else {
+            block = 256;
+        }
+
+        const auto elt_type = out->element_type();
+
+        const auto out_shape = out->dimensions();
+        const auto n_tensors = std::accumulate(
+            out_shape.begin(), out_shape.end() - 1, 1LL,
+            std::multiplies<>{});
+
+        const auto grid = static_cast<unsigned>(std::min(n_tensors, 2LL<<28));
+
+        TensorBasisConverter<Degree, Index> converted(static_args.basis, stream);
+        if (!converted) {
+            return cuda_error_to_xla_error(converted.error);
+        }
+    }
+};
+
+
+template <typename Tag>
+struct DenseDTAdjRMulFunctor : DenseFtAdjLMulFunctor<Tag> {
+
+    static ffi::Error eval(
+        ffi::Result<ffi::AnyBuffer> out,
+        ffi::AnyBuffer op,
+        ffi::AnyBuffer arg,
+        DenseFtAdjMulStaticArgs static_args,
+        cudaStream_t stream
+        ) {
+        const auto tensor_size = static_args.basis.size();
+
+        unsigned block ;
+        if (tensor_size < 64) {
+            block = 32;
+        } else if (tensor_size >= 64) {
+            block = 64;
+        } else if (tensor_size >= 128) {
+            block = 128;
+        } else {
+            block = 256;
+        }
+
+
+        const auto out_shape = out->dimensions();
+        const auto n_tensors = std::accumulate(
+            out_shape.begin(), out_shape.end() - 1, 1LL,
+            std::multiplies<>{});
+
+        const auto grid = static_cast<unsigned>(std::min(n_tensors, 2LL<<28));
+
+        TensorBasisConverter<Degree, Index> converted(static_args.basis, stream);
+        if (!converted) {
+            return cuda_error_to_xla_error(converted.error);
+        }
+
+
+    }
+};
+
+ffi::Error cuda_dense_ft_adj_lmul_impl(
+    cudaStream_t stream,
+    ffi::Result<ffi::AnyBuffer> out,
+    ffi::AnyBuffer op,
+    ffi::AnyBuffer arg,
+    int32_t width,
+    int32_t depth,
+    DegreeBeginSpan degree_begin,
+    int32_t op_max_deg,
+    int32_t arg_max_deg
+) noexcept
 {
-    return {ffi::ErrorCode::kInternal, "not implemented"};
+    DenseFtAdjMulStaticArgs static_args {
+        TensorBasis { width, depth, cast_db_array(degree_begin.begin()) },
+        op_max_deg,
+        arg_max_deg
+    };
+
+    RPY_XLA_SUCCESS_OR_RETURN(check_data_degree(out, static_args.basis, depth));
+    RPY_XLA_SUCCESS_OR_RETURN(check_data_degree(op, static_args.basis, op_max_deg));
+    RPY_XLA_SUCCESS_OR_RETURN(check_data_degree(arg, static_args.basis, arg_max_deg));
+
+    auto elt_type = out->element_type();
+    if (!all_buffers_match_type(elt_type, op, arg)) {
+        return ffi::Error::InvalidArgument("all tensors should have the same data type");
+    }
+
+    return select_type_and_go<DenseFtAdjLMulFunctor>(
+        elt_type,
+        out,
+        op,
+        arg,
+        static_args,
+        stream
+    );
+}
+
+
+ffi::Error cuda_dense_ft_adj_rmul_impl(
+    cudaStream_t stream,
+    ffi::Result<ffi::AnyBuffer> out,
+    ffi::AnyBuffer op,
+    ffi::AnyBuffer arg,
+    int32_t width,
+    int32_t depth,
+    DegreeBeginSpan degree_begin,
+    int32_t op_max_deg,
+    int32_t arg_max_deg
+) noexcept
+{
+    DenseFtAdjMulStaticArgs static_args {
+        TensorBasis { width, depth, cast_db_array(degree_begin.begin()) },
+        op_max_deg,
+        arg_max_deg
+    };
+
+    RPY_XLA_SUCCESS_OR_RETURN(check_data_degree(out, static_args.basis, depth));
+    RPY_XLA_SUCCESS_OR_RETURN(check_data_degree(op, static_args.basis, op_max_deg));
+    RPY_XLA_SUCCESS_OR_RETURN(check_data_degree(arg, static_args.basis, arg_max_deg));
+
+    auto elt_type = out->element_type();
+    if (!all_buffers_match_type(elt_type, op, arg)) {
+        return ffi::Error::InvalidArgument("all tensors should have the same data type");
+    }
+
+    return select_type_and_go<DenseFtAdjLMulFunctor>(
+        elt_type,
+        out,
+        op,
+        arg,
+        static_args,
+        stream
+    );
 }
 
 } // namespace
 
-ffi::Error cuda_dense_ft_adj_lmul_impl(
-    cudaStream_t,
-    ffi::Result<ffi::AnyBuffer>,
-    ffi::AnyBuffer,
-    ffi::AnyBuffer,
-    int32_t,
-    int32_t,
-    DegreeBeginSpan,
-    int32_t,
-    int32_t
-) noexcept
-{
-    return unimplemented();
-}
-
-ffi::Error cuda_dense_ft_adj_rmul_impl(
-    cudaStream_t,
-    ffi::Result<ffi::AnyBuffer>,
-    ffi::AnyBuffer,
-    ffi::AnyBuffer,
-    int32_t,
-    int32_t,
-    DegreeBeginSpan,
-    int32_t,
-    int32_t
-) noexcept
-{
-    return unimplemented();
-}
-
-} // namespace rpy::jax::cuda
-
 XLA_FFI_DEFINE_HANDLER_SYMBOL(
     cuda_dense_ft_adj_lmul,
-    rpy::jax::cuda::cuda_dense_ft_adj_lmul_impl,
+    cuda_dense_ft_adj_lmul_impl,
     xla::ffi::Ffi::Bind()
         .Ctx<xla::ffi::PlatformStream<cudaStream_t>>()
         .Ret<xla::ffi::AnyBuffer>()
@@ -64,7 +226,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
 
 XLA_FFI_DEFINE_HANDLER_SYMBOL(
     cuda_dense_ft_adj_rmul,
-    rpy::jax::cuda::cuda_dense_ft_adj_rmul_impl,
+    cuda_dense_ft_adj_rmul_impl,
     xla::ffi::Ffi::Bind()
         .Ctx<xla::ffi::PlatformStream<cudaStream_t>>()
         .Ret<xla::ffi::AnyBuffer>()

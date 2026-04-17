@@ -12,9 +12,10 @@
 
 using namespace rpy::jax::cuda;
 
-namespace ffi = xla::ffi;
 
 namespace {
+namespace ffi = xla::ffi;
+
 using TensorBasis = rpp::StandardTensorBasis;
 using Degree = typename TensorBasis::Degree;
 using Index = typename TensorBasis::Index;
