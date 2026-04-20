@@ -72,7 +72,7 @@ RPP_DEVICE void ft_adj_mul_level_0_reduce(
 } // namespace detail
 
 template<typename ScalarTag>
-__global__ void dense_ft_adj_lmul(
+__global__ void dense_ft_adj_lmul_kernel(
     typename ScalarTag::Scalar *__restrict__ out,
     typename ScalarTag::Scalar const *__restrict__ op,
     const typename rpp::StandardTensorBasis::Index op_stride,
@@ -187,7 +187,7 @@ __global__ void dense_ft_adj_lmul(
 
 
 template<typename ScalarTag>
-__global__ void dense_ft_adj_rmul(
+__global__ void dense_ft_adj_rmul_kernel(
     typename ScalarTag::Scalar *__restrict__ out,
     typename ScalarTag::Scalar const *__restrict__ op,
     const typename rpp::StandardTensorBasis::Index op_stride,

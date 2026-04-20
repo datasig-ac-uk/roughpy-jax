@@ -36,24 +36,6 @@ struct DenseFtAdjLMulFunctor {
     using Accum = typename Tag::Accum;
 
 
-    static ffi::Error eval_adj_lmul(
-        Scalar* d_out,
-        Scalar const* d_op,
-        const Index op_stride,
-        Scalar const* d_arg,
-        const Index arg_stride,
-        const TensorBasis d_basis,
-        const unsigned block,
-        const unsigned grid,
-        cudaStream_t stream
-        ) {
-
-
-
-    }
-
-
-
     static ffi::Error eval(
         ffi::Result<ffi::AnyBuffer> out,
         ffi::AnyBuffer op,
@@ -88,6 +70,27 @@ struct DenseFtAdjLMulFunctor {
         if (!converted) {
             return cuda_error_to_xla_error(converted.error);
         }
+
+        auto* out_ptr = buffer_to_pointer<Tag>(out);
+        auto const* op_ptr = buffer_to_pointer<Tag>(op);
+        const Index op_stride = op.dimensions().back();
+        auto const* arg_ptr = buffer_to_pointer<Tag>(arg);
+        const Index arg_stride = op.dimensions().back();
+
+        dense_ft_adj_lmul_kernel<Tag><<<grid, block, 0, stream>>>(
+            out_ptr,
+            op_ptr,
+            op_stride,
+            arg_ptr,
+            arg_stride,
+            converted.d_basis,
+            static_args.op_max_deg,
+            static_args.arg_max_deg,
+            0,0,
+            n_tensors
+            );
+
+        return cuda_error_to_xla_error(cudaGetLastError());
     }
 };
 
@@ -128,6 +131,27 @@ struct DenseDTAdjRMulFunctor : DenseFtAdjLMulFunctor<Tag> {
             return cuda_error_to_xla_error(converted.error);
         }
 
+
+        auto* out_ptr = buffer_to_pointer<Tag>(out);
+        auto const* op_ptr = buffer_to_pointer<Tag>(op);
+        const Index op_stride = op.dimensions().back();
+        auto const* arg_ptr = buffer_to_pointer<Tag>(arg);
+        const Index arg_stride = op.dimensions().back();
+
+        dense_ft_adj_rmul_kernel<Tag><<<grid, block, 0, stream>>>(
+            out_ptr,
+            op_ptr,
+            op_stride,
+            arg_ptr,
+            arg_stride,
+            converted.d_basis,
+            static_args.op_max_deg,
+            static_args.arg_max_deg,
+            0,0,
+            n_tensors
+            );
+
+        return cuda_error_to_xla_error(cudaGetLastError());
 
     }
 };
