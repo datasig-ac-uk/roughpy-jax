@@ -10,7 +10,7 @@
 
 namespace rpp {
 
-namespace internal {
+namespace detail {
 
 template <typename Degree_, typename Index_>
 struct GradedBasis {
@@ -24,6 +24,21 @@ struct GradedBasis {
     RPP_HOST_DEVICE RPP_NODISCARD
     constexpr Index size() const noexcept {
         return degree_begin[depth + 1];
+    }
+
+    RPP_HOST_DEVICE RPP_NODISCARD
+    constexpr Index start_of_degree(Degree d) const noexcept {
+        return degree_begin[d];
+    }
+
+    RPP_HOST_DEVICE RPP_NODISCARD
+    constexpr Index end_of_degree(Degree d) const noexcept {
+        return degree_begin[d+1];
+    }
+
+    RPP_HOST_DEVICE RPP_NODISCARD
+    constexpr Index size_of_degree(Degree d) const noexcept {
+        return degree_begin[d+1] - degree_begin[d];
     }
 
     RPP_HOST_DEVICE RPP_NODISCARD
@@ -43,6 +58,16 @@ struct GradedBasis {
         }
         return pos - 1;
     }
+
+    RPP_HOST_DEVICE RPP_NODISCARD
+    constexpr Degree degree_linear(Index idx) const noexcept {
+        Degree result = 0;
+        while (result <= depth && degree_begin[result] <= idx) {
+            ++result;
+        }
+        return result - 1;
+    }
+
 };
 
 
@@ -51,8 +76,8 @@ struct GradedBasis {
 
 
 template <typename Degree_, typename Index_>
-struct TensorBasis : internal::GradedBasis<Degree_, Index_> {
-    using Base = internal::GradedBasis<Degree_, Index_>;
+struct TensorBasis : detail::GradedBasis<Degree_, Index_> {
+    using Base = detail::GradedBasis<Degree_, Index_>;
 
     using Degree = typename Base::Degree;
     using Index = typename Base::Index;
@@ -105,8 +130,8 @@ struct TensorBasis : internal::GradedBasis<Degree_, Index_> {
 };
 
 template <typename Degree_, typename Index_>
-struct LieBasis : internal::GradedBasis<Degree_, Index_> {
-    using Base = internal::GradedBasis<Degree_, Index_>;
+struct LieBasis : detail::GradedBasis<Degree_, Index_> {
+    using Base = detail::GradedBasis<Degree_, Index_>;
     using Degree = typename Base::Degree;
     using Index = typename Base::Index;
 

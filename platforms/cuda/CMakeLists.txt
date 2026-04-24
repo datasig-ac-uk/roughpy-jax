@@ -7,8 +7,7 @@ include(GNUInstallDirs)
 option(RPJ_CUDA_INPLACE_BUILD "Build the plugin into the local package directory" OFF)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-
-set(CMAKE_C_STANDARD 17)
+ set(CMAKE_C_STANDARD 17)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -90,11 +89,40 @@ target_sources(RoughPyJAXCudaPlugin PRIVATE
   src/module.c
 )
 
+target_link_libraries(RoughPyJAXCudaPlugin PRIVATE CUDA::cudart)
+
+set(RPP_GPU_OPS_SRCS
+        src/rpp/gpu/ops/antipode.hpp
+        src/rpp/gpu/ops/ft_adjoint_multiply.hpp
+        src/rpp/gpu/ops/ft_basic.hpp
+        src/rpp/gpu/ops/ft_exp.hpp
+        src/rpp/gpu/ops/ft_fmexp.hpp
+        src/rpp/gpu/ops/ft_log.hpp
+        src/rpp/gpu/ops/ft_multiply.hpp
+        src/rpp/gpu/ops/st_adjoint_multiply.hpp
+        src/rpp/gpu/ops/st_multiply.hpp
+        src/rpp/gpu/ops/vector.hpp
+)
+
 # Keep the rpp sources separate, this will eventually be completely separate
 target_sources(RoughPyJAXCudaPlugin PRIVATE
         src/rpp/config/compiler.h
         src/rpp/config/target.h
+        src/rpp/dense/views.hpp
+        ${RPP_GPU_OPS_SRCS}
+        src/rpp/gpu/architecture.hpp
+        src/rpp/gpu/strategies.hpp
+        src/rpp/architecture.hpp
+        src/rpp/basis.hpp
+        src/rpp/config.h
+        src/rpp/operations.hpp
 )
+
+set_source_files_properties(
+        ${RPP_GPU_OPS_SRCS}
+        src/rpp/gpu/architecture.hpp
+        src/rpp/gpu/strategies.hpp
+        PROPERTIES LANGUAGE CUDA)
 
 target_include_directories(
   RoughPyJAXCudaPlugin
