@@ -1,14 +1,20 @@
-#include "dense_ft_fma.cuh"
+#include "dense_ft_fma.h"
 
 #include <algorithm>
 #include <functional>
 
+#include "error_handling.cuh"
 #include "low_precision.cuh"
+#include "basis_support.cuh"
+
+#include "kernels/dense_ft_fma.cuh"
 
 
 using namespace rpy::jax::cuda;
 
+
 namespace {
+namespace ffi = xla::ffi;
 
 using TensorBasis = rpp::StandardTensorBasis;
 using Degree = typename TensorBasis::Degree;
@@ -22,144 +28,294 @@ struct DenseFTFmaStaticArgs {
 
     int32_t b_min_degree = 0;
     int32_t c_min_degree = 0;
+};
 
-    bool zero_out_a = false;
+template<typename Tag>
+struct DenseFTFmaFunctor {
+    using Scalar = typename Tag::Scalar;
+    using Accum = typename Tag::Accum;
+
+    static ffi::Error eval(
+        ffi::Result<ffi::AnyBuffer> out,
+        ffi::AnyBuffer a,
+        ffi::AnyBuffer b,
+        ffi::AnyBuffer c,
+        AnyScalar alpha, AnyScalar beta,
+        DenseFTFmaStaticArgs static_args,
+        cudaStream_t stream
+    ) noexcept {
+        const auto tensor_size = static_args.basis.size();
+
+        unsigned block = 32;
+        if (tensor_size >= 64) {
+            block = 64;
+        } else if (tensor_size >= 128) {
+            block = 128;
+        } else {
+            block = 256;
+        }
+
+        const auto out_shape = out->dimensions();
+        const auto n_tensors = std::accumulate(
+            out_shape.begin(), out_shape.end()-1, 1LL, std::multiplies<>{});
+
+
+        const auto grid = static_cast<unsigned>(std::min(n_tensors, 2LL << 28));
+
+        auto alpha_decoded = cast_scalar<Accum>(alpha);
+        if (alpha_decoded.has_error()) { return alpha_decoded.error(); }
+
+        auto beta_decoded = cast_scalar<Accum>(beta);
+        if (beta_decoded.has_error()) { return beta_decoded.error(); }
+
+        TensorBasisConverter<Degree, Index> converted(static_args.basis, stream);
+        if (!converted) {
+            return cuda_error_to_xla_error(converted.error, "failed to convert tensor basis");
+        }
+
+        auto* out_ptr = buffer_to_pointer<Tag>(out);
+        auto* a_ptr = buffer_to_pointer<Tag>(a);
+        Index a_stride = a.dimensions().back();
+        auto* b_ptr = buffer_to_pointer<Tag>(b);
+        Index b_stride = b.dimensions().back();
+        auto* c_ptr = buffer_to_pointer<Tag>(c);
+        Index c_stride = c.dimensions().back();
+
+        dense_ft_fma_general_kernel<Tag><<<grid, block, 0, stream>>>(
+            out_ptr,
+            a_ptr,
+            a_stride,
+            b_ptr,
+            b_stride,
+            c_ptr,
+            c_stride,
+            alpha_decoded.value(), beta_decoded.value(),
+            converted.d_basis,
+            static_args.a_max_degree,
+            static_args.b_max_degree,
+            static_args.c_max_degree,
+            static_args.b_min_degree,
+            static_args.c_min_degree,
+            n_tensors
+        );
+
+        return cuda_error_to_xla_error(cudaGetLastError());
+    }
+
+    static ffi::Error eval(
+        ffi::Result<ffi::AnyBuffer> out,
+        ffi::AnyBuffer b,
+        ffi::AnyBuffer c,
+        AnyScalar alpha, AnyScalar beta,
+        DenseFTFmaStaticArgs static_args,
+        cudaStream_t stream
+    ) noexcept {
+        const auto tensor_size = static_args.basis.size();
+
+        unsigned block = 32;
+        if (tensor_size >= 64) {
+            block = 64;
+        } else if (tensor_size >= 128) {
+            block = 128;
+        } else {
+            block = 256;
+        }
+
+        const auto out_shape = out->dimensions();
+        const auto n_tensors = std::accumulate(
+            out_shape.begin(), out_shape.end(), 1LL, std::multiplies<>{});
+
+
+        const auto grid = static_cast<unsigned>(std::min(n_tensors, 2LL << 28));
+
+        auto alpha_decoded = cast_scalar<Accum>(alpha);
+        if (alpha_decoded.has_error()) { return alpha_decoded.error(); }
+
+        auto beta_decoded = cast_scalar<Accum>(beta);
+        if (beta_decoded.has_error()) { return beta_decoded.error(); }
+
+        TensorBasisConverter<Degree, Index> converted(static_args.basis, stream);
+        if (!converted) {
+            return cuda_error_to_xla_error(converted.error, "failed to convert tensor basis");
+        }
+
+
+        auto* out_ptr = buffer_to_pointer<Tag>(out);
+        Scalar* a_ptr = nullptr;
+        Index a_stride = out->dimensions().back();
+        auto* b_ptr = buffer_to_pointer<Tag>(b);
+        Index b_stride = b.dimensions().back();
+        auto* c_ptr = buffer_to_pointer<Tag>(c);
+        Index c_stride = c.dimensions().back();
+
+        dense_ft_fma_general_kernel<Tag><<<grid, block, 0, stream>>>(
+            out_ptr,
+            a_ptr,
+            a_stride,
+            b_ptr,
+            b_stride,
+            c_ptr,
+            c_stride,
+            alpha_decoded.value(),
+            beta_decoded.value(),
+            converted.d_basis,
+            static_args.a_max_degree,
+            static_args.b_max_degree,
+            static_args.c_max_degree,
+            static_args.b_min_degree,
+            static_args.c_min_degree,
+            n_tensors
+        );
+
+        return cuda_error_to_xla_error(cudaGetLastError());
+    }
 };
 
 
-template <typename ScalarTag>
-__global__ void dense_ft_fma_general_kernel(
-    typename ScalarTag::Scalar* __restrict__ out,
-    typename ScalarTag::Scalar const* __restrict__ a,
-    typename ScalarTag::Scalar const* __restrict__ b,
-    typename ScalarTag::Scalar const* __restrict__ c,
-    typename ScalarTag::Scalar alpha,
-    typename ScalarTag::Scalar beta,
-    rpp::StandardTensorBasis basis,
-    Degree a_max_deg, Degree b_max_deg, Degree c_max_deg,
-    Degree b_min_deg, Degree c_min_deg,
-    Index n_tensors
-    ) {
-    using Accum = typename ScalarTag::Accum;
+ffi::Error cuda_dense_ft_fma_impl(
+    cudaStream_t stream,
+    ffi::Result<ffi::AnyBuffer> out,
+    ffi::AnyBuffer a,
+    ffi::AnyBuffer b,
+    ffi::AnyBuffer c,
+    int32_t width,
+    int32_t depth,
+    DegreeBeginSpan degree_begin,
+    int32_t a_max_deg,
+    int32_t b_max_deg,
+    int32_t c_max_deg,
+    int32_t b_min_deg,
+    int32_t c_min_deg
+) noexcept {
+    DenseFTFmaStaticArgs static_args{
+        rpp::StandardTensorBasis{width, depth, cast_db_array(degree_begin.begin())},
+        a_max_deg,
+        b_max_deg,
+        c_max_deg,
+        b_min_deg,
+        c_min_deg
+    };
 
-    Accum alpha0 { alpha };
-    Accum beta0 { beta };
-    auto const& db = basis.degree_begin;
+    RPY_XLA_SUCCESS_OR_RETURN(
+        check_data_degree(out, static_args.basis, depth)
+    );
+    RPY_XLA_SUCCESS_OR_RETURN(
+        check_data_degree(a, static_args.basis, a_max_deg));
+    RPY_XLA_SUCCESS_OR_RETURN(
+        check_data_degree(b, static_args.basis, b_max_deg)
+    );
+    RPY_XLA_SUCCESS_OR_RETURN(
+        check_data_degree(c, static_args.basis, c_max_deg)
+    );
 
-    for (Index tensor_idx=blockIdx.x; tensor_idx<n_tensors; tensor_idx+=gridDim.x) {
-        const auto tensor_size = basis.size();
-        auto* this_out = out + tensor_idx * tensor_size;
-        auto const* this_a = (a == nullptr ? out : a) + tensor_idx * tensor_size;
-        auto const* this_b = b + tensor_idx * tensor_size;
-        auto const* this_c = c + tensor_idx * tensor_size;
-
-        for (Index elt_idx=threadIdx.x; elt_idx < tensor_size; elt_idx+=blockDim.x) {
-            const auto degree = basis.degree(elt_idx);
-
-            const auto lhs_max_deg = std::min<Degree>(degree - c_min_deg, b_max_deg);
-            const auto lhs_min_deg = std::max<Degree>(b_min_deg, degree - c_max_deg);
-            const auto out_idx = elt_idx - db[degree];
-
-            Accum accum { 0 };
-            for (Degree lhs_deg=lhs_min_deg; lhs_deg<=lhs_max_deg; lhs_deg++) {
-                const auto rhs_deg = degree - lhs_deg;
-
-                const auto splitter = db[rhs_deg+1] - db[rhs_deg];
-                const auto lhs_idx = out_idx / splitter;
-                const auto rhs_idx = out_idx % splitter;
-
-                Accum lhs_elt { this_b[db[lhs_deg] + lhs_idx] };
-                Accum rhs_elt { this_c[db[rhs_deg] + rhs_idx] };
-
-                accum += lhs_elt * rhs_elt;
-            }
-
-            accum *= beta0;
-            if (degree <= a_max_deg) {
-                accum += alpha0 * a[elt_idx];
-            }
-
-            this_out[elt_idx] = Scalar(accum);
-        }
+    if (!all_buffers_match_type(out->element_type(), a, b, c)) {
+        return ffi::Error::InvalidArgument("all tensors should have the same data type");
     }
+
+    const float alpha_val = 1.0f;
+    const float beta_val = 1.0f;
+    AnyScalar alpha(alpha_val);
+    AnyScalar beta(beta_val);
+
+    return select_type_and_go<DenseFTFmaFunctor>(
+        out->element_type(),
+        out,
+        a,
+        b,
+        c,
+        alpha, beta,
+        static_args,
+        stream
+    );
+}
+
+ffi::Error cuda_dense_ft_mul_impl(
+    cudaStream_t stream,
+    ffi::Result<ffi::AnyBuffer> out,
+    ffi::AnyBuffer lhs,
+    ffi::AnyBuffer rhs,
+    int32_t width,
+    int32_t depth,
+    DegreeBeginSpan degree_begin,
+    int32_t lhs_max_deg,
+    int32_t rhs_max_deg,
+    int32_t lhs_min_deg,
+    int32_t rhs_min_deg
+) noexcept {
+    DenseFTFmaStaticArgs static_args{
+        rpp::StandardTensorBasis{width, depth, cast_db_array(degree_begin.begin())},
+        0,
+        lhs_max_deg,
+        rhs_max_deg,
+        lhs_min_deg,
+        rhs_min_deg
+    };
+
+    RPY_XLA_SUCCESS_OR_RETURN(
+        check_data_degree(out, static_args.basis, depth)
+    );
+    RPY_XLA_SUCCESS_OR_RETURN(
+        check_data_degree(lhs, static_args.basis, lhs_max_deg)
+    );
+    RPY_XLA_SUCCESS_OR_RETURN(
+        check_data_degree(rhs, static_args.basis, rhs_max_deg)
+    );
+
+    if (!all_buffers_match_type(out->element_type(), lhs, rhs)) {
+        return ffi::Error::InvalidArgument("all tensors should have the same data type");
+    }
+
+    const float alpha_val = 0.0f;
+    const float beta_val = 1.0f;
+    AnyScalar alpha(alpha_val);
+    AnyScalar beta(beta_val);
+
+    return select_type_and_go<DenseFTFmaFunctor>(
+        out->element_type(),
+        out,
+        lhs,
+        rhs,
+        alpha, beta,
+        static_args,
+        stream
+    );
+}
 }
 
 
-template <xla::ffi::DataType DType>
-inline xla::ffi::Error dense_ft_fma_general_4_arg(
-    xla::ffi::Result<xla::ffi::AnyBuffer> out,
-    xla::ffi::AnyBuffer a,
-    xla::ffi::AnyBuffer b,
-    xla::ffi::AnyBuffer c,
-    DenseFTFmaStaticArgs&& static_args,
-    cudaStream_t stream
-    ) {
-    using Tag = ScalarTag<DType>;
-    using Native = xla::ffi::NativeType<DType>;
-
-    const auto tensor_size = static_args.basis.size();
-
-    unsigned block = 32;
-    if (tensor_size >= 64) {
-        block = 64;
-    } else if (tensor_size >= 128) {
-        block = 128;
-    } else {
-        block = 256;
-    }
-
-    const auto out_shape = out->dimensions();
-    const auto n_tensors = std::accumulate(
-        out_shape.begin(), out_shape.end(), 1LL, std::multiplies<> {});
+XLA_FFI_DEFINE_HANDLER_SYMBOL(
+    cuda_dense_ft_fma,
+    cuda_dense_ft_fma_impl,
+    xla::ffi::Ffi::Bind()
+    .Ctx<xla::ffi::PlatformStream<cudaStream_t>>()
+    .Ret<xla::ffi::AnyBuffer>()
+    .Arg<xla::ffi::AnyBuffer>()
+    .Arg<xla::ffi::AnyBuffer>()
+    .Arg<xla::ffi::AnyBuffer>()
+    .Attr<int32_t>("width")
+    .Attr<int32_t>("depth")
+    .Attr<rpy::jax::cuda::DegreeBeginSpan>("degree_begin")
+    .Attr<int32_t>("a_max_deg")
+    .Attr<int32_t>("b_max_deg")
+    .Attr<int32_t>("c_max_deg")
+    .Attr<int32_t>("b_min_deg")
+    .Attr<int32_t>("c_min_deg")
+);
 
 
-    const auto grid = static_cast<unsigned>(std::min(n_tensors, 65536LL));
-
-    typename Tag::Scalar alpha { 1.0f };
-    typename Tag::Scalar beta { 1.0f };
-
-    const size_t db_bytes = sizeof(Index) * static_args.basis.size();
-
-    Index* d_degree_begin;
-    auto ret = cudaMallocAsync(&d_degree_begin, db_bytes, stream);
-    if (ret != cudaSuccess) {
-        return {xla::ffi::ErrorCode::kInternal, cudaGetErrorString(ret)};
-    }
-
-    ret = cudaMemcpyAsync(d_degree_begin, static_args.basis.degree_begin, db_bytes, cudaMemcpyHostToDevice, stream);
-    if (ret != cudaSuccess) {
-        cudaFreeAsync(d_degree_begin, stream);
-        return {xla::ffi::ErrorCode::kInternal, cudaGetErrorString(ret)};
-    }
-
-    rpp::StandardTensorBasis d_basis { static_args.basis.width, static_args.basis.depth, d_degree_begin};
-
-    dense_ft_fma_general_kernel<Tag><<<grid, block, 0, stream>>>(
-        out->typed_data<Native>,
-        a.typed_data<Native>,
-        b.typed_data<Native>,
-         c.typed_data<Native>,
-         alpha, beta,
-         d_basis,
-         static_args.a_max_degree,
-         static_args.b_max_degree,
-         static_args.c_max_degree,
-         static_args.b_min_degree,
-         static_args.c_min_degree
-        );
-
-    cudaFreeAsync(d_degree_begin, stream);
-    if ((ret = cudaGetLastError()) != cudaSuccess) {
-        return { xla::ffi::ErrorCode::kInternal, cudaGetErrorString(ret)};
-    }
-
-    return xla::ffi::Error::Success();
-}
-
-
-
-}
-
-
-
-
+XLA_FFI_DEFINE_HANDLER_SYMBOL(
+    cuda_dense_ft_mul,
+    cuda_dense_ft_mul_impl,
+    xla::ffi::Ffi::Bind()
+    .Ctx<xla::ffi::PlatformStream<cudaStream_t>>()
+    .Ret<xla::ffi::AnyBuffer>()
+    .Arg<xla::ffi::AnyBuffer>()
+    .Arg<xla::ffi::AnyBuffer>()
+    .Attr<int32_t>("width")
+    .Attr<int32_t>("depth")
+    .Attr<rpy::jax::cuda::DegreeBeginSpan>("degree_begin")
+    .Attr<int32_t>("lhs_max_deg")
+    .Attr<int32_t>("rhs_max_deg")
+    .Attr<int32_t>("lhs_min_deg")
+    .Attr<int32_t>("rhs_min_deg")
+);
