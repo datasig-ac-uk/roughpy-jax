@@ -2,6 +2,7 @@
 #define PLATFORMS_CUDA_SRC_RPP_GPU_OPS_FT_MULTIPLY_HPP
 
 #include <algorithm>
+#include <functional>
 
 #include <rpp/config.h>
 
@@ -12,9 +13,9 @@
 
 
 namespace rpp::ops {
-template<typename Scalar_, typename Accum_, unsigned BlockSize, typename Architecture, typename Basis>
-class FTMultiply<gpu::strategies::BlockStrategy<Scalar_, Accum_, BlockSize, Architecture>, Basis> {
-    using Strategy = gpu::strategies::BlockStrategy<Scalar_, Accum_, BlockSize, Architecture>;
+template<typename Scalar_, typename Accum_, unsigned MaxBlockSize, typename Architecture, typename Basis>
+class FTMultiply<gpu::strategies::BlockStrategy<Scalar_, Accum_, MaxBlockSize, Architecture>, Basis> {
+    using Strategy = gpu::strategies::BlockStrategy<Scalar_, Accum_, MaxBlockSize, Architecture>;
     using Scalar = Scalar_;
     using Accum = Accum_;
     using Basis = Basis;
@@ -24,10 +25,12 @@ class FTMultiply<gpu::strategies::BlockStrategy<Scalar_, Accum_, BlockSize, Arch
 
 public:
     using Context = typename Strategy::Context;
-    using SharedMemory = int;
+
+    union SharedMemory {
+        typename Strategy::BlockReduceArray reduce;
+    };
 
 private:
-
     RPP_DEVICE static Accum multiply_loop_with_degree(
         dense::DenseVectorView<Scalar const *, Basis> const &b,
         dense::DenseVectorView<Scalar const *, Basis> const &c,
@@ -80,7 +83,6 @@ private:
     }
 
 public:
-
     RPP_DEVICE static void ft_fma(
         Context const &ctx,
         dense::DenseTensorView<Scalar *, Basis> const &out,
@@ -93,10 +95,14 @@ public:
         auto const &basis = a.basis();
 
         for (Index elt_idx = ctx.thread_rank(); elt_idx < a.size(); elt_idx += ctx.num_threads()) {
-            auto acc = multiply_loop(b, c, elt_idx, basis);
+            const auto degree = basis.degree(elt_idx);
+            auto acc = multiply_loop_with_degree(b, c, elt_idx, degree, basis);
 
             acc *= beta;
-            const Accum a_val{a[elt_idx]};
+            Accum a_val{0};
+            if (a.has_degree(degree)) {
+                a_val = Accum{a[elt_idx]};
+            }
 
             out[elt_idx] = static_cast<Scalar>(alpha * a_val + acc);
         }
@@ -120,12 +126,12 @@ public:
         Context const &ctx,
         dense::DenseTensorView<Scalar *, Basis> const &lhs,
         dense::DenseTensorView<Scalar const *, Basis> const &rhs) noexcept {
-        auto const& basis = lhs.basis();
+        auto const &basis = lhs.basis();
         const auto low_range_degree = Strategy::low_range_degree(ctx, basis);
 
         // High pass
-        for (Degree out_deg=basis.depth; out_deg>low_range_degree; --out_deg) {
-            for (auto elt_idx=basis.start_of_degree(out_deg); elt_idx<basis.end_of_degree(out_deg); ++elt_idx) {
+        for (Degree out_deg = basis.depth; out_deg > low_range_degree; --out_deg) {
+            for (auto elt_idx = basis.start_of_degree(out_deg); elt_idx < basis.end_of_degree(out_deg); ++elt_idx) {
                 auto acc = multiply_loop_with_degree(lhs, rhs, elt_idx, out_deg, basis);
                 lhs[elt_idx] = static_cast<Scalar>(acc);
             }
@@ -135,7 +141,7 @@ public:
         // Low pass
         auto elt_idx = std::min<Index>(ctx.thread_rank());
         const auto active = elt_idx < basis.end_of_degree(low_range_degree);
-        Accum acc { 0 };
+        Accum acc{0};
         if (active) {
             const auto degree = basis.degree_linear(elt_idx);
             acc = multiply_loop_with_degree(lhs, rhs, elt_idx, degree, basis);
@@ -152,13 +158,13 @@ public:
         dense::DenseTensorView<Scalar *, Basis> const &lhs,
         dense::DenseTensorView<Scalar const *, Basis> const &rhs,
         Accum beta
-        ) noexcept {
-        auto const& basis = lhs.basis();
-        const auto low_range_degree = Strategy::low_range_degree(ctx, basis);
+    ) noexcept {
+        auto const &basis = lhs.basis();
+        const auto low_range_degree = ctx.low_range_degree(basis);
 
         // High pass
-        for (Degree out_deg=basis.depth; out_deg>low_range_degree; --out_deg) {
-            for (auto elt_idx=basis.start_of_degree(out_deg); elt_idx<basis.end_of_degree(out_deg); ++elt_idx) {
+        for (Degree out_deg = basis.depth; out_deg > low_range_degree; --out_deg) {
+            for (auto elt_idx = basis.start_of_degree(out_deg); elt_idx < basis.end_of_degree(out_deg); ++elt_idx) {
                 auto acc = multiply_loop_with_degree(lhs, rhs, elt_idx, out_deg, basis);
                 lhs[elt_idx] = static_cast<Scalar>(beta * acc);
             }
@@ -168,7 +174,7 @@ public:
         // Low pass
         auto elt_idx = std::min<Index>(ctx.thread_rank());
         const auto active = elt_idx < basis.end_of_degree(low_range_degree);
-        Accum acc { 0 };
+        Accum acc{0};
         if (active) {
             const auto degree = basis.degree_linear(elt_idx);
             acc = multiply_loop_with_degree(lhs, rhs, elt_idx, degree, basis);
@@ -180,38 +186,42 @@ public:
         }
     }
 
-
 private:
-
-    template <InplaceFMAType FMAType>
+    template<InplaceFMAType FMAType>
     RPP_DEVICE static void inplace_fma(
-        Context const& ctx,
+        Context const &ctx,
         dense::DenseTensorView<Scalar *, Basis> const &a,
         dense::DenseVectorView<Scalar const *, Basis> const &b,
         dense::DenseVectorView<Scalar const *, Basis> const &c,
         Accum alpha = Accum{1},
         Accum beta = Accum{1}
-        ) noexcept {
+    ) noexcept {
         auto const &basis = a.basis();
-        const auto low_range_degree = Strategy::low_range_degree(ctx, a.basis());
+        const auto low_range_degree = ctx.low_range_degree(basis);
 
         // High pass
-        for (Degree out_deg=basis.depth; out_deg>low_range_degree; --out_deg) {
-            for (auto elt_idx=basis.start_of_degree(out_deg); elt_idx<basis.end_of_degree(out_deg); ++elt_idx) {
+        for (Degree out_deg = basis.depth; out_deg > low_range_degree; --out_deg) {
+            for (auto elt_idx = basis.start_of_degree(out_deg); elt_idx < basis.end_of_degree(out_deg); ++elt_idx) {
                 if constexpr (FMAType == InplaceFMAType::AEqualsABPlusC) {
-                    auto acc = multiply_loop(a, b, elt_idx, out_deg, basis);
+                    auto acc = multiply_loop_with_degree(a, b, elt_idx, out_deg, basis);
                     acc *= beta;
-                    const Accum c_val { c[elt_idx] };
+                    Accum c_val{0};
+                    if (c.has_degree(out_deg)) {
+                        c_val = Accum{c[elt_idx]};
+                    }
                     a[elt_idx] = static_cast<Scalar>(alpha * c_val + acc);
                 } else if constexpr (FMAType == InplaceFMAType::AEqualsBAPlusC) {
-                    auto acc = multiply_loop(b, a, elt_idx, out_deg, basis);
+                    auto acc = multiply_loop_with_degree(b, a, elt_idx, out_deg, basis);
                     acc *= beta;
-                    const Accum c_val { c[elt_idx] };
+                    Accum c_val{0};
+                    if (c.has_degree(out_deg)) {
+                        c_val = Accum{c[elt_idx]};
+                    }
                     a[elt_idx] = static_cast<Scalar>(alpha * c_val + acc);
                 } else if constexpr (FMAType == InplaceFMAType::AEqualsBCPlusA) {
-                    auto acc = multiply_loop(b, c, elt_idx, out_deg, basis);
+                    auto acc = multiply_loop_with_degree(b, c, elt_idx, out_deg, basis);
                     acc *= beta;
-                    const Accum a_val { a[elt_idx] };
+                    const Accum a_val{a[elt_idx]};
                     a[elt_idx] = static_cast<Scalar>(alpha * a_val + acc);
                 } else {
                     RPP_UNREACHABLE();
@@ -224,21 +234,21 @@ private:
         auto elt_idx = ctx.thread_rank();
         const auto active = elt_idx < basis.end_of_degree(low_range_degree);
 
-        Accum acc { 0 };
+        Accum acc{0};
         if (active) {
             const auto degree = basis.degree_linear(elt_idx);
             if constexpr (FMAType == InplaceFMAType::AEqualsABPlusC) {
-                acc = multiply_loop(a, b, elt_idx, degree, basis);
+                acc = multiply_loop_with_degree(a, b, elt_idx, degree, basis);
                 acc *= beta;
-                acc += alpha * Accum { c[elt_idx] };
+                acc += alpha * Accum{c[elt_idx]};
             } else if constexpr (FMAType == InplaceFMAType::AEqualsBAPlusC) {
-                acc = multiply_loop(b, a, elt_idx, degree, basis);
+                acc = multiply_loop_with_degree(b, a, elt_idx, degree, basis);
                 acc *= beta;
-                acc += alpha * Accum { c[elt_idx] };
+                acc += alpha * Accum{c[elt_idx]};
             } else if constexpr (FMAType == InplaceFMAType::AEqualsBCPlusA) {
-                acc = multiply_loop(b, c, elt_idx, degree, basis);
+                acc = multiply_loop_with_degree(b, c, elt_idx, degree, basis);
                 acc *= beta;
-                acc += alpha * Accum { a[elt_idx] };
+                acc += alpha * Accum{a[elt_idx]};
             } else {
                 RPP_UNREACHABLE();
             }
@@ -251,7 +261,6 @@ private:
     }
 
 public:
-
     RPP_DEVICE static void ft_fma(
         Context const &ctx,
         dense::DenseTensorView<Scalar *, Basis> const &a,
@@ -304,10 +313,164 @@ public:
     ) noexcept {
         ft_fma(ctx, a, b, c, alpha, beta);
     }
+
+private:
+    RPP_DEVICE static Accum adjoint_degree_zero_reduce(
+        Context const &ctx,
+        dense::DenseTensorView<Scalar const *, Basis> const &op,
+        dense::DenseTensorView<Scalar const *, Basis> const &arg,
+        Basis const &basis
+    ) noexcept {
+        const auto deg_min = std::max(op.min_degree(), arg.min_degree());
+        const auto deg_max = std::min(op.max_degree(), arg.max_degree());
+
+        Accum val{0};
+        for (Index i = basis.start_of_degree(deg_min); i < basis.end_of_degree(deg_max); i += ctx.num_threads()) {
+            const Accum op_val{op[i]};
+            const Accum arg_val{op[i]};
+
+            val += op_val * arg_val;
+        }
+
+        return ctx.reduce(val, std::plus<Accum>{});
+    }
+
+    template<typename Fn>
+    RPP_DEVICE static Accum adjoint_low_degree_reduce(
+        Context const &ctx,
+        dense::DenseTensorView<Scalar const *, Basis> const &op,
+        dense::DenseTensorView<Scalar const *, Basis> const &arg,
+        const Degree op_degree_min,
+        const Degree op_degree_max,
+        Basis const &basis,
+        Fn &&arg_idx
+    ) noexcept {
+        Accum val{0};
+        const auto begin = basis.start_of_degree(op_degree_min);
+        const auto end = basis.end_of_degree(op_degree_max);
+
+        for (Index i = begin; i < end; i += ctx.num_threads()) {
+            const Accum op_val{op[i]};
+            const Accum arg_val{op[arg_idx(i)]};
+
+            val += op_val * arg_val;
+        }
+
+        return ctx.reduce(val, std::plus<Accum>{});
+    }
+
+public:
+    RPP_DEVICE static void ft_adj_lmul(
+        Context const &ctx,
+        dense::DenseTensorView<Scalar *, Basis> &out,
+        dense::DenseTensorView<Scalar const *, Basis> const &op,
+        dense::DenseTensorView<Scalar const *, Basis> const &arg
+    ) noexcept {
+        auto const &basis = out.basis();
+
+        // Degree zero output
+        if (op.min_degree() == 0) {
+            out[0] = static_cast<Scalar>(adjoint_low_degree_reduce(
+                ctx,
+                op,
+                arg,
+                std::max(op.min_degree(), arg.min_degree()),
+                std::min(op.max_degree(), arg.max_degree()),
+                basis,
+                [](Index i) { return i; }
+            ));
+        }
+
+        Degree out_deg = std::max(op.min_degree(), 1);
+
+        const auto small_size_threshold = ctx.num_threads() / 4;
+        for (; out_deg < op.max_degree() && basis.size_of_degree(out_deg) <= small_size_threshold; ++out_deg) {
+            const auto deg_1_op_min_deg = std::max(op.min_degree(), arg.min_degree()-1);
+            const auto deg_1_op_max_deg = std::min(op.max_degree(), arg.max_degree() - 1);
+            Index splitter = basis.size_of_degree(out_deg);
+
+            for (Index suffix=basis.start_of_degre(out_deg); suffix<basis.end_of_degree(out_deg); ++suffix) {
+                const auto val = adjoint_low_degree_reduce(
+                    ctx,
+                    op,
+                    arg,
+                    deg_1_op_min_deg,
+                    deg_1_op_max_deg,
+                    basis,
+                    [&suffix, &splitter](Index i) { return i * splitter + suffix; }
+                    );
+                out[suffix] = static_cast<Scalar>(val);
+            }
+        }
+
+
+        for (Index elt_idx = basis.start_of_degree(out_deg) + ctx.thread_rank(); elt_idx < out.size(); elt_idx += ctx.num_threads()) {
+            const auto elt_degree = basis.degree(elt_idx);
+
+            const auto op_min_deg = std::max(arg.min_degree() - elt_degree, op.min_degree());
+            const auto op_max_deg = std::min(arg.max_degree() - elt_degree, op.max_degree());
+
+            for (auto op_deg = op_min_deg; op_deg < op_max_deg; ++op_deg) {
+                const auto begin = basis.start_of_degree(op_deg);
+                const auto end = basis.end_of_degree(op_deg);
+                const auto stride = end - begin;
+
+                Accum elt { 0 };
+                for (Index op_idx = basis.start_of_degree(op_deg); op_idx<basis.end_of_degree(op_deg); ++op_idx) {
+                    Accum op_val { op[op_idx] };
+                    Accum arg_val { arg[op_idx*stride + elt_idx] };
+                    elt += op_val * arg_val;
+                }
+                out[elt_idx] = static_cast<Scalar>(elt);
+            }
+        }
+    }
+
+    RPP_DEVICE static void ft_adj_rmul(
+        Context const &ctx,
+        dense::DenseTensorView<Scalar *, Basis> &out,
+        dense::DenseTensorView<Scalar const *, Basis> const &op,
+        dense::DenseTensorView<Scalar const *, Basis> const &arg
+    ) noexcept {
+        auto const& basis = out.basis();
+
+        // Degree zero output
+        if (op.min_degree() == 0) {
+            out[0] = static_cast<Scalar>(adjoint_low_degree_reduce(
+                ctx,
+                op,
+                arg,
+                std::max(op.min_degree(), arg.min_degree()),
+                std::min(op.max_degree(), arg.max_degree()),
+                basis,
+                [](Index i) { return i; }
+            ));
+        }
+
+        const auto out_deg_min = std::max(1, out.min_degree());
+        const auto out_deg_max = out.max_degree();
+
+        auto const begin = basis.start_of_degree(out_deg_min);
+        auto const end = basis.end_of_degree(out_deg_max);
+        for (Index elt_idx = begin + ctx.thread_rank(); elt_idx < end; elt_idx += ctx.num_threads()) {
+            const auto degree = basis.degree(elt_idx);
+            const auto op_min_deg = std::max(op.min_degree(), arg.min_degree() - degree);
+            const auto op_max_deg = std::min(op.max_degree(), arg.max_degree() - degree);
+
+            Accum elt {0};
+            for (Degree op_deg=op_min_deg; op_deg <= op_max_deg; ++op_deg) {
+                const auto arg_stride = basis.size_of_degree(op_deg);
+                for (Index op_idx = basis.start_of_degree(op_deg); op_idx < basis.end_of_degree(op_deg); ++op_idx) {
+                    Accum arg_val { arg[elt_idx * arg_stride + op_idx] };
+                    Accum op_val { op[op_idx] };
+                    elt += arg_val * op_val;
+                }
+            }
+
+            out[elt_idx] = static_cast<Scalar>(elt);
+        }
+    }
 };
-
-
-
 } // namespace rpp::ops
 
 

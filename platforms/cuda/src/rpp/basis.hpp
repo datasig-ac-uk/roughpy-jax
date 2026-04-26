@@ -1,6 +1,7 @@
 #ifndef RPP_BASIS_HPP
 #define RPP_BASIS_HPP
 
+#include <array>
 #include <cstdint>
 #include <utility>
 #include <algorithm>
@@ -98,21 +99,22 @@ struct TensorBasis : detail::GradedBasis<Degree_, Index_> {
         };
     }
 
-    template<typename Letter>
+    template<typename Array>
     RPP_HOST_DEVICE void unpack_index_to_letters(
-        Letter *letter_array,
+        Array& letters,
         Degree degree,
         Index index
     ) noexcept {
+        using Letter = std::remove_reference_t<decltype(letters[0])>;
         for (Degree d = 0; d < degree; ++d) {
-            letter_array[d] = static_cast<Letter>(index % this->width);
+            letters[d] = static_cast<Letter>(index % this->width);
             index /= this->width;
         }
     }
 
-    template<typename Letter, typename BitMask>
+    template<typename Array, typename BitMask>
     RPP_HOST_DEVICE
-    void pack_masked_index(Letter const *letters,
+    void pack_masked_index(Array const &letters,
                            Degree degree,
                            BitMask const &bitmask,
                            Degree &lhs_deg,
@@ -120,6 +122,10 @@ struct TensorBasis : detail::GradedBasis<Degree_, Index_> {
                            Degree &rhs_deg,
                            Index &rhs_idx
     ) const noexcept {
+        lhs_deg = 0;
+        rhs_deg = 0;
+        lhs_idx = 0;
+        rhs_idx = 0;
         for (; degree >= 0; --degree) {
             if (bitmask[degree]) {
                 ++lhs_deg;

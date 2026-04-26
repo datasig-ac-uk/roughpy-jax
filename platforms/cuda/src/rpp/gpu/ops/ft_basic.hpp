@@ -6,10 +6,14 @@
 #include <rpp/gpu/strategies.hpp>
 #include <rpp/dense/views.hpp>
 
+#include <rpp/gpu/ops/vector.hpp>
+
 namespace rpp::ops {
 
 template<typename Scalar_, typename Accum_, unsigned BlockSize, typename Architecture, typename Basis>
-class FTBasic<gpu::strategies::BlockStrategy<Scalar_, Accum_, BlockSize, Architecture>, Basis> {
+class FTBasic<gpu::strategies::BlockStrategy<Scalar_, Accum_, BlockSize, Architecture>, Basis>
+    : Vector<gpu::strategies::BlockStrategy<Scalar_, Accum_, BlockSize, Architecture>>
+{
     using Strategy = gpu::strategies::BlockStrategy<Scalar_, Accum_, BlockSize, Architecture>;
     using Scalar = Scalar_;
     using Accum = Accum_;
@@ -30,6 +34,17 @@ public:
         if (ctx.thread_rank() == 0) {
             Accum elt { tensor[0] };
             tensor[0] = static_cast<Scalar>(elt + scalar);
+        }
+    }
+
+    RPP_DEVICE static void set_identity(
+        Context const& ctx,
+        dense::DenseTensorView<Scalar *, Basis>& tensor,
+        Accum scalar = Accum { 1 }
+        ) noexcept {
+        FTBasic::set_identity(ctx, tensor);
+        if (ctx.thread_rank() == 0) {
+            tensor[0] = static_cast<Scalar>(scalar);
         }
     }
 };

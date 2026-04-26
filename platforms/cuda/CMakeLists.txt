@@ -116,13 +116,9 @@ target_link_libraries(RoughPyJAXCudaPlugin PRIVATE CUDA::cudart)
 
 set(RPP_GPU_OPS_SRCS
         src/rpp/gpu/ops/antipode.hpp
-        src/rpp/gpu/ops/ft_adjoint_multiply.hpp
         src/rpp/gpu/ops/ft_basic.hpp
-        src/rpp/gpu/ops/ft_exp.hpp
-        src/rpp/gpu/ops/ft_fmexp.hpp
-        src/rpp/gpu/ops/ft_log.hpp
+        src/rpp/gpu/ops/ft_exp_and_log.hpp
         src/rpp/gpu/ops/ft_multiply.hpp
-        src/rpp/gpu/ops/st_adjoint_multiply.hpp
         src/rpp/gpu/ops/st_multiply.hpp
         src/rpp/gpu/ops/vector.hpp
 )

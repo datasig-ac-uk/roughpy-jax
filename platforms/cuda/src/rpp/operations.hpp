@@ -20,25 +20,15 @@ template <typename Strategy, typename Basis>
 class FTMultiply;
 
 template <typename Strategy, typename Basis>
-class FTAdjointMultiply;
-
-template <typename Strategy, typename Basis>
 class Antipode;
 
 template <typename Strategy, typename Basis>
 class STMultiply;
 
-template <typename Strategy, typename Basis>
-class STAdjointMultiply;
 
 template <typename Strategy, typename Basis>
-class FTExp;
+class FTExpAndLog;
 
-template <typename Strategy, typename Basis>
-class FTFMExp;
-
-template <typename Strategy, typename Basis>
-class FTLog;
 
 } // namespace rpp
 
