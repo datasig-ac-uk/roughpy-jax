@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <type_traits>
+#include <rpp/basis/tensor_basis.hpp>
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wreturn-type"
@@ -27,21 +28,16 @@ namespace ffi = xla::ffi;
 using DegreeBeginIndex = std::conditional_t<(sizeof(std::ptrdiff_t) == sizeof(int64_t)),
                                             int64_t, int32_t>;
 using DegreeBeginSpan = ffi::Span<const DegreeBeginIndex>;
-
+using HostTensorBasis = rpp::basis::StandardTensorBasis;
 
 template <typename T>
-/// This is a solution to a problem that shouldn't exist. Unfortunately, only
-/// long long (=int64_t) is a registered type in the XLA decoder logic, and on
-/// MacOs ptrdiff_t resolves to a long, even though this is the same size it is
-/// a different type. This function just casts the pointer to a ptrdiff_t, after
-/// checking it is the right size.
-constexpr auto cast_db_array(const T* db_in) noexcept -> const std::ptrdiff_t* {
+constexpr auto cast_db_array(const T* db_in) noexcept -> const std::ptrdiff_t*
+{
     static_assert(sizeof(T) == sizeof(std::ptrdiff_t), "mismatch integer size");
-    static_assert(std::is_signed_v<T> == std::is_signed_v<std::ptrdiff_t>, "different signedness");
+    static_assert(std::is_signed_v<T> == std::is_signed_v<std::ptrdiff_t>,
+                  "different signedness");
     return reinterpret_cast<const std::ptrdiff_t*>(db_in);
 }
-
-
 template <typename Basis>
 auto data_size_to_degree(const Basis& basis, int32_t degree) -> typename Basis::Index
 {
@@ -100,19 +96,6 @@ ffi::Error check_data_degree(Buffer& buf, const Basis& basis, int32_t degree, in
 
     return ffi::Error::Success();
 }
-
-template <typename ScalarTag>
-typename ScalarTag::Scalar const* buffer_to_pointer(ffi::AnyBuffer buffer) noexcept {
-    using ResultPtr = typename ScalarTag::Scalar const*;
-    return static_cast<ResultPtr>(buffer.untyped_data());
-}
-
-template <typename ScalarTag>
-typename ScalarTag::Scalar* buffer_to_pointer(ffi::Result<ffi::AnyBuffer> buffer) noexcept {
-    using ResultPtr = typename ScalarTag::Scalar*;
-    return static_cast<ResultPtr>(buffer->untyped_data());
-}
-
 
 } // namespace rpy::jax::cuda
 

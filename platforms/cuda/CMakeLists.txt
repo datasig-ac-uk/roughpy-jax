@@ -7,7 +7,7 @@ include(GNUInstallDirs)
 option(RPJ_CUDA_INPLACE_BUILD "Build the plugin into the local package directory" OFF)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
- set(CMAKE_C_STANDARD 17)
+set(CMAKE_C_STANDARD 17)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -24,28 +24,8 @@ find_package(
         Python 3.11 REQUIRED COMPONENTS Development.Module Interpreter ${SKBUILD_SABI_COMPONENT}
 )
 find_package(CUDAToolkit REQUIRED)
-#
-#if(DEFINED RPJ_CUDA_TOOLKIT_MAJOR)
-#  if(NOT RPJ_CUDA_TOOLKIT_MAJOR MATCHES "^[0-9]+$")
-#    message(FATAL_ERROR "RPJ_CUDA_TOOLKIT_MAJOR must be numeric, got '${RPJ_CUDA_TOOLKIT_MAJOR}'")
-#  endif()
-#else()
-#  set(RPJ_CUDA_TOOLKIT_MAJOR "${CUDAToolkit_VERSION_MAJOR}")
-#endif()
-#
-#if(NOT RPJ_CUDA_TOOLKIT_MAJOR STREQUAL "12" AND NOT RPJ_CUDA_TOOLKIT_MAJOR STREQUAL "13")
-#  message(
-#    FATAL_ERROR
-#      "Only CUDA toolkit major versions 12 and 13 are supported; got '${RPJ_CUDA_TOOLKIT_MAJOR}'"
-#  )
-#endif()
-#
-#if(NOT CUDAToolkit_VERSION_MAJOR STREQUAL RPJ_CUDA_TOOLKIT_MAJOR)
-#  message(
-#    FATAL_ERROR
-#      "Configured toolkit major (${RPJ_CUDA_TOOLKIT_MAJOR}) does not match the detected CUDA toolkit (${CUDAToolkit_VERSION_MAJOR})"
-#  )
-#endif()
+find_package(RoughPathPrimitives CONFIG REQUIRED COMPONENTS GPU)
+
 
 set(RPJ_CUDA_PACKAGE_SUFFIX "cuda${RPJ_CUDA_TOOLKIT_MAJOR}")
 set(RPJ_CUDA_PACKAGE_DIR "roughpy_jax_${RPJ_CUDA_PACKAGE_SUFFIX}")
@@ -80,20 +60,12 @@ set_target_properties(
 
 
 target_sources(RoughPyJAXCudaPlugin PRIVATE
-        src/cuda/kernels/dense_ft_adj_mul.cuh
-        src/cuda/kernels/dense_ft_antipode.cuh
-        src/cuda/kernels/dense_ft_fma.cuh
-        src/cuda/kernels/dense_st_adj_mul.cuh
-        src/cuda/kernels/dense_st_fma.cuh
-        src/cuda/basis_support.cuh
         src/cuda/dense_ft_adj_mul.cu
         src/cuda/dense_ft_adj_mul.h
         src/cuda/dense_ft_antipode.cu
         src/cuda/dense_ft_antipode.h
         src/cuda/dense_ft_exp.cu
         src/cuda/dense_ft_exp.h
-        src/cuda/error_handling.cu
-        src/cuda/error_handling.cuh
         src/cuda/dense_ft_fma.h
         src/cuda/dense_ft_fma.cu
         src/cuda/dense_ft_fmexp.cu
@@ -104,44 +76,16 @@ target_sources(RoughPyJAXCudaPlugin PRIVATE
         src/cuda/dense_st_adj_mul.h
         src/cuda/dense_st_fma.cu
         src/cuda/dense_st_fma.h
-        src/cuda/error_handling.cu
-        src/cuda/error_handling.cuh
-        src/cuda/low_precision.cuh
         src/cuda/xla_headers.hpp
+        src/cuda/scalars.hpp
+        src/cuda/select_strategy.cuh
         src/stub.cpp
         src/module.c
 )
 
 target_link_libraries(RoughPyJAXCudaPlugin PRIVATE CUDA::cudart)
 
-set(RPP_GPU_OPS_SRCS
-        src/rpp/gpu/ops/antipode.hpp
-        src/rpp/gpu/ops/ft_basic.hpp
-        src/rpp/gpu/ops/ft_exp_and_log.hpp
-        src/rpp/gpu/ops/ft_multiply.hpp
-        src/rpp/gpu/ops/st_multiply.hpp
-        src/rpp/gpu/ops/vector.hpp
-)
 
-# Keep the rpp sources separate, this will eventually be completely separate
-target_sources(RoughPyJAXCudaPlugin PRIVATE
-        src/rpp/config/compiler.h
-        src/rpp/config/target.h
-        src/rpp/dense/views.hpp
-        ${RPP_GPU_OPS_SRCS}
-        src/rpp/gpu/architecture.hpp
-        src/rpp/gpu/strategies.hpp
-        src/rpp/architecture.hpp
-        src/rpp/basis.hpp
-        src/rpp/config.h
-        src/rpp/operations.hpp
-)
-
-set_source_files_properties(
-        ${RPP_GPU_OPS_SRCS}
-        src/rpp/gpu/architecture.hpp
-        src/rpp/gpu/strategies.hpp
-        PROPERTIES LANGUAGE CUDA)
 
 target_include_directories(
         RoughPyJAXCudaPlugin
@@ -159,6 +103,7 @@ target_link_libraries(
         RoughPyJAXCudaPlugin
         PRIVATE
         Python::Module
+        RPP::RPP_GPU
         #    CUDA::cudart
         XLA::FFI
 )

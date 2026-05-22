@@ -1,20 +1,21 @@
-#ifndef PLATFORMS_CUDA_SRC_CUDA_LOW_PRECISION_CUH
-#define PLATFORMS_CUDA_SRC_CUDA_LOW_PRECISION_CUH
+#ifndef PLATFORMS_CUDA_SRC_CUDA_SCALARS_HPP
+#define PLATFORMS_CUDA_SRC_CUDA_SCALARS_HPP
 
 #include <type_traits>
 #include <utility>
 
 #include <rpp/config.h>
 
-#include "xla_headers.hpp"
-
 #include <cuda_bf16.h>
 #include <cuda_fp16.h>
 #include <cuda_fp4.h>
 #include <cuda_fp8.h>
 
+#include "xla_headers.hpp"
 
 namespace rpy::jax::cuda {
+
+
 template<xla::ffi::DataType DType>
 struct ScalarTag;
 
@@ -129,12 +130,6 @@ RPP_FORCEINLINE xla::ffi::Error select_type_and_go(xla::ffi::DataType dtype,
         case xla::ffi::DataType::BF16:
             return Fn<ScalarTag<xla::ffi::DataType::BF16> >::eval(
                 std::forward<Args>(args)...);
-        case xla::ffi::DataType::F8E4M3:
-            return Fn<ScalarTag<xla::ffi::DataType::F8E4M3> >::eval(
-                std::forward<Args>(args)...);
-        case xla::ffi::DataType::F8E5M2:
-            return Fn<ScalarTag<xla::ffi::DataType::F8E5M2> >::eval(
-                std::forward<Args>(args)...);
         case xla::ffi::DataType::F32:
             return Fn<ScalarTag<xla::ffi::DataType::F32> >::eval(
                 std::forward<Args>(args)...);
@@ -165,6 +160,7 @@ RPP_FORCEINLINE xla::ffi::Error select_type_and_go(xla::ffi::DataType dtype,
             return {xla::ffi::ErrorCode::kInvalidArgument, "unsupported dtype"};
     }
 }
+
 
 
 class AnyScalar {
@@ -243,6 +239,8 @@ ffi::ErrorOr<T> cast_scalar(AnyScalar const &value) noexcept {
             return {ffi::Error(ffi::ErrorCode::kInvalidArgument, "unsupported scalar type")};
     }
 }
+
+
 } // namespace rpy::jax::cuda
 
-#endif // PLATFORMS_CUDA_SRC_CUDA_LOW_PRECISION_CUH
+#endif //PLATFORMS_CUDA_SRC_CUDA_SCALARS_HPP
