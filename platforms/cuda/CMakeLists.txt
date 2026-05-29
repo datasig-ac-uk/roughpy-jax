@@ -6,6 +6,12 @@ include(GNUInstallDirs)
 
 option(RPJ_CUDA_INPLACE_BUILD "Build the plugin into the local package directory" OFF)
 
+set(RPJ_CUDA_PACKAGE_DIR "roughpy_jax_cuda_plugin" CACHE STRING
+        "Python package directory for the CUDA plugin wheel")
+set(RPJ_CUDA_MODULE_NAME "_rpy_jax_cuda")
+set(RPJ_CUDA_VARIANT "" CACHE STRING
+        "CUDA toolkit variant label recorded in the plugin metadata, e.g. 12.8 or 13")
+
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_C_STANDARD 17)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -28,9 +34,14 @@ find_package(CUDAToolkit REQUIRED)
 find_package(RoughPathPrimitives CONFIG REQUIRED COMPONENTS GPU)
 
 
-set(RPJ_CUDA_PACKAGE_SUFFIX "cuda${RPJ_CUDA_TOOLKIT_MAJOR}")
-set(RPJ_CUDA_PACKAGE_DIR "roughpy_jax_${RPJ_CUDA_PACKAGE_SUFFIX}")
-set(RPJ_CUDA_MODULE_NAME "_rpy_jax_${RPJ_CUDA_PACKAGE_SUFFIX}")
+if (NOT DEFINED RPJ_CUDA_TOOLKIT_MAJOR)
+#    message(FATAL_ERROR "RPJ_CUDA_TOOLKIT_MAJOR must be provided")
+    set(RPJ_CUDA_TOOLKIT_MAJOR ${CUDAToolkit_VERSION_MAJOR})
+endif ()
+
+if (RPJ_CUDA_VARIANT STREQUAL "")
+    set(RPJ_CUDA_VARIANT "${RPJ_CUDA_TOOLKIT_MAJOR}")
+endif ()
 
 execute_process(
         COMMAND "${Python_EXECUTABLE}" -c "from jax import ffi; print(ffi.include_dir())"
@@ -73,14 +84,17 @@ target_sources(RoughPyJAXCudaPlugin PRIVATE
         src/cuda/dense_ft_fmexp.h
         src/cuda/dense_ft_log.cu
         src/cuda/dense_ft_log.h
+        src/cuda/dense_lie_pairing.cu
+        src/cuda/dense_tensor_pairing.h
         src/cuda/dense_st_adj_mul.cu
         src/cuda/dense_st_adj_mul.h
         src/cuda/dense_st_fma.cu
         src/cuda/dense_st_fma.h
+        src/cuda/dense_tensor_pairing.cu
+        src/cuda/dense_tensor_pairing.h
         src/cuda/xla_headers.hpp
         src/cuda/scalars.hpp
         src/cuda/select_strategy.cuh
-        src/stub.cpp
         src/module.c
 )
 
@@ -118,19 +132,26 @@ if (RPJ_CUDA_INPLACE_BUILD)
     )
 endif ()
 
+set(RPJ_CUDA_GENERATED_PACKAGE_DIR
+        "${CMAKE_CURRENT_BINARY_DIR}/${RPJ_CUDA_PACKAGE_DIR}")
+file(MAKE_DIRECTORY "${RPJ_CUDA_GENERATED_PACKAGE_DIR}")
+configure_file(
+        "${CMAKE_CURRENT_SOURCE_DIR}/package/roughpy_jax_cuda_plugin/__init__.py.in"
+        "${RPJ_CUDA_GENERATED_PACKAGE_DIR}/__init__.py"
+        @ONLY
+)
+
 install(
         TARGETS RoughPyJAXCudaPlugin
         LIBRARY DESTINATION ${RPJ_CUDA_PACKAGE_DIR}
         RUNTIME DESTINATION ${RPJ_CUDA_PACKAGE_DIR}
 )
 
-if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${RPJ_CUDA_PACKAGE_DIR}")
-    install(
-            DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/${RPJ_CUDA_PACKAGE_DIR}/"
-            DESTINATION ${RPJ_CUDA_PACKAGE_DIR}
-            FILES_MATCHING
-            PATTERN "*.py"
-            PATTERN "*.pyi"
-            PATTERN "py.typed"
-    )
-endif ()
+install(
+        DIRECTORY "${RPJ_CUDA_GENERATED_PACKAGE_DIR}/"
+        DESTINATION ${RPJ_CUDA_PACKAGE_DIR}
+        FILES_MATCHING
+        PATTERN "*.py"
+        PATTERN "*.pyi"
+        PATTERN "py.typed"
+)
