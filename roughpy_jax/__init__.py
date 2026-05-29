@@ -1,4 +1,7 @@
+import os
+
 import roughpy_jax.ops
+from roughpy_jax._plugins import load_plugins as _load_plugins
 from roughpy_jax.algebra import (
     DenseFreeTensor,
     DenseLie,
@@ -71,6 +74,9 @@ from .dense_algebra import (
     to_dual,
     zero_like,
 )
+
+if os.environ.get("ROUGHPY_JAX_DISABLE_PLUGIN_AUTOLOAD") != "1":
+    _load_plugins()
 
 __all__ = [
     "DenseFreeTensor",
