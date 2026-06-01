@@ -113,7 +113,8 @@ auto make_scalar_batch(xla::ffi::AnyBuffer buffer) noexcept {
     return ScalarBatch<T, Arch>{
         GMemPtr<const T, Arch>(static_cast<T const*>(buffer.untyped_data())),
         rpp::layouts::NoStrideLayout{},
-    }
+        {}
+    };
 }
 
 template <typename T, typename Arch=rpp::gpu::arch::DefaultArchitecture>
@@ -121,7 +122,8 @@ auto make_scalar_batch(ffi::Result<ffi::AnyBuffer> buffer) noexcept {
     return ScalarBatch<T, Arch>{
         GMemPtr<T, Arch>(static_cast<T *>(buffer->untyped_data())),
         rpp::layouts::NoStrideLayout{},
-    }
+        {}
+    };
 }
 
 } // namespace rpy::jax::cuda
