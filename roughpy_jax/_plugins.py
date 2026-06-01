@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import platform
 from importlib import import_module
 from roughpy_jax.ops import registration_lock as _registration_lock
 
@@ -20,6 +21,9 @@ def _load_cuda_plugin(module_name):
 
 
 def load_plugins():
+    if platform.system() != "Linux":
+        return
+
     global _plugins_loaded
     global _cuda_module
 

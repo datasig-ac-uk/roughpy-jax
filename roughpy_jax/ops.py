@@ -45,6 +45,18 @@ INT32_ZERO = np.int32(0)
 registration_lock = RLock()
 
 
+_all_supported_platforms: set[str] = set()
+
+
+def get_supported_platforms() -> frozenset[str]:
+    """
+    Get the set of all platforms where accelerated implementations are available.
+
+    :return: A frozen set of platforms.
+    """
+    return frozenset(_all_supported_platforms)
+
+
 def _get_lie_sparse_matrices(lie_basis, dtype):
     """Return cached (l2t_arrays, t2l_arrays) for a given LieBasis and dtype.
 
@@ -265,7 +277,9 @@ class Operation:
             supported_dtypes: set[jnp.dtype],
             ffi_register_kwargs: dict[str, Any],
     ):
+        global _all_supported_platforms
         cls.supported_platforms.add(platform)
+        _all_supported_platforms.add(platform)
 
         for dtype in supported_dtypes:
             key = (platform, str(dtype))
