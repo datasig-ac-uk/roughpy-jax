@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import jax
+
 from roughpy_jax.ops import Operation
 
 from .@RPJ_CUDA_MODULE_NAME@ import cuda_functions
@@ -15,7 +17,7 @@ def register() -> None:
         return
 
     Operation.register_all(
-        platform="gpu",
+        platform="cuda",
         ops=cuda_functions,
         supported_dtypes={"float32", "float64"},
         ffi_register_kwargs={},
