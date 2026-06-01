@@ -139,6 +139,15 @@ def _normalise_dtype_for_resolution(dtype: jnp.dtype) -> jnp.dtype:
     return dtype
 
 
+
+_RPJ_TO_JAX_FFI_PLATFORM_MAPPING: dict[str, str] = {
+    "cpu": "cpu",
+    "gpu": "gpu",
+    "cuda": "gpu",
+}
+
+
+
 class Operation:
     """
     Represents a base class for defining JAX-based operations with support for
@@ -278,6 +287,8 @@ class Operation:
             ffi_register_kwargs: dict[str, Any],
     ):
         global _all_supported_platforms
+        ffi_platform = _RPJ_TO_JAX_FFI_PLATFORM_MAPPING[platform]
+
         cls.supported_platforms.add(platform)
         _all_supported_platforms.add(platform)
 
@@ -290,7 +301,7 @@ class Operation:
             cls.implementations[key] = name
 
         jax.ffi.register_ffi_target(
-            name, fn_ptr, platform=platform, **ffi_register_kwargs
+            name, fn_ptr, platform=ffi_platform, **ffi_register_kwargs
         )
 
     @classmethod
@@ -303,8 +314,8 @@ class Operation:
     ):
         dtypes = {jnp.dtype(tp) for tp in supported_dtypes}
         for op_cls in Operation.__all_operations.values():
-            name = f"{platform}_{cls.data_layout}_{op_cls.fn_name}"
-            if (fn_ptr := ops.get(name, None)) is not None:
+            name = f"{cls.data_layout}_{op_cls.fn_name}"
+            if (fn_ptr := ops.get(f"{platform}_{name}", None)) is not None:
                 op_cls.register(platform, name, fn_ptr, dtypes, ffi_register_kwargs)
 
     @classmethod
