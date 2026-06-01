@@ -10,7 +10,18 @@ from roughpy_jax.ops import Operation, get_supported_platforms
 jax.config.update("jax_enable_x64", True)
 
 
-@pytest.fixture(params=sorted({d.platform for d in jax.devices()} & get_supported_platforms()))
+def _available_test_platforms():
+    platforms = []
+    for platform in sorted(get_supported_platforms()):
+        try:
+            if jax.devices(platform):
+                platforms.append(platform)
+        except RuntimeError:
+            continue
+    return platforms
+
+
+@pytest.fixture(params=_available_test_platforms())
 def rpj_platform(request):
     return request.param
 
