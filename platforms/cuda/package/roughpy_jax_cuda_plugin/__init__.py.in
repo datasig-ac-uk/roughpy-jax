@@ -15,7 +15,7 @@ def register() -> None:
         return
 
     Operation.register_all(
-        platform="cuda",
+        platform="gpu",
         ops=cuda_functions,
         supported_dtypes={"float32", "float64"},
         ffi_register_kwargs={},
