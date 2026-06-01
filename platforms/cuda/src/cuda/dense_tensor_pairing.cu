@@ -41,8 +41,8 @@ struct DenseTensorPairingFunctor {
             using LaunchCfg = typename decltype(strategy)::LaunchConfig;
             return rpp::ops::tensor_pairing(strategy, LaunchCfg{stream},
                                             make_scalar_batch<Scalar>(out),
-                                            make_tensor_batch<Scalar>(func, static_args.fun_max_degree,
-                                                                      static_args.fun_min_degree),
+                                            make_tensor_batch<Scalar>(func, static_args.fun_min_degree,
+                                                                      static_args.fun_max_degree),
                                             make_tensor_batch<Scalar>(arg, static_args.arg_min_degree,
                                                                       static_args.arg_max_degree),
                                             static_args.basis,
@@ -95,6 +95,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
     xla::ffi::Ffi::Bind()
     .Ctx<xla::ffi::PlatformStream<cudaStream_t>>()
     .Ret<xla::ffi::AnyBuffer>()
+    .Arg<xla::ffi::AnyBuffer>()
     .Arg<xla::ffi::AnyBuffer>()
     .Attr<int32_t>("width")
     .Attr<int32_t>("depth")
