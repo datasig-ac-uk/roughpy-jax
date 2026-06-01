@@ -8,10 +8,6 @@ from roughpy_jax.ops import Operation
 # Running both f32 and f64 tests requires enabling JAX 64 bit mode
 jax.config.update("jax_enable_x64", True)
 
-# Set only CPU supported to prevent warnings in test output
-jax.config.update("jax_platforms", "cpu")
-
-
 @pytest.fixture
 def rpj_test_fixture_type_mismatch():
     """
