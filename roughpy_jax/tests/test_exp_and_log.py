@@ -15,17 +15,21 @@ import roughpy_jax as rpj
 
 
 @pytest.fixture(params=[jnp.float32, jnp.float64])
-def exp_trials(request):
-    yield DerivativeTrialsHelper(request.param, width=2, depth=4)
+def exp_trials(request, rpj_device):
+    yield DerivativeTrialsHelper(request.param, width=2, depth=4, device=rpj_device)
 
 
-def test_dense_ft_exp_zero(rpj_dtype, rpj_batch, rpj_no_acceleration):
+def test_dense_ft_exp_zero(rpj_dtype, rpj_batch, rpj_device, rpj_no_acceleration):
     basis = rpj.TensorBasis(2, 2)
-    a = rpj.FreeTensor.zero(basis, dtype=rpj_dtype, batch_dims=rpj_batch.shape)
+    a = rpj.FreeTensor.zero(
+        basis, dtype=rpj_dtype, batch_dims=rpj_batch.shape, device=rpj_device
+    )
 
     exp_a = rpj.ft_exp(a)
 
-    expected = rpj.FreeTensor.identity(basis, dtype=rpj_dtype, batch_dims=rpj_batch.shape)
+    expected = rpj.FreeTensor.identity(
+        basis, dtype=rpj_dtype, batch_dims=rpj_batch.shape, device=rpj_device
+    )
     assert jnp.allclose(exp_a.data, expected.data)
 
 
@@ -42,14 +46,16 @@ def test_dense_ft_exp_letter(rpj_dtype, rpj_batch, rpj_no_acceleration):
     assert jnp.allclose(exp_a.data, expected)
 
 
-def test_dense_ft_log_identity(rpj_dtype, rpj_batch, rpj_no_acceleration):
+def test_dense_ft_log_identity(rpj_dtype, rpj_batch, rpj_device, rpj_no_acceleration):
     basis = rpj.TensorBasis(2, 2)
     a_data = rpj_batch.repeat(jnp.array([1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], rpj_dtype))
     a = rpj.FreeTensor(a_data, basis)
 
     log_a = rpj.ft_log(a)
 
-    expected = rpj.FreeTensor.zero(basis, dtype=rpj_dtype, batch_dims=rpj_batch.shape)
+    expected = rpj.FreeTensor.zero(
+        basis, dtype=rpj_dtype, batch_dims=rpj_batch.shape, device=rpj_device
+    )
     assert jnp.allclose(log_a.data, expected.data)
 
 

@@ -13,9 +13,9 @@ from jax.test_util import check_vjp
 
 # Antipode test fixture for batch of w=4, d=3 free tensors
 @pytest.fixture(params=[jnp.float32, jnp.float64])
-def trials(request):
+def trials(request, rpj_device):
     yield DerivativeTrialsHelper(
-        request.param, width=4, depth=3, default_tensor_type=rpj.FreeTensor
+        request.param, width=4, depth=3, default_tensor_type=rpj.FreeTensor, device=rpj_device
     )
 
 

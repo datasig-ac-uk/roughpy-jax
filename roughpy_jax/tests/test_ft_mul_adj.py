@@ -11,24 +11,28 @@ from derivative_testing import (
 
 
 @pytest.fixture(params=[jnp.float32, jnp.float64])
-def adj_mul_trials(request):
-    yield DerivativeTrialsHelper(request.param, width=4, depth=4)
+def adj_mul_trials(request, rpj_device):
+    yield DerivativeTrialsHelper(request.param, width=4, depth=4, device=rpj_device)
 
 
-def _random_shuffle_tensor(rng, basis, dtype, shape):
+def _random_shuffle_tensor(rng, basis, dtype, shape, device=None):
     s_data = jax.random.uniform(rng, minval=-1.0, maxval=1.0, dtype=dtype, shape=shape)
+    if device is not None:
+        s_data = jax.device_put(s_data, device)
     s = rpj.DenseShuffleTensor(s_data, basis)
     return s
 
 
-def test_adjoint_ft_mul_identity(rpj_dtype, rpj_batch, rpj_no_acceleration):
+def test_adjoint_ft_mul_identity(rpj_dtype, rpj_batch, rpj_device, rpj_no_acceleration):
     rng = jax.random.key(12345)
     basis = rpj.TensorBasis(2, 2)
 
-    a = rpj.DenseFreeTensor.identity(basis, dtype=rpj_dtype, batch_dims=rpj_batch.shape)
+    a = rpj.DenseFreeTensor.identity(
+        basis, dtype=rpj_dtype, batch_dims=rpj_batch.shape, device=rpj_device
+    )
 
     s = _random_shuffle_tensor(
-        rng, basis, rpj_dtype, rpj_batch.tensor_batch_shape(basis)
+        rng, basis, rpj_dtype, rpj_batch.tensor_batch_shape(basis), device=rpj_device
     )
 
     lmul = rpj.ft_adjoint_left_mul(a, s)
@@ -38,7 +42,7 @@ def test_adjoint_ft_mul_identity(rpj_dtype, rpj_batch, rpj_no_acceleration):
     assert jnp.allclose(rmul.data, s.data)
 
 
-def test_adjoint_ft_mul_letter(rpj_dtype, rpj_batch, rpj_no_acceleration):
+def test_adjoint_ft_mul_letter(rpj_dtype, rpj_batch, rpj_device, rpj_no_acceleration):
     rng = jax.random.key(12345)
 
     basis = rpj.TensorBasis(2, 2)
@@ -46,7 +50,7 @@ def test_adjoint_ft_mul_letter(rpj_dtype, rpj_batch, rpj_no_acceleration):
     a = rpj.DenseFreeTensor(a_data, basis)
 
     s = _random_shuffle_tensor(
-        rng, basis, rpj_dtype, rpj_batch.tensor_batch_shape(basis)
+        rng, basis, rpj_dtype, rpj_batch.tensor_batch_shape(basis), device=rpj_device
     )
 
     # Expected values are values from index 1, 3 and 4 going into 0, 1, 2, i.e. for non-batched

@@ -33,12 +33,14 @@ def test_dense_ft_mul_array_mismatch(rpj_test_fixture_type_mismatch):
         rpj.ft_mul(f.ft_f32(2, 2), f.ft_f32(3, 2))
 
 
-def test_dense_ft_fma(rpj_dtype, rpj_batch, rpj_no_acceleration):
+def test_dense_ft_fma(rpj_dtype, rpj_batch, rpj_device, rpj_no_acceleration):
     basis = rpj.TensorBasis(2, 2)
     b_data = rpj_batch.repeat(jnp.array([2, 1, 3, 0.5, -1, 2, 0], dtype=rpj_dtype))
     c_data = rpj_batch.repeat(jnp.array([-1, 4, 0, 1, 1, 0, 2], dtype=rpj_dtype))
 
-    a = rpj.FreeTensor.zero(basis, dtype=rpj_dtype, batch_dims=rpj_batch.shape)
+    a = rpj.FreeTensor.zero(
+        basis, dtype=rpj_dtype, batch_dims=rpj_batch.shape, device=rpj_device
+    )
     b = rpj.FreeTensor(b_data, basis)
     c = rpj.FreeTensor(c_data, basis)
 
@@ -50,11 +52,11 @@ def test_dense_ft_fma(rpj_dtype, rpj_batch, rpj_no_acceleration):
     assert jnp.allclose(d.data, expected_data)
 
 
-def test_dense_ft_fma_construction(rpj_dtype, rpj_batch, rpj_no_acceleration):
+def test_dense_ft_fma_construction(rpj_dtype, rpj_batch, rpj_device, rpj_no_acceleration):
     basis = rpj.TensorBasis(2, 2)
 
     def _create_rng_uniform_ft():
-        data = rpj_batch.rng_uniform(-1, 1, basis.size(), rpj_dtype)
+        data = rpj_batch.rng_uniform(-1, 1, basis.size(), rpj_dtype, device=rpj_device)
         return rpj.FreeTensor(data, basis)
 
     batched_a = _create_rng_uniform_ft()
@@ -86,8 +88,8 @@ def test_dense_ft_fma_construction(rpj_dtype, rpj_batch, rpj_no_acceleration):
 
 class TestFtFmaDerivative:
     @pytest.fixture(params=[jnp.float32, jnp.float64])
-    def ft_fma_trials(self, request):
-        yield DerivativeTrialsHelper(request.param, width=3, depth=3)
+    def ft_fma_trials(self, request, rpj_device):
+        yield DerivativeTrialsHelper(request.param, width=3, depth=3, device=rpj_device)
 
     def test_ft_fma_check_vjp(self, ft_fma_trials):
         a = ft_fma_trials.uniform_free_tensor()

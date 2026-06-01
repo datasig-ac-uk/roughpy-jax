@@ -10,8 +10,8 @@ from derivative_testing import (
 
 
 @pytest.fixture(params=[jnp.float32, jnp.float64])
-def pairing_trials(request):
-    yield DerivativeTrialsHelper(request.param, width=4, depth=4)
+def pairing_trials(request, rpj_device):
+    yield DerivativeTrialsHelper(request.param, width=4, depth=4, device=rpj_device)
 
 
 def test_dense_st_ft_pairing(rpj_batch):

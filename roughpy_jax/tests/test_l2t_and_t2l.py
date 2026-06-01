@@ -11,8 +11,8 @@ from derivative_testing import (
 
 # Test fixture for batch of w=4, d=4 lie tensor
 @pytest.fixture(params=[jnp.float32, jnp.float64])
-def lt2_trials(request):
-    yield DerivativeTrialsHelper(request.param, width=4, depth=4)
+def lt2_trials(request, rpj_device):
+    yield DerivativeTrialsHelper(request.param, width=4, depth=4, device=rpj_device)
 
 
 def test_l2t_t2l_roundtrip(rpj_dtype, rpj_batch, rpj_no_acceleration):
