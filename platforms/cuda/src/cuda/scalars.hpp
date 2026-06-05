@@ -8,7 +8,6 @@
 
 #include <cuda_bf16.h>
 #include <cuda_fp16.h>
-#include <cuda_fp4.h>
 #include <cuda_fp8.h>
 
 #include "xla_headers.hpp"
@@ -75,12 +74,6 @@ struct ScalarTag<xla::ffi::DataType::F8E5M2FNUZ> {
     using Accum = float;
 };
 
-template<>
-struct ScalarTag<xla::ffi::DataType::F4E2M1FN> {
-    static constexpr auto tag = xla::ffi::DataType::F4E2M1FN;
-    using Scalar = __nv_fp4_e2m1;
-    using Accum = float;
-};
 
 template<>
 struct ScalarTag<xla::ffi::DataType::F32> {
@@ -110,9 +103,6 @@ inline constexpr ffi::DataType native_dtype_v<__nv_fp8_e4m3> = ffi::DataType::F8
 
 template<>
 inline constexpr ffi::DataType native_dtype_v<__nv_fp8_e5m2> = ffi::DataType::F8E5M2;
-
-template<>
-inline constexpr ffi::DataType native_dtype_v<__nv_fp4_e2m1> = ffi::DataType::F4E2M1FN;
 
 template<>
 inline constexpr ffi::DataType native_dtype_v<float> = ffi::DataType::F32;
@@ -229,8 +219,6 @@ ffi::ErrorOr<T> cast_scalar(AnyScalar const &value) noexcept {
             return internal::map_cast_err<T>(value.ptr<__nv_fp8_e5m2>());
         case ffi::DataType::F8E5M2FNUZ:
             return internal::map_cast_err<T>(value.ptr<__nv_fp8_e5m2>());
-        case ffi::DataType::F4E2M1FN:
-            return internal::map_cast_err<T>(value.ptr<__nv_fp4_e2m1>());
         case ffi::DataType::F32:
             return internal::map_cast_err<T>(value.ptr<float>());
         case ffi::DataType::F64:
