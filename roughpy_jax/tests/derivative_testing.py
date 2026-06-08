@@ -281,3 +281,60 @@ def assert_is_adjoint_derivative(
         rtol = rel_tol + eps
 
         assert_allclose(chord_eval, adjoint_eval, atol=atol, rtol=rtol)
+
+
+def assert_linear_map_derivative(
+    fn: Callable[..., Any],
+    fn_deriv: Callable[..., Any],
+    x: Any,
+    tangent: Any,
+    abs_tol: float = 1e-6,
+    rel_tol: float = 1e-6,
+):
+    """
+    Exact derivative check for linear maps.
+
+    For a linear map ``f``, the derivative is independent of position and
+    satisfies
+
+        f(x + t) - f(x) == Df(x)[t]
+
+    exactly in real arithmetic. This check is substantially more robust than a
+    finite-difference quotient on backends where scatter-add accumulation order
+    can make ``(f(x + eps t) - f(x)) / eps`` noisy in low precision.
+    """
+    assert_allclose(
+        fn(x + tangent) - fn(x),
+        fn_deriv(x, tangent),
+        atol=abs_tol,
+        rtol=rel_tol,
+    )
+
+
+def assert_linear_map_adjoint_derivative(
+    fn: Callable[..., Any],
+    fn_adj_deriv: Callable[..., Any],
+    x: Any,
+    tangent: Any,
+    cotangent: Any,
+    domain_pairing: Callable[[Any, Any], Any],
+    codomain_pairing: Callable[[Any, Any], Any],
+    abs_tol: float = 1e-6,
+    rel_tol: float = 1e-6,
+):
+    """
+    Exact adjoint-derivative check for linear maps.
+
+    For a linear map ``f``, the derivative is ``f`` itself, so the adjoint
+    derivative identity reduces to
+
+        <cotangent, f(tangent)> == <Df(x)^*(cotangent), tangent>
+
+    without any finite-difference approximation.
+    """
+    assert_allclose(
+        codomain_pairing(cotangent, fn(tangent)),
+        domain_pairing(fn_adj_deriv(x, cotangent), tangent),
+        atol=abs_tol,
+        rtol=rel_tol,
+    )
