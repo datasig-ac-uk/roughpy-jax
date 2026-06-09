@@ -127,6 +127,7 @@ jobs:
     needs:
       - build_sdist
       - build_main_wheels
+      - build_cuda_plugin_wheels
     permissions:
       contents: write
       id-token: write
