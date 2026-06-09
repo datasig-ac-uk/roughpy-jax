@@ -1,8 +1,19 @@
 from __future__ import annotations
 
+import platform
+
+import pytest
+
 import roughpy_jax._plugins as _plugins
 
 
+LINUX_ONLY = pytest.mark.skipif(
+    platform.system() != "Linux",
+    reason="plugin loading is only supported on Linux",
+)
+
+
+@LINUX_ONLY
 def test_load_plugins_is_idempotent(monkeypatch):
     calls: list[str] = []
     monkeypatch.setattr(_plugins, "_plugins_loaded", False)
@@ -18,6 +29,7 @@ def test_load_plugins_is_idempotent(monkeypatch):
     assert calls == ["roughpy_jax_cuda13_plugin"]
 
 
+@LINUX_ONLY
 def test_load_plugins_falls_back_to_older_cuda(monkeypatch):
     calls: list[str] = []
 
