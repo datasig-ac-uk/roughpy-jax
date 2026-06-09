@@ -51,6 +51,9 @@ cmake_args=(
     -B "${workdir}/build"
     -DCMAKE_BUILD_TYPE=Release
     -DCMAKE_INSTALL_PREFIX="${RPP_INSTALL_PREFIX}"
+    -DRPP_ENABLE_TESTS=OFF
+    -DRPP_ENABLE_BENCHMARKS=OFF
+    -DRPP_ADD_STUB_LIBRARY=OFF
 )
 
 if need_cmd ninja; then
