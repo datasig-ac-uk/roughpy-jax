@@ -40,7 +40,7 @@ jobs:
           path: dist/*.tar.gz
           if-no-files-found: error
 
-  build_wheels:
+  build_main_wheels:
     name: Build wheels (${{ matrix.os }}${{ matrix.arch_name && format(', {0}', matrix.arch_name) || '' }})
     runs-on: ${{ matrix.os }}
     strategy:
@@ -70,12 +70,63 @@ jobs:
           path: wheelhouse/*.whl
           if-no-files-found: error
 
+  build_cuda_plugin_wheels:
+    name: Build plugin wheels (${{ matrix.variant }})
+    runs-on: ubuntu-latest
+    needs:
+      - build_main_wheels
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: cuda12
+            cibw_manylinux_image: quay.io/manylinux_cuda/manylinux_2_28_x86_64_cuda12_9:latest
+          - variant: cuda13
+            cibw_manylinux_image: quay.io/manylinux_cuda/manylinux_2_28_x86_64_cuda13_1:latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: wheels-ubuntu-latest-x86_64
+          path: .cibw-dist/main
+
+      - name: Prepare plugin build tree
+        run: python3 tools/prepare_cuda_plugin_build.py --variant "${{ matrix.variant }}"
+
+      - name: Build plugin wheels
+        uses: pypa/cibuildwheel@v3.4.1
+        env:
+          CIBW_ARCHS_LINUX: x86_64
+          CIBW_MANYLINUX_X86_64_IMAGE: ${{ matrix.cibw_manylinux_image }}
+          CIBW_BEFORE_ALL_LINUX: >-
+            bash tools/bootstrap_rough_path_primitives.sh
+          CIBW_BEFORE_BUILD_LINUX: >-
+            python -m pip install --upgrade /project/.cibw-dist/main/roughpy_jax-*.whl "jax>=0.4.0" "jaxlib>=0.4.0"
+          CIBW_ENVIRONMENT_LINUX: >-
+            CMAKE_PREFIX_PATH=/usr
+            RPP_GIT_TAG=releases/1.0.2
+          CIBW_REPAIR_WHEEL_COMMAND_LINUX: >-
+            auditwheel repair -w {dest_dir} {wheel}
+          CIBW_TEST_SKIP: "*"
+        with:
+          package-dir: build/cuda-plugin/${{ matrix.variant }}
+          output-dir: wheelhouse/${{ matrix.variant }}
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: plugin-wheels-${{ matrix.variant }}
+          path: wheelhouse/${{ matrix.variant }}/*.whl
+          if-no-files-found: error
+
+
   publish_release:
     name: Publish release
     runs-on: ubuntu-latest
     needs:
       - build_sdist
-      - build_wheels
+      - build_main_wheels
     permissions:
       contents: write
       id-token: write
@@ -134,5 +185,6 @@ jobs:
         if: inputs.publish_target == 'publish'
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ steps.release_version.outputs.tag }}
         run: gh release create "${RELEASE_TAG}" dist/* --generate-notes --target "${GITHUB_SHA}" --title "${RELEASE_TAG}"

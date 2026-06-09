@@ -41,11 +41,11 @@ jax = ["jax>=0.4.0", "jaxlib>=0.4.0"]
 benchmarks = ["asv", "virtualenv", "psutil"]
 "cuda12" = [
     "jax[cuda12]>=0.4.0; platform_system == 'Linux'",
-    "roughpy-jax-cuda12>=1.0.0; platform_system == 'Linux'",
+    "roughpy-jax-cuda12-plugin>=1.0.0; platform_system == 'Linux'",
 ]
 "cuda13" = [
     "jax[cuda13]>=0.4.0; platform_system == 'Linux'",
-    "roughpy-jax-cuda13>=1.0.0; platform_system == 'Linux'",
+    "roughpy-jax-cuda13-plugin>=1.0.0; platform_system == 'Linux'",
 ]
 
 
