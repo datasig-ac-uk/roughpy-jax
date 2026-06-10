@@ -29,10 +29,25 @@ Once published, `roughpy-jax` can be installed from PyPI with:
 pip install roughpy-jax
 ```
 
+CUDA plugin builds are published separately and are intended to be pulled in
+through extras on the main package:
+
+```bash
+pip install "roughpy-jax[cuda12]"
+```
+
+The core package auto-discovers installed backend plugins through Python entry
+points, so users do not need a separate `import` for the CUDA extension.
+
 The package requires the latest version of roughpy (0.3.0) and Python 3.11 or newer.
 
 Release artifacts can also be downloaded from the GitHub Releases page for this
 repository.
+
+CUDA plugin wheels are intended for Linux only and follow JAX's CUDA package
+families (`cuda12` and `cuda13`). A `manylinux_2_28` baseline is used for Linux
+wheel compatibility. This is compatible with Ubuntu 22.04, which ships a newer
+glibc than that baseline. 
 
 ## Installing From Source
 
@@ -133,6 +148,15 @@ pytest -m "not extra" roughpy_jax/tests
 
 Wheel builds are tested through `cibuildwheel` in CI, and release artifacts are
 validated before publishing.
+
+CUDA plugin wheel builds are prepared with:
+
+```bash
+python tools/prepare_cuda_plugin_build.py --variant 12
+```
+
+That generates a variant-specific build directory under `build/cuda-plugin/`
+and prints the exact `python -m build` command to run for that wheel.
 
 ## Example
 

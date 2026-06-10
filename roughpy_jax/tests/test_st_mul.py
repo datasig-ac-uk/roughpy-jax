@@ -18,8 +18,8 @@ from roughpy_jax.algebra import st_mul_adjoint_derivative, st_mul_derivative
 
 
 @pytest.fixture(params=[jnp.float32, jnp.float64])
-def shuffle_deriv_trials(request):
-    yield DerivativeTrialsHelper(request.param, width=4, depth=3)
+def shuffle_deriv_trials(request, rpj_device):
+    yield DerivativeTrialsHelper(request.param, width=4, depth=3, device=rpj_device)
 
 
 def _word_to_idx_fn(width: int) -> Callable[..., int]:
@@ -52,11 +52,13 @@ def test_shuffle_product_commutative(rpj_dtype, rpj_batch, rpj_no_acceleration):
     assert jnp.allclose(result1.data, result2.data, atol=atol)
 
 
-def test_shuffle_product_unit(rpj_dtype, rpj_batch, rpj_no_acceleration):
+def test_shuffle_product_unit(rpj_dtype, rpj_batch, rpj_device, rpj_no_acceleration):
     basis = rpj.TensorBasis(4, 3)
     lhs = rpj_batch.rng_shuffle_tensor(basis, rpj_dtype)
 
-    unit = rpj.ShuffleTensor.identity(basis, dtype=rpj_dtype, batch_dims=rpj_batch.shape)
+    unit = rpj.ShuffleTensor.identity(
+        basis, dtype=rpj_dtype, batch_dims=rpj_batch.shape, device=rpj_device
+    )
 
     result1 = rpj.st_mul(lhs, unit)
     result2 = rpj.st_mul(unit, lhs)
@@ -65,7 +67,7 @@ def test_shuffle_product_unit(rpj_dtype, rpj_batch, rpj_no_acceleration):
     assert jnp.allclose(result2.data, lhs.data)
 
 
-def test_shuffle_product_two_letters(rpj_dtype, rpj_batch):
+def test_shuffle_product_two_letters(rpj_dtype, rpj_batch, rpj_device):
     basis = rpj.TensorBasis(4, 3)
     to_idx = _word_to_idx_fn(4)
 
@@ -75,8 +77,8 @@ def test_shuffle_product_two_letters(rpj_dtype, rpj_batch):
     lhs_data[..., 1] = 1.0
     rhs_data[..., 2] = 1.0
 
-    lhs = rpj.ShuffleTensor(lhs_data, basis)
-    rhs = rpj.ShuffleTensor(rhs_data, basis)
+    lhs = rpj.ShuffleTensor(jax.device_put(jnp.asarray(lhs_data), rpj_device), basis)
+    rhs = rpj.ShuffleTensor(jax.device_put(jnp.asarray(rhs_data), rpj_device), basis)
 
     result = rpj.st_mul(lhs, rhs)
 
@@ -87,7 +89,7 @@ def test_shuffle_product_two_letters(rpj_dtype, rpj_batch):
     assert jnp.allclose(result.data, expected)
 
 
-def test_shuffle_product_letter_and_deg2(rpj_dtype, rpj_batch):
+def test_shuffle_product_letter_and_deg2(rpj_dtype, rpj_batch, rpj_device):
     basis = rpj.TensorBasis(4, 3)
     to_idx = _word_to_idx_fn(4)
 
@@ -97,8 +99,8 @@ def test_shuffle_product_letter_and_deg2(rpj_dtype, rpj_batch):
     lhs_data[..., to_idx(1, 2)] = 1.0
     rhs_data[..., 3] = 1.0
 
-    lhs = rpj.ShuffleTensor(lhs_data, basis)
-    rhs = rpj.ShuffleTensor(rhs_data, basis)
+    lhs = rpj.ShuffleTensor(jax.device_put(jnp.asarray(lhs_data), rpj_device), basis)
+    rhs = rpj.ShuffleTensor(jax.device_put(jnp.asarray(rhs_data), rpj_device), basis)
 
     result = rpj.st_mul(lhs, rhs)
 

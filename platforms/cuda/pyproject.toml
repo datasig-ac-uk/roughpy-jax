@@ -1,0 +1,51 @@
+[build-system]
+requires = [
+    "scikit-build-core[pyproject]>=0.10",
+    "roughpy>=0.3.0",
+    "jax>=0.4.0",
+    "jaxlib>=0.4.0",
+]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "roughpy-jax-cuda"
+version = "0.1.0"
+description = "CUDA plugin package for roughpy-jax custom calls and kernels"
+readme = "README.md"
+authors = [{ name = "The RoughPy Authors", email = "info@datasig.ac.uk" }]
+license = { text = "BSD-3-Clause" }
+requires-python = ">=3.11"
+keywords = ["roughpy", "jax", "cuda", "xla"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Developers",
+    "Topic :: Scientific/Engineering :: Mathematics",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "License :: OSI Approved :: BSD License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+dependencies = [
+    "roughpy>=0.3.0",
+    "jax>=0.4.0",
+    "jaxlib>=0.4.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-benchmark", "ruff", "pre-commit", "ty", "hypothesis"]
+
+[tool.scikit-build]
+cmake.version = ">=3.30"
+ninja.version = ">=1.11"
+cmake.build-type = "Release"
+logging.level = "INFO"
+experimental = true
+wheel.packages = []
+
+# Build toolkit-specific variants by passing one of:
+#   uv build -Ccmake.define.RPJ_CUDA_TOOLKIT_MAJOR=12
+#   uv build -Ccmake.define.RPJ_CUDA_TOOLKIT_MAJOR=13
+

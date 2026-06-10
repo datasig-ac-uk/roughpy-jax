@@ -21,6 +21,7 @@ class DerivativeTrialsHelper:
         depth,
         n_trials=10,
         default_tensor_type=rpj.FreeTensor,
+        device=None,
     ):
         self.dtype = dtype
         self.width = width
@@ -30,6 +31,7 @@ class DerivativeTrialsHelper:
         self.default_tensor_type = default_tensor_type
         self.n_trials = n_trials
         self.rng_key = jax.random.key(12345)
+        self.device = device
 
     def new_rng_key(self):
         self.rng_key, key = jax.random.split(self.rng_key)
@@ -39,13 +41,16 @@ class DerivativeTrialsHelper:
         return (self.n_trials, basis.size())
 
     def uniform_data(self, shape):
-        return jax.random.uniform(
+        data = jax.random.uniform(
             self.new_rng_key(),
             minval=-1.0,
             maxval=1.0,
             dtype=self.dtype,
             shape=shape,
         )
+        if self.device is not None:
+            data = jax.device_put(data, self.device)
+        return data
 
     def uniform_tensor(self):
         """
@@ -79,6 +84,7 @@ class DerivativeTrialsHelper:
             self.tensor_basis,
             dtype=self.dtype,
             batch_dims=(self.n_trials,),
+            device=self.device,
         )
 
     def zero_shuffle_tensor(self):
@@ -86,6 +92,7 @@ class DerivativeTrialsHelper:
             self.tensor_basis,
             dtype=self.dtype,
             batch_dims=(self.n_trials,),
+            device=self.device,
         )
 
     def zero_lie(self):
@@ -93,6 +100,7 @@ class DerivativeTrialsHelper:
             self.lie_basis,
             dtype=self.dtype,
             batch_dims=(self.n_trials,),
+            device=self.device,
         )
 
     def cond_dtype(self, val_f32, val_f64):
@@ -273,3 +281,60 @@ def assert_is_adjoint_derivative(
         rtol = rel_tol + eps
 
         assert_allclose(chord_eval, adjoint_eval, atol=atol, rtol=rtol)
+
+
+def assert_linear_map_derivative(
+    fn: Callable[..., Any],
+    fn_deriv: Callable[..., Any],
+    x: Any,
+    tangent: Any,
+    abs_tol: float = 1e-6,
+    rel_tol: float = 1e-6,
+):
+    """
+    Exact derivative check for linear maps.
+
+    For a linear map ``f``, the derivative is independent of position and
+    satisfies
+
+        f(x + t) - f(x) == Df(x)[t]
+
+    exactly in real arithmetic. This check is substantially more robust than a
+    finite-difference quotient on backends where scatter-add accumulation order
+    can make ``(f(x + eps t) - f(x)) / eps`` noisy in low precision.
+    """
+    assert_allclose(
+        fn(x + tangent) - fn(x),
+        fn_deriv(x, tangent),
+        atol=abs_tol,
+        rtol=rel_tol,
+    )
+
+
+def assert_linear_map_adjoint_derivative(
+    fn: Callable[..., Any],
+    fn_adj_deriv: Callable[..., Any],
+    x: Any,
+    tangent: Any,
+    cotangent: Any,
+    domain_pairing: Callable[[Any, Any], Any],
+    codomain_pairing: Callable[[Any, Any], Any],
+    abs_tol: float = 1e-6,
+    rel_tol: float = 1e-6,
+):
+    """
+    Exact adjoint-derivative check for linear maps.
+
+    For a linear map ``f``, the derivative is ``f`` itself, so the adjoint
+    derivative identity reduces to
+
+        <cotangent, f(tangent)> == <Df(x)^*(cotangent), tangent>
+
+    without any finite-difference approximation.
+    """
+    assert_allclose(
+        codomain_pairing(cotangent, fn(tangent)),
+        domain_pairing(fn_adj_deriv(x, cotangent), tangent),
+        atol=abs_tol,
+        rtol=rel_tol,
+    )

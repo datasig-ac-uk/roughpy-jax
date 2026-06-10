@@ -2,14 +2,18 @@
 
 from numpy.testing import assert_array_almost_equal
 from hypothesis import given
+import pytest
 
 import roughpy_jax as rpj
 from roughpy_jax.strategies import lie_increment
 
+
+@pytest.mark.extra
 @given(L=lie_increment())
 def test_first_index_is_zero(L):
     assert L.data[0] == 0
 
+@pytest.mark.extra
 @given(L=lie_increment())
 def test_exp_and_log_roundtrip(L):
     a = rpj.ft_exp(L)

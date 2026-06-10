@@ -13,7 +13,7 @@ from derivative_testing import (
 from jax import test_util as jtu
 
 
-def test_ft_mul(rpj_dtype, rpj_batch, rpj_no_acceleration):
+def test_ft_mul(rpj_dtype, rpj_batch, rpj_device, rpj_no_acceleration):
     basis = rpj.TensorBasis(3, 3)
 
     a = rpj_batch.rng_nonzero_free_tensor(basis, rpj_dtype)
@@ -21,15 +21,17 @@ def test_ft_mul(rpj_dtype, rpj_batch, rpj_no_acceleration):
 
     result = rpj.ft_mul(a, b)
 
-    z = rpj.FreeTensor.zero(basis, dtype=rpj_dtype, batch_dims=rpj_batch.shape)
+    z = rpj.FreeTensor.zero(
+        basis, dtype=rpj_dtype, batch_dims=rpj_batch.shape, device=rpj_device
+    )
     expected = rpj.ft_fma(z, a, b)
 
     assert jnp.allclose(result.data, expected.data)
 
 
 @pytest.fixture(params=[jnp.float32, jnp.float64])
-def ft_mul_trials(request):
-    yield DerivativeTrialsHelper(request.param, width=3, depth=3)
+def ft_mul_trials(request, rpj_device):
+    yield DerivativeTrialsHelper(request.param, width=3, depth=3, device=rpj_device)
 
 
 def test_ft_mul_check_vjp(ft_mul_trials):

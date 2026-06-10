@@ -310,6 +310,7 @@ class DenseAlgebra(Generic[BasisT]):
         basis: BasisT,
         dtype: jax.typing.DTypeLike = jnp.dtype("float32"),
         batch_dims: tuple[int, ...] = tuple(),
+            device: jax.Device | None = None,
     ) -> AlgebraT:
         """
         Construct the additive identity in the given basis.
@@ -322,10 +323,11 @@ class DenseAlgebra(Generic[BasisT]):
         :param basis: Basis in which the zero element should live.
         :param dtype: Data type used for the coefficient array.
         :param batch_dims: Optional leading batch dimensions.
+        :param device: The device on which the object should be resident
         :return: A zero element of ``cls`` in ``basis``.
         """
         shape = batch_dims + (basis.size(),)
-        zero_data = jnp.zeros(dtype=jnp.dtype(dtype), shape=shape)
+        zero_data = jnp.zeros(dtype=jnp.dtype(dtype), shape=shape, device=device)
         return cls(zero_data, basis)
 
 
@@ -347,6 +349,7 @@ class DenseTensor(DenseAlgebra[TensorBasis]):
         basis: TensorBasis,
         dtype: jax.typing.DTypeLike = jnp.dtype("float32"),
         batch_dims: tuple[int, ...] = tuple(),
+        device: jax.Device | None = None,
     ) -> AlgebraT:
         """
             Construct the multiplicative identity in a tensor basis.
@@ -360,10 +363,11 @@ class DenseTensor(DenseAlgebra[TensorBasis]):
             :param basis: Tensor basis in which the identity should live.
             :param dtype: Data type used for the coefficient array.
             :param batch_dims: Optional leading batch dimensions.
+            :param device: The device on which the object should be resident
             :return: The identity element of ``cls`` in ``basis``.
         """
         shape = batch_dims + (basis.size(),)
-        data = jnp.zeros(dtype=jnp.dtype(dtype), shape=shape)
+        data = jnp.zeros(dtype=jnp.dtype(dtype), shape=shape, device=device)
         data = data.at[..., 0].set(1)
         return cls(data, basis)
 

@@ -20,8 +20,8 @@ from roughpy_jax.algebra import (
 
 
 @pytest.fixture(params=[jnp.float32, jnp.float64])
-def shuffle_deriv_trials(request):
-    yield DerivativeTrialsHelper(request.param, width=4, depth=3)
+def shuffle_deriv_trials(request, rpj_device):
+    yield DerivativeTrialsHelper(request.param, width=4, depth=3, device=rpj_device)
 
 
 def test_shuffle_dense_st_adj_mul_array_mismatch(rpj_test_fixture_type_mismatch):

@@ -5,14 +5,16 @@ from derivative_testing import (
     DerivativeTrialsHelper,
     assert_is_adjoint_derivative,
     assert_is_derivative,
+    assert_linear_map_adjoint_derivative,
+    assert_linear_map_derivative,
     assert_is_linear,
 )
 
 
 # Test fixture for batch of w=4, d=4 lie tensor
 @pytest.fixture(params=[jnp.float32, jnp.float64])
-def lt2_trials(request):
-    yield DerivativeTrialsHelper(request.param, width=4, depth=4)
+def lt2_trials(request, rpj_device):
+    yield DerivativeTrialsHelper(request.param, width=4, depth=4, device=rpj_device)
 
 
 def test_l2t_t2l_roundtrip(rpj_dtype, rpj_batch, rpj_no_acceleration):
@@ -110,12 +112,13 @@ def test_t2l_derivative(lt2_trials):
     x = lt2_trials.uniform_free_tensor()
     tangent = lt2_trials.uniform_free_tensor() * lt2_trials.cond_dtype(1e-3, 1e0)
 
-    assert_is_derivative(
+    assert_linear_map_derivative(
         rpj.tensor_to_lie,
         rpj.tensor_to_lie_derivative,
         x,
         tangent,
         abs_tol=lt2_trials.cond_dtype(5e-2, 1e-6),
+        rel_tol=lt2_trials.cond_dtype(5e-2, 1e-6),
     )
 
 
@@ -123,7 +126,7 @@ def test_t2l_adjoint_derivative(lt2_trials):
     x = lt2_trials.uniform_free_tensor()
     tangent = lt2_trials.uniform_free_tensor() * lt2_trials.cond_dtype(1e-3, 1e0)
     cotangent = lt2_trials.uniform_lie()
-    assert_is_adjoint_derivative(
+    assert_linear_map_adjoint_derivative(
         rpj.tensor_to_lie,
         rpj.tensor_to_lie_adjoint_derivative,
         x,
@@ -132,6 +135,7 @@ def test_t2l_adjoint_derivative(lt2_trials):
         domain_pairing=lambda lhs, rhs: rpj.tensor_pairing(rpj.to_dual(lhs), rhs),
         codomain_pairing=rpj.lie_pairing,
         abs_tol=lt2_trials.cond_dtype(5e-2, 1e-6),
+        rel_tol=lt2_trials.cond_dtype(5e-2, 1e-6),
     )
 
 
