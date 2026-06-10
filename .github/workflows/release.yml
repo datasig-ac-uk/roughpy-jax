@@ -110,6 +110,7 @@ jobs:
           CIBW_REPAIR_WHEEL_COMMAND_LINUX: >-
             auditwheel repair -w {dest_dir} {wheel}
           CIBW_TEST_SKIP: "*"
+          RPP_GIT_TAG: main
         with:
           package-dir: build/cuda-plugin/${{ matrix.variant }}
           output-dir: wheelhouse/${{ matrix.variant }}
