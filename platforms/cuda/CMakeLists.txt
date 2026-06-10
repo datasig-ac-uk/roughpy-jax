@@ -21,8 +21,47 @@ set(CMAKE_CUDA_STANDARD 17)
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 set(CMAKE_CUDA_SEPARABLE_COMPILATION ON)
 
+function(rpj_detect_supported_cuda_architectures out_var minimum_arch)
+    if (NOT CMAKE_CUDA_COMPILER)
+        message(FATAL_ERROR "Cannot infer CUDA architectures without a configured CUDA compiler")
+    endif ()
+
+    execute_process(
+            COMMAND "${CMAKE_CUDA_COMPILER}" --list-gpu-arch
+            RESULT_VARIABLE arch_query_result
+            OUTPUT_VARIABLE arch_query_output
+            ERROR_VARIABLE arch_query_error
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+    if (NOT arch_query_result EQUAL 0)
+        message(FATAL_ERROR
+                "Failed to query supported CUDA architectures from ${CMAKE_CUDA_COMPILER}: ${arch_query_error}")
+    endif ()
+
+    string(REPLACE "\n" ";" arch_query_lines "${arch_query_output}")
+    set(supported_architectures "")
+    foreach (arch_entry IN LISTS arch_query_lines)
+        string(STRIP "${arch_entry}" arch_entry)
+        if (arch_entry MATCHES "^compute_([0-9]+)$")
+            set(arch_number "${CMAKE_MATCH_1}")
+            if (arch_number GREATER_EQUAL minimum_arch)
+                list(APPEND supported_architectures "${arch_number}")
+            endif ()
+        endif ()
+    endforeach ()
+
+    if (NOT supported_architectures)
+        message(FATAL_ERROR
+                "CUDA compiler ${CMAKE_CUDA_COMPILER} does not report any supported architectures >= sm_${minimum_arch}")
+    endif ()
+
+    list(REMOVE_DUPLICATES supported_architectures)
+    set(${out_var} "${supported_architectures}" PARENT_SCOPE)
+endfunction()
+
 if (NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
-    set(CMAKE_CUDA_ARCHITECTURES "all-major")
+    rpj_detect_supported_cuda_architectures(CMAKE_CUDA_ARCHITECTURES 80)
+    message(STATUS "Auto-selected CUDA architectures: ${CMAKE_CUDA_ARCHITECTURES}")
 endif()
 
 set(CMAKE_C_VISIBILITY_PRESET hidden)

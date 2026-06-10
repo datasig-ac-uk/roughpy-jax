@@ -81,10 +81,8 @@ jobs:
         include:
           - variant: cuda12
             cibw_manylinux_image: quay.io/manylinux_cuda/manylinux_2_28_x86_64_cuda12_9:latest
-            cuda_architectures: "80;86;87;89;90;100;101;103;120;121"
           - variant: cuda13
             cibw_manylinux_image: quay.io/manylinux_cuda/manylinux_2_28_x86_64_cuda13_1:latest
-            cuda_architectures: "80;86;87;88;89;90;100;103;110;120;121"
 
     steps:
       - uses: actions/checkout@v6
@@ -109,7 +107,6 @@ jobs:
           CIBW_ENVIRONMENT_LINUX: >-
             CMAKE_PREFIX_PATH=/usr
             RPP_GIT_TAG=releases/1.0.2
-            CMAKE_CUDA_ARCHITECTURES=${{ matrix.cuda_architectures }}
           CIBW_REPAIR_WHEEL_COMMAND_LINUX: >-
             auditwheel repair -w {dest_dir} {wheel}
           CIBW_TEST_SKIP: "*"
