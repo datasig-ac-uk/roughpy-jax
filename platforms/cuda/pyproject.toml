@@ -9,7 +9,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "roughpy-jax-cuda"
-version = "0.1.0"
+version = "1.1.0"
 description = "CUDA plugin package for roughpy-jax custom calls and kernels"
 readme = "README.md"
 authors = [{ name = "The RoughPy Authors", email = "info@datasig.ac.uk" }]
@@ -48,4 +48,3 @@ wheel.packages = []
 # Build toolkit-specific variants by passing one of:
 #   uv build -Ccmake.define.RPJ_CUDA_TOOLKIT_MAJOR=12
 #   uv build -Ccmake.define.RPJ_CUDA_TOOLKIT_MAJOR=13
-
