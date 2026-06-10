@@ -91,6 +91,17 @@ def plugin_runtime_dependencies(root_pyproject: dict, family: str) -> list[str]:
     ]
 
 
+def supported_cuda_architectures(major: str) -> str:
+    if major == "12":
+        architectures = ["80", "86", "87", "89", "90", "100", "101", "103", "120", "121"]
+    elif major == "13":
+        architectures = ["80", "86", "87", "88", "89", "90", "100", "103", "110", "120", "121"]
+    else:
+        raise ValueError(f"Unsupported CUDA major version {major!r}")
+
+    return ";".join(architectures)
+
+
 def plugin_classifiers(root_pyproject: dict) -> list[str]:
     classifiers = root_pyproject["project"].get("classifiers", [])
     filtered = [
@@ -125,6 +136,7 @@ def render_pyproject(
     project_name = plugin_distribution_name(root_pyproject, family)
     package_module = f"roughpy_jax_{family}_plugin"
     runtime_dependencies = plugin_runtime_dependencies(root_pyproject, family)
+    cuda_architectures = supported_cuda_architectures(major)
     authors_block = format_inline_toml_list(authors)
     classifiers_block = format_toml_list(classifiers)
     keywords_block = format_inline_toml_list(keywords)
@@ -168,6 +180,7 @@ def render_pyproject(
             f'RPJ_CUDA_TOOLKIT_MAJOR = "{major}"',
             f'RPJ_CUDA_PACKAGE_DIR = "{package_module}"',
             f'RPJ_CUDA_VARIANT = "{family}"',
+            f'CMAKE_CUDA_ARCHITECTURES = "{cuda_architectures}"',
             "",
             "[tool.cibuildwheel]",
             f'build = "{py_api}-manylinux_x86_64"',
