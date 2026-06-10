@@ -108,7 +108,7 @@ jobs:
             CMAKE_PREFIX_PATH=/usr
             RPP_GIT_TAG=releases/1.0.2
           CIBW_REPAIR_WHEEL_COMMAND_LINUX: >-
-            auditwheel repair -w {dest_dir} {wheel}
+            auditwheel repair --exclude libcudart.so.12 --exclude libcudart.so.13 -w {dest_dir} {wheel}
           CIBW_TEST_SKIP: "*"
           RPP_GIT_TAG: main
         with:
