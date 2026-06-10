@@ -103,7 +103,7 @@ jobs:
           CIBW_BEFORE_ALL_LINUX: >-
             bash tools/bootstrap_rough_path_primitives.sh
           CIBW_BEFORE_BUILD_LINUX: >-
-            python -m pip install --upgrade /project/.cibw-dist/main/roughpy_jax-*.whl "jax>=0.4.0" "jaxlib>=0.4.0"
+            python -m pip install --upgrade /project/.cibw-dist/main/roughpy_jax-*.whl "jax>=0.4.0" "jaxlib>=0.4.0" "scikit-build-core[pyproject]>=0.10"
           CIBW_ENVIRONMENT_LINUX: >-
             CMAKE_PREFIX_PATH=/usr
             RPP_GIT_TAG=releases/1.0.2
