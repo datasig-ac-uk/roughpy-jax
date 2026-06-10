@@ -1,11 +1,12 @@
 cmake_minimum_required(VERSION 3.30)
 
 
-project(RoughPy_JAX VERSION 0.0.1 LANGUAGES C CXX)
+project(RoughPy_JAX VERSION 1.1.0 LANGUAGES C CXX)
 
 include(GNUInstallDirs)
 
 option(RPJ_INPLACE_BUILD "build the library in-place" ON)
+option(RPJ_BUILD_CUDA "Build the cuda extensions" ON)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
@@ -19,6 +20,12 @@ set(CMAKE_C_VISIBILITY_PRESET hidden)
 set(CMAKE_CXX_VISIBILITY_PRESET hidden)
 set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
 
+include(CheckLanguage)
+
+check_language(CUDA)
+if (RPJ_BUILD_CUDA AND CMAKE_CUDA_COMPILER)
+    enable_language(CUDA)
+endif()
 
 
 set(Python_FIND_VIRTUAL_ENVIRONMENT FIRST)
