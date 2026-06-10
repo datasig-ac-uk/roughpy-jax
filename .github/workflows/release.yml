@@ -124,6 +124,7 @@ jobs:
 
   publish_release:
     name: Publish release
+    if: github.ref_name == 'main'
     runs-on: ubuntu-latest
     needs:
       - build_sdist
