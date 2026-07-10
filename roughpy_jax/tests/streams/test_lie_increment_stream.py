@@ -293,7 +293,9 @@ def test_from_increments_infers_resolution_from_timestamp_spacing(monkeypatch):
     monkeypatch.setattr(lis_mod, "_build_base_entry", fake_build_base_entry)
     monkeypatch.setattr(lis_mod, "_extend_cache_from_base", fake_extend_cache_from_base)
 
-    timestamps = jnp.array([0.0, 0.125, 1.0], dtype=jnp.float32)
+    # Avoid an exact power-of-two gap (e.g. 0.125), which lands
+    # on the frexp boundary and flips 3<->4 under 1-ULP rounding.
+    timestamps = jnp.array([0.0, 0.2, 1.0], dtype=jnp.float32)
     data = jnp.array([[1.0], [2.0], [3.0]], dtype=jnp.float32)
 
     stream = LieIncrementStream.from_increments(
@@ -350,6 +352,59 @@ def test_log_signature_of_empty_interval_returns_zero_without_query(monkeypatch)
     result = stream.log_signature(RealInterval(0.5, 0.5, IntervalType.ClOpen))
 
     assert jnp.allclose(result.data, rpj.Lie.zero(lie_basis).data)
+
+
+def _build_l_shape_stream(t0, t1, increments):
+    """Build a width-2 depth-2 LieIncrementStream from a 2D increment path.
+
+    Timestamps are a linspace over ``[t0, t1]`` with a trailing zero increment.
+    """
+    lie_basis = LieBasis(width=2, depth=2)
+    rows = list(increments) + [[0.0, 0.0]]
+    ts = jnp.linspace(t0, t1, len(rows), dtype=jnp.float64)
+    data = jnp.asarray(rows, dtype=jnp.float64)
+    return LieIncrementStream.from_increments(
+        timestamps=ts,
+        data=data,
+        resolution=3,
+        input_data_basis=None,
+        lie_basis=lie_basis,
+        interval_type=IntervalType.ClOpen,
+        time_dtype=jnp.float64.dtype,
+    )
+
+
+def test_from_increments_recovers_analytic_levy_area_on_nonunit_support():
+    """Timestamps must be normalised onto the unit interval before bucketing.
+
+    For an L-shaped path the width-2 depth-2 log-signature is
+    ``[dx, dy, area]`` with signed Levy area +/-1/2.
+    """
+    right_then_up = _build_l_shape_stream(0.0, 2.0, [[1.0, 0.0], [0.0, 1.0]])
+    up_then_right = _build_l_shape_stream(0.0, 2.0, [[0.0, 1.0], [1.0, 0.0]])
+
+    rt = right_then_up.log_signature(right_then_up.support).data
+    ur = up_then_right.log_signature(up_then_right.support).data
+
+    assert jnp.allclose(rt, jnp.array([1.0, 1.0, 0.5]), atol=1e-6)
+    assert jnp.allclose(ur, jnp.array([1.0, 1.0, -0.5]), atol=1e-6)
+    # Order sensitivity: swapping the two increments flips the Levy area sign.
+    assert not jnp.allclose(rt, ur, atol=1e-6)
+
+
+def test_from_increments_is_invariant_to_timestamp_rescaling():
+    """The signature depends on increment order, not the timestamp scale/offset.
+
+    Building the same L-path over ``[0, 1]``, ``[0, 2]`` and an offset span
+    ``[5, 9]`` must give an identical log-signature. 
+    """
+    reference = _build_l_shape_stream(0.0, 1.0, [[1.0, 0.0], [0.0, 1.0]])
+    ref_data = reference.log_signature(reference.support).data
+
+    for t0, t1 in [(0.0, 2.0), (5.0, 9.0), (-3.0, -1.0)]:
+        stream = _build_l_shape_stream(t0, t1, [[1.0, 0.0], [0.0, 1.0]])
+        data = stream.log_signature(stream.support).data
+        assert jnp.allclose(data, ref_data, atol=1e-6)
 
 
 def test_build_base_entry_combines_multiple_increments_in_same_leaf():
