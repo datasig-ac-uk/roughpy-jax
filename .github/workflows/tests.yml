@@ -39,7 +39,7 @@ jobs:
             arch_name: arm64
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: pypa/cibuildwheel@v4.0.0
         env:
