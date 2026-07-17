@@ -438,7 +438,7 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
         # Adjust the timestamps so they lie in the unit interval
         sf = time_dtype.type(sup - inf)
         shift = time_dtype.type(inf)
-        time_arrays = [sf * ts.astype(time_dtype) - shift for ts in time_arrays]
+        time_arrays = [(ts.astype(time_dtype) - shift) / sf for ts in time_arrays]
 
         if resolution is None:
             min_diff = min(jnp.min(jnp.diff(ts, axis=-1)) for ts in time_arrays)
