@@ -1,5 +1,6 @@
 import functools
 import math
+from functools import partial
 from collections.abc import Callable
 from typing import TypeAlias, TypeVar
 
@@ -71,15 +72,15 @@ def _flatten(lies: list[Lie]) -> Lie:
 
 
 def _cbh(
-    data: jax.Array,
-    data_basis: LieBasis,
-    cache_basis: LieBasis,
-    tensor_basis: TensorBasis | None = None,
-    axis: int = 0,
+        data: jax.Array,
+        data_basis: LieBasis,
+        cache_basis: LieBasis,
+        tensor_basis: TensorBasis | None = None,
+        axis: int = 0,
 ) -> Lie:
     tensor_basis = tensor_basis or to_tensor_basis(cache_basis)
 
-    batch_shape = data.shape[:axis] + data.shape[axis + 1 : -1]
+    batch_shape = data.shape[:axis] + data.shape[axis + 1: -1]
     acc = FreeTensor.identity(tensor_basis, dtype=data.dtype, batch_dims=batch_shape)
 
     for k in range(data.shape[axis]):
@@ -91,14 +92,13 @@ def _cbh(
 
 
 def _build_base_entry(
-    k: int,
-    k_arrays: list[jax.Array],
-    data: list[jax.Array],
-    data_basis: LieBasis,
-    cache_basis: LieBasis,
-    tensor_basis: TensorBasis,
+        k: int,
+        k_arrays: list[jax.Array],
+        data: list[jax.Array],
+        data_basis: LieBasis,
+        cache_basis: LieBasis,
+        tensor_basis: TensorBasis,
 ) -> Lie:
-
     def inner(ks, ds):
         mask = ks == k
         if not jnp.any(mask):
@@ -124,11 +124,11 @@ DQCombineT: TypeAlias = Callable[[LeftT, AccT, RightT], AccT]
 
 
 def _resolve_short_case(
-    inf_trim: int,
-    sup_trim: int,
-    inf_scaled: float,
-    sup_scaled: float,
-    is_clopen: bool,
+        inf_trim: int,
+        sup_trim: int,
+        inf_scaled: float,
+        sup_scaled: float,
+        is_clopen: bool,
 ) -> tuple[int, int]:
     if sup_trim < inf_trim:
         return inf_trim, inf_trim
@@ -145,13 +145,13 @@ def _resolve_short_case(
 
 
 def dyadic_query(
-    query: Interval,
-    resolution: int,
-    init: DQInitT,
-    get_left: DQLeftGetterT,
-    get_right: DQRightGetterT,
-    combine: DQCombineT,
-    cache_interval_type: IntervalType = IntervalType.ClOpen,
+        query: Interval,
+        resolution: int,
+        init: DQInitT,
+        get_left: DQLeftGetterT,
+        get_right: DQRightGetterT,
+        combine: DQCombineT,
+        cache_interval_type: IntervalType = IntervalType.ClOpen,
 ) -> AccT:
     is_clopen = cache_interval_type == IntervalType.ClOpen
 
@@ -229,6 +229,95 @@ def dyadic_query(
     return result
 
 
+
+
+
+
+@partial(jax.jit, static_argnames=("input_lie_basis", "cache_lie_basis", "tensor_basis"))
+def _make_finest_increment_body(state, current, *, input_lie_basis, cache_lie_basis, tensor_basis):
+    current_bucket, current_acc, current_out = state
+    bucket, data = current
+
+    current_tensor = lie_to_tensor(Lie(data, input_lie_basis))
+
+    def same_bucket():
+        return ft_fmexp(current_acc, data, out_basis=tensor_basis), current_out
+
+    def next_bucket():
+        next_acc = ft_exp(current_tensor, out_basis=tensor_basis)
+
+        logsig = to_log_signature(current_acc, cache_lie_basis)
+        next_out = current_out.at[bucket, ...].set(logsig.data)
+
+        return next_acc, next_out
+
+    acc, out = jax.lax.cond(bucket == current_bucket, same_bucket, next_bucket)
+
+    return (bucket, acc, out), None
+
+
+
+
+@partial(jax.jit, static_argnames=("resolution", "cache_lie_basis", "input_lie_basis"))
+def _make_finest_increment_level(buckets: jax.Array, data: jax.Array, *, resolution: int,
+                                 cache_lie_basis: LieBasis, input_lie_basis: LieBasis) -> jax.Array:
+    num_buckets = 1 << resolution
+    tensor_basis = to_tensor_basis(cache_lie_basis)
+
+    order = jnp.argsort(buckets, stable=True)
+    buckets = buckets[order]
+    data = data[order, ...]
+
+    *batch_dims, time_dim, data_dim = data.shape
+
+    lie_dim = cache_lie_basis.size()
+    output = jnp.zeros(
+        (num_buckets, *batch_dims, lie_dim),
+        dtype=data.dtype,
+    )
+    accumulator = FreeTensor.identity(tensor_basis, dtype=data.dtype, batch_dims=tuple(batch_dims))
+    first_bucket = buckets[0]
+
+    body_fn = partial(
+        _make_finest_increment_body,
+        tensor_basis=tensor_basis,
+        cache_lie_basis=cache_lie_basis,
+        input_lie_basis=input_lie_basis
+    )
+
+    (final_bucket, final_acc, final_out), _ = jax.lax.scan(
+        body_fn,
+        (first_bucket, accumulator, output),
+        (buckets, data)
+    )
+
+    final_logsig = to_log_signature(final_acc, cache_lie_basis)
+
+    return final_out.at[final_bucket, ...].set(final_logsig.data)
+
+
+def _extend_from_finest_level(finest: jax.Array, *, resolution: int, cache_lie_basis: LieBasis) -> jax.Array:
+    levels = [finest]
+
+    for i in range(resolution):
+        left = Lie(levels[i][0::2, ...], cache_lie_basis)
+        right = Lie(levels[i][1::2, ...], cache_lie_basis)
+
+        next_level = ft_exp(lie_to_tensor(left))
+        next_level = ft_fmexp(next_level, lie_to_tensor(right))
+
+        levels.append(to_log_signature(next_level, cache_lie_basis).data)
+
+    zero = jnp.zeros(
+        (1, *finest.shape[1:]),
+        dtype=finest.dtype
+    )
+    levels.append(zero)
+
+    return jnp.concatenate(levels, axis=0)
+
+
+
 class LieIncrementStream(Stream[Lie, FreeTensor]):
     """
     Stream backed by a contiguous cache of dyadic log-signatures.
@@ -244,13 +333,13 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
         return 1 << (int(resolution) + 1)
 
     def __init__(
-        self,
-        cache: jnp.ndarray,
-        lie_basis: LieBasis,
-        resolution: int,
-        support: Interval | None = None,
-        group_basis: TensorBasis | None = None,
-        interval_type: IntervalType = IntervalType.ClOpen,
+            self,
+            cache: jnp.ndarray,
+            lie_basis: LieBasis,
+            resolution: int,
+            support: Interval | None = None,
+            group_basis: TensorBasis | None = None,
+            interval_type: IntervalType = IntervalType.ClOpen,
     ):
         if cache.ndim < 2:
             raise ValueError("cache must have shape (cache_length, ..., lie_dim)")
@@ -279,9 +368,9 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
 
     @staticmethod
     def _stream_to_cache(
-        stream: Stream,
-        resolution: int,
-        interval_type: IntervalType = IntervalType.ClOpen,
+            stream: Stream,
+            resolution: int,
+            interval_type: IntervalType = IntervalType.ClOpen,
     ) -> jnp.ndarray:
 
         inf = stream.support.inf
@@ -331,18 +420,18 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
 
     @classmethod
     def from_increments(
-        cls: type[T],
-        timestamps: ArrayLike | list[ArrayLike],
-        data: ArrayLike | list[ArrayLike],
-        *,
-        resolution: int | None,
-        input_data_basis: LieBasis | None,
-        lie_basis: LieBasis | None,
-        interval_type=IntervalType.ClOpen,
-        data_dtype: jnp.dtype | None = None,
-        time_dtype: jnp.dtype = jnp.float32.dtype,
-        dyadic_integer_type: jnp.dtype = jnp.int32.dtype,
-        **kwargs,
+            cls: type[T],
+            timestamps: ArrayLike | list[ArrayLike],
+            data: ArrayLike | list[ArrayLike],
+            *,
+            resolution: int | None,
+            input_data_basis: LieBasis | None,
+            lie_basis: LieBasis | None,
+            interval_type=IntervalType.ClOpen,
+            data_dtype: jnp.dtype | None = None,
+            time_dtype: jnp.dtype = jnp.float32.dtype,
+            dyadic_integer_type: jnp.dtype = jnp.int32.dtype,
+            **kwargs,
     ) -> T:
 
         if isinstance(timestamps, list):
@@ -384,7 +473,7 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
 
         dtypes = [ds.dtype]
         for i, (ds, expected_dt) in enumerate(
-            zip(data_arrays[1:], time_lens[1:], strict=True), start=1
+                zip(data_arrays[1:], time_lens[1:], strict=True), start=1
         ):
             if ds.ndim < 2:
                 raise ValueError("data arrays must be at least 2D")
@@ -453,17 +542,15 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
             for ts in time_arrays
         ]
 
-        f = functools.partial(
-            _build_base_entry,
-            k_arrays=k_arrays,
-            data=data_arrays,
-            data_basis=input_data_basis,
-            cache_basis=lie_basis,
-            tensor_basis=tensor_basis,
-        )
+        base = jnp.stack([
+            _make_finest_increment_level(ks, ds,
+                                         resolution=resolution,
+                                         cache_lie_basis=lie_basis,
+                                         input_lie_basis=input_data_basis)
+            for ks, ds in zip(k_arrays, data_arrays)
+        ])
 
-        base = [f(k) for k in range(1 << resolution)]
-        cache = _extend_cache_from_base(base, resolution, lie_basis)
+        cache = _extend_from_finest_level(base, resolution=resolution, cache_lie_basis=lie_basis)
 
         return cls(
             cache,
@@ -582,8 +669,8 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
         return result
 
     def signature(
-        self,
-        interval: Interval | None = None,
+            self,
+            interval: Interval | None = None,
     ) -> FreeTensor:
         """
         Compute the signature over an interval.
