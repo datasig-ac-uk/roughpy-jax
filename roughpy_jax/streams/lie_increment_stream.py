@@ -243,7 +243,10 @@ def _make_finest_increment_body(state, current, *, input_lie_basis, cache_lie_ba
         return ft_fmexp(current_acc, current_tensor, out_basis=tensor_basis), current_out
 
     def next_bucket():
-        next_acc = ft_exp(current_tensor, out_basis=tensor_basis)
+        next_acc = ft_exp(
+            current_tensor.change_depth(tensor_basis.depth),
+            out_basis=tensor_basis,
+        )
 
         logsig = to_log_signature(current_acc, cache_lie_basis)
         next_out = current_out.at[current_bucket, ...].set(logsig.data)
