@@ -233,7 +233,6 @@ def dyadic_query(
 
 
 
-@partial(jax.jit, static_argnames=("input_lie_basis", "cache_lie_basis", "tensor_basis"))
 def _make_finest_increment_body(state, current, *, input_lie_basis, cache_lie_basis, tensor_basis):
     current_bucket, current_acc, current_out = state
     bucket, data = current
@@ -241,13 +240,13 @@ def _make_finest_increment_body(state, current, *, input_lie_basis, cache_lie_ba
     current_tensor = lie_to_tensor(Lie(data, input_lie_basis))
 
     def same_bucket():
-        return ft_fmexp(current_acc, data, out_basis=tensor_basis), current_out
+        return ft_fmexp(current_acc, current_tensor, out_basis=tensor_basis), current_out
 
     def next_bucket():
         next_acc = ft_exp(current_tensor, out_basis=tensor_basis)
 
         logsig = to_log_signature(current_acc, cache_lie_basis)
-        next_out = current_out.at[bucket, ...].set(logsig.data)
+        next_out = current_out.at[current_bucket, ...].set(logsig.data)
 
         return next_acc, next_out
 
@@ -268,7 +267,9 @@ def _make_finest_increment_level(buckets: jax.Array, data: jax.Array, *, resolut
     buckets = buckets[order]
     data = data[order, ...]
 
-    *batch_dims, time_dim, data_dim = data.shape
+    time_dim, *batch_dims, data_dim = data.shape
+
+    assert time_dim == buckets.shape[0]
 
     lie_dim = cache_lie_basis.size()
     output = jnp.zeros(
@@ -296,6 +297,7 @@ def _make_finest_increment_level(buckets: jax.Array, data: jax.Array, *, resolut
     return final_out.at[final_bucket, ...].set(final_logsig.data)
 
 
+@partial(jax.jit, static_argnames=("resolution", "cache_lie_basis"))
 def _extend_from_finest_level(finest: jax.Array, *, resolution: int, cache_lie_basis: LieBasis) -> jax.Array:
     levels = [finest]
 
@@ -462,7 +464,7 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
             maxs.append(jnp.max(ts))
 
         ds = data_arrays[0]
-        if ds.ndim != 2:
+        if ds.ndim < 2:
             raise ValueError("data arrays must be at least 2D")
 
         dt_dim, *batch_dims, lie_dim = ds.shape
@@ -478,7 +480,7 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
             if ds.ndim < 2:
                 raise ValueError("data arrays must be at least 2D")
 
-            dt_dim, b_dims, *l_dim = ds.shape
+            dt_dim, *b_dims, l_dim = ds.shape
             if dt_dim != expected_dt:
                 raise ValueError(
                     f"Time dimension mismatch at index {i}: expected {expected_dt}, got {dt_dim}"
@@ -548,7 +550,7 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
                                          cache_lie_basis=lie_basis,
                                          input_lie_basis=input_data_basis)
             for ks, ds in zip(k_arrays, data_arrays)
-        ])
+        ], axis=1)
 
         cache = _extend_from_finest_level(base, resolution=resolution, cache_lie_basis=lie_basis)
 
