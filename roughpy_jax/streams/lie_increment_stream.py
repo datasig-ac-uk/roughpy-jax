@@ -1,4 +1,3 @@
-import functools
 import math
 from functools import partial
 from collections.abc import Callable
@@ -393,9 +392,16 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
             query = reparam(di)
             return stream.log_signature(query)
 
-        lies = [f(k, resolution) for k in range(1 << resolution)]
+        finest = jnp.stack(
+            [f(k, resolution).data for k in range(1 << resolution)],
+            axis=0,
+        )
 
-        return _extend_cache_from_base(lies, resolution, stream.lie_basis)
+        return _extend_from_finest_level(
+            finest,
+            resolution=resolution,
+            cache_lie_basis=stream.lie_basis,
+        )
 
     @classmethod
     def from_stream(cls: type[T], stream: Stream[Lie, FreeTensor], resolution: int) -> T:
