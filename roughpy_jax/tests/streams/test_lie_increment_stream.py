@@ -282,3 +282,178 @@ def test_from_increments_is_invariant_to_timestamp_rescaling():
         stream = _build_l_shape_stream(t0, t1, [[1.0, 0.0], [0.0, 1.0]])
         data = stream.log_signature(stream.support).data
         assert jnp.allclose(data, ref_data, atol=1e-6)
+
+
+def test_from_increments_supports_multiple_batched_input_streams():
+    timestamps = [
+        jnp.array([0.0, 0.5, 1.0], dtype=jnp.float32),
+        jnp.array([0.0, 0.5, 1.0], dtype=jnp.float32),
+    ]
+    data = [
+        jnp.array([[1.0], [2.0], [3.0]], dtype=jnp.float32),
+        jnp.array([[-1.0], [0.5], [2.0]], dtype=jnp.float32),
+    ]
+    basis = LieBasis(width=1, depth=2)
+
+    batched = LieIncrementStream.from_increments(
+        timestamps=timestamps,
+        data=data,
+        resolution=3,
+        input_data_basis=None,
+        lie_basis=basis,
+    )
+
+    assert batched.batch_dims == (2,)
+    actual = batched.log_signature(batched.support).data
+    for i in range(2):
+        single = LieIncrementStream.from_increments(
+            timestamps=timestamps[i],
+            data=data[i],
+            resolution=3,
+            input_data_basis=None,
+            lie_basis=basis,
+        )
+        assert jnp.allclose(actual[i], single.log_signature(single.support).data)
+
+
+def test_from_increments_sorts_each_input_by_timestamp():
+    basis = LieBasis(width=2, depth=2)
+    ordered_timestamps = jnp.array([0.0, 0.5, 1.0], dtype=jnp.float32)
+    ordered_data = jnp.array(
+        [[1.0, 0.0], [0.0, 1.0], [0.0, 0.0]], dtype=jnp.float32
+    )
+    shuffled_timestamps = jnp.array([1.0, 0.0, 0.5], dtype=jnp.float32)
+    shuffled_data = jnp.array(
+        [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]], dtype=jnp.float32
+    )
+
+    ordered = LieIncrementStream.from_increments(
+        timestamps=ordered_timestamps,
+        data=ordered_data,
+        resolution=3,
+        input_data_basis=None,
+        lie_basis=basis,
+    )
+    shuffled = LieIncrementStream.from_increments(
+        timestamps=shuffled_timestamps,
+        data=shuffled_data,
+        resolution=3,
+        input_data_basis=None,
+        lie_basis=basis,
+    )
+
+    assert jnp.allclose(
+        shuffled.log_signature(shuffled.support).data,
+        ordered.log_signature(ordered.support).data,
+        atol=1e-6,
+    )
+
+
+def test_from_increments_preserves_order_for_increments_in_one_bucket():
+    basis = LieBasis(width=2, depth=2)
+    timestamps = jnp.array([0.0, 0.0, 1.0], dtype=jnp.float32)
+    data = jnp.array(
+        [[1.0, 0.0], [0.0, 1.0], [0.0, 0.0]], dtype=jnp.float32
+    )
+
+    stream = LieIncrementStream.from_increments(
+        timestamps=timestamps,
+        data=data,
+        resolution=1,
+        input_data_basis=None,
+        lie_basis=basis,
+    )
+
+    expected = rpj.cbh(
+        rpj.Lie(jnp.array([1.0, 0.0], dtype=jnp.float32), LieBasis(width=2, depth=1)),
+        rpj.Lie(jnp.array([0.0, 1.0], dtype=jnp.float32), LieBasis(width=2, depth=1)),
+        lie_basis=basis,
+    )
+    expected = rpj.cbh(
+        expected,
+        rpj.Lie.zero(basis),
+        lie_basis=basis,
+    )
+
+    assert jnp.allclose(
+        stream.log_signature(stream.support).data,
+        expected.data,
+        atol=1e-6,
+    )
+
+
+def test_from_increments_pads_data_to_the_input_basis():
+    input_basis = LieBasis(width=2, depth=1)
+    output_basis = LieBasis(width=2, depth=2)
+    timestamps = jnp.array([0.0, 1.0], dtype=jnp.float32)
+    data = jnp.array([[0.25, -0.5], [0.0, 0.0]], dtype=jnp.float32)
+
+    stream = LieIncrementStream.from_increments(
+        timestamps=timestamps,
+        data=data,
+        resolution=2,
+        input_data_basis=input_basis,
+        lie_basis=output_basis,
+    )
+
+    expected = rpj.Lie(data[0], input_basis).change_depth(output_basis.depth)
+    assert stream.lie_basis == output_basis
+    assert jnp.allclose(
+        stream.log_signature(stream.support).data,
+        expected.data,
+        atol=1e-6,
+    )
+
+
+@pytest.mark.parametrize(
+    ("timestamps", "data", "match"),
+    [
+        (
+            jnp.array([0.0, 1.0], dtype=jnp.float32),
+            jnp.array([[1.0]], dtype=jnp.float32),
+            "Time dimension mismatch",
+        ),
+        (
+            jnp.array([[0.0, 1.0]], dtype=jnp.float32),
+            jnp.array([[1.0], [2.0]], dtype=jnp.float32),
+            "timestamps must be held in 1D arrays",
+        ),
+        (
+            [jnp.array([0.0, 1.0], dtype=jnp.float32)],
+            [
+                jnp.array([[1.0], [2.0]], dtype=jnp.float32),
+                jnp.array([[3.0], [4.0]], dtype=jnp.float32),
+            ],
+            "same length",
+        ),
+    ],
+)
+def test_from_increments_rejects_invalid_shapes(timestamps, data, match):
+    with pytest.raises(ValueError, match=match):
+        LieIncrementStream.from_increments(
+            timestamps=timestamps,
+            data=data,
+            resolution=2,
+            input_data_basis=None,
+            lie_basis=LieBasis(width=1, depth=2),
+        )
+
+
+def test_from_increments_rejects_inconsistent_batch_dimensions():
+    timestamps = [
+        jnp.array([0.0, 1.0], dtype=jnp.float32),
+        jnp.array([0.0, 1.0], dtype=jnp.float32),
+    ]
+    data = [
+        jnp.ones((2, 1), dtype=jnp.float32),
+        jnp.ones((2, 2, 1), dtype=jnp.float32),
+    ]
+
+    with pytest.raises(ValueError, match="Batch dimension mismatch at index 1"):
+        LieIncrementStream.from_increments(
+            timestamps=timestamps,
+            data=data,
+            resolution=2,
+            input_data_basis=None,
+            lie_basis=LieBasis(width=1, depth=2),
+        )
