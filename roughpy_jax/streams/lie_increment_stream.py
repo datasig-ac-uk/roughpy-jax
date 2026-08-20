@@ -426,8 +426,8 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
     @classmethod
     def from_increments(
             cls: type[T],
-            timestamps: ArrayLike | list[ArrayLike],
-            data: ArrayLike | list[ArrayLike],
+            timestamps: ArrayLike | list[jax.Array],
+            data: ArrayLike | list[jax.Array],
             *,
             resolution: int | None,
             input_data_basis: LieBasis | None,
