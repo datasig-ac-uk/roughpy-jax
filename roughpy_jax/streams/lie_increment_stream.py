@@ -69,6 +69,89 @@ def _resolve_short_case(
 
     return k1, k2
 
+def _tree_where(mask: jax.Array, candidate, current):
+    """Select query-batched pytree leaves while preserving their trailing axes."""
+
+    def select(candidate_leaf, current_leaf):
+        mask_shape = (*mask.shape, *((1,) * (candidate_leaf.ndim - mask.ndim)))
+        return jnp.where(mask.reshape(mask_shape), candidate_leaf, current_leaf)
+
+    return jax.tree.map(select, candidate, current)
+
+
+def _query_dyadic_cache(
+        infs: jax.Array,
+        sups: jax.Array,
+        context,
+        *,
+        resolution: int,
+        init: Callable,
+        get_left: Callable,
+        get_right: Callable,
+        combine: Callable
+):
+    inf_scaled = jnp.ldexp(infs, resolution)
+    sup_scaled = jnp.ldexp(sups, resolution)
+    inf_integer = jnp.ceil(inf_scaled).astype(jnp.int32)
+    sup_integer = jnp.ceil(sup_scaled).astype(jnp.int32)
+
+    scaled_length = jnp.ldexp(sup_scaled - inf_scaled, -resolution)
+    _, exponent = jnp.frexp(scaled_length)
+    coarse_resolution = 1 - exponent
+
+    short = coarse_resolution > resolution
+    steps = jnp.where(short, 0, resolution - coarse_resolution)
+    initial_resolution = jnp.where(short, resolution, coarse_resolution)
+
+    step_scale = jnp.left_shift(jnp.ones_like(steps), steps)
+    inf_working = (inf_integer + step_scale - 1) >> steps
+    sup_working = sup_integer >> steps
+
+    initial_k_left = inf_working
+    initial_k_right = jnp.where(sup_working < inf_working, inf_working, sup_working)
+
+    accumulator = init(
+        context,
+        initial_k_left,
+        initial_k_right,
+        initial_resolution
+    )
+
+    inf_difference = (inf_working << steps) - inf_integer
+    sup_difference = sup_integer - (sup_working << steps)
+
+    def expand(state, iteration):
+        inf_cur, sup_cur, acc_cur = state
+        active = iteration <= steps
+        bit_position = jnp.where(active, steps - iteration, 0)
+        res_cur = jnp.where(active, coarse_resolution + iteration, resolution)
+
+        inf_bit = jnp.where(active, (inf_difference >> bit_position) & 1, 0)
+        sup_bit = jnp.where(active, (sup_difference >> bit_position) & 1, 0)
+
+        left_k = (inf_cur << 1) - inf_bit
+        right_k = sup_cur << 1
+
+        left = get_left(context, left_k, res_cur, inf_bit)
+        right = get_right(context, right_k, res_cur, sup_bit)
+
+        candidate = combine(left, acc_cur, right)
+        acc_next = _tree_where(active, candidate, acc_cur)
+
+        inf_next = jnp.where(active, left_k, inf_cur)
+        sup_next = jnp.where(active, right_k + sup_bit, sup_cur)
+
+        return (inf_next, sup_next, acc_next), None
+
+    iterations = jnp.arange(1, resolution+1, dtype=jnp.int32)
+    (_, _, accumulator), _ = jax.lax.scan(
+        expand,
+        (inf_working, sup_working, accumulator),
+        iterations
+    )
+
+    return accumulator
+
 
 def dyadic_query(
         query: Interval,
