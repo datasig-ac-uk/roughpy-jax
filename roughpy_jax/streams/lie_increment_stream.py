@@ -1,7 +1,8 @@
 import math
+import dataclasses
 from functools import partial
 from collections.abc import Callable
-from typing import TypeAlias, TypeVar
+from typing import TypeAlias, TypeVar, Any
 
 import jax
 import jax.numpy as jnp
@@ -17,7 +18,7 @@ from roughpy_jax.algebra import (
     lie_to_tensor,
     to_log_signature,
 )
-from roughpy_jax.bases import to_tensor_basis
+from roughpy_jax.bases import to_tensor_basis, Basis
 from roughpy_jax.intervals import (
     DyadicInterval,
     Interval,
@@ -69,6 +70,7 @@ def _resolve_short_case(
 
     return k1, k2
 
+
 def _tree_where(mask: jax.Array, candidate, current):
     """Select query-batched pytree leaves while preserving their trailing axes."""
 
@@ -79,10 +81,22 @@ def _tree_where(mask: jax.Array, candidate, current):
     return jax.tree.map(select, candidate, current)
 
 
+@partial(jax.tree_util.register_dataclass, data_fields=["cache"],
+         meta_fields=["cache_basis", "query_basis", "group_basis"])
+@dataclasses.dataclass(frozen=True)
+class _QueryContext:
+    cache: jax.Array
+    cache_basis: Basis
+    query_basis: Basis
+    group_basis: Basis
+
+
+@partial(jax.jit,
+         static_argnames=("resolution", 'init', 'get_left', 'get_right', 'combine'))
 def _query_dyadic_cache(
         infs: jax.Array,
         sups: jax.Array,
-        context,
+        context: Any,
         *,
         resolution: int,
         init: Callable,
@@ -95,20 +109,44 @@ def _query_dyadic_cache(
     inf_integer = jnp.ceil(inf_scaled).astype(jnp.int32)
     sup_integer = jnp.ceil(sup_scaled).astype(jnp.int32)
 
+    empty = (sups <= infs) | (sup_integer <= inf_integer)
+
     scaled_length = jnp.ldexp(sup_scaled - inf_scaled, -resolution)
+    scaled_length = jnp.where(empty, jnp.ones_like(scaled_length), scaled_length)
     _, exponent = jnp.frexp(scaled_length)
     coarse_resolution = 1 - exponent
 
-    short = coarse_resolution > resolution
-    steps = jnp.where(short, 0, resolution - coarse_resolution)
-    initial_resolution = jnp.where(short, resolution, coarse_resolution)
+    # There's three cases to handle here:
+    #   1) the interval is non-empty and longer than 2^{-R}
+    #   2) query interval is effectively empty
+    #   3) query interval is shorter than the dyadic intervals of resolution R.
+    # Each case has to be handled carefully. In the normal case, we do an expansion
+    # starting from the largest contained dyadic outwards with at most R+1 steps.
+    # For the empty case, the result should be the zero Lie. For the short case,
+    # we return the Lie of the contained end-point if it exists and zero otherwise.
+    # All three cases are computed simulataneously (needed for parallelism) with
+    # the init function getting the correct value for the short case.
+    short = ~empty & (coarse_resolution > resolution)
+    normal = ~empty & ~short
+    steps = jnp.where(normal, resolution - coarse_resolution, 0)
 
     step_scale = jnp.left_shift(jnp.ones_like(steps), steps)
     inf_working = (inf_integer + step_scale - 1) >> steps
     sup_working = sup_integer >> steps
 
-    initial_k_left = inf_working
-    initial_k_right = jnp.where(sup_working < inf_working, inf_working, sup_working)
+    normal_k_left = inf_working
+    normal_k_right = jnp.where(
+        sup_working < inf_working,
+        inf_working,
+        sup_working,
+    )
+    initial_k_left = jnp.where(normal, normal_k_left, inf_integer)
+    initial_k_right = jnp.where(
+        normal,
+        normal_k_right,
+        jnp.where(short, sup_integer, inf_integer),
+    )
+    initial_resolution = jnp.where(normal, coarse_resolution, resolution)
 
     accumulator = init(
         context,
@@ -122,7 +160,7 @@ def _query_dyadic_cache(
 
     def expand(state, iteration):
         inf_cur, sup_cur, acc_cur = state
-        active = iteration <= steps
+        active = normal & (iteration <= steps)
         bit_position = jnp.where(active, steps - iteration, 0)
         res_cur = jnp.where(active, coarse_resolution + iteration, resolution)
 
@@ -135,7 +173,7 @@ def _query_dyadic_cache(
         left = get_left(context, left_k, res_cur, inf_bit)
         right = get_right(context, right_k, res_cur, sup_bit)
 
-        candidate = combine(left, acc_cur, right)
+        candidate = combine(context, left, acc_cur, right)
         acc_next = _tree_where(active, candidate, acc_cur)
 
         inf_next = jnp.where(active, left_k, inf_cur)
@@ -143,7 +181,7 @@ def _query_dyadic_cache(
 
         return (inf_next, sup_next, acc_next), None
 
-    iterations = jnp.arange(1, resolution+1, dtype=jnp.int32)
+    iterations = jnp.arange(1, resolution + 1, dtype=jnp.int32)
     (_, _, accumulator), _ = jax.lax.scan(
         expand,
         (inf_working, sup_working, accumulator),
@@ -151,6 +189,37 @@ def _query_dyadic_cache(
     )
 
     return accumulator
+
+
+def _dyadic_tree_index(cache: jax.Array, k: jax.Array, n: jax.Array) -> jax.Array:
+    level_start = cache.shape[0] - jnp.left_shift(1, n + 1)
+    return level_start + k
+
+
+def _dyadic_tree_get_lie(context: _QueryContext, k: jax.Array, n: jax.Array, digit: jax.Array) -> Lie:
+    zero_index = context.cache.shape[0] - 1
+    index = jnp.where(digit != 0, _dyadic_tree_index(context.cache, k, n), zero_index)
+    return Lie(context.cache[index], context.cache_basis)
+
+
+def _dyadic_query_init_lie(context: _QueryContext, k1: jax.Array, k2: jax.Array, n: jax.Array) -> Lie:
+    zero_index = context.cache.shape[0] - 1
+    index = jnp.where(k1 == k2, zero_index, _dyadic_tree_index(context.cache, k1, n))
+    result = Lie(context.cache[index], context.cache_basis)
+
+    if context.query_basis is not context.cache_basis:
+        result = result.change_depth(context.query_basis.depth)
+
+    return result
+
+
+def _tree_lie_combine(context: _QueryContext, left: Lie, accumulator: Lie, right: Lie) -> Lie:
+    tensor_basis = context.group_basis
+    result = FreeTensor.identity(tensor_basis, dtype=accumulator.data.dtype, batch_dims=accumulator.data.shape[:-1])
+    result = ft_fmexp(result, lie_to_tensor(left), out_basis=tensor_basis)
+    result = ft_fmexp(result, lie_to_tensor(accumulator), out_basis=tensor_basis)
+    result = ft_fmexp(result, lie_to_tensor(right), out_basis=tensor_basis)
+    return to_log_signature(result, context.query_basis)
 
 
 def dyadic_query(
@@ -238,10 +307,6 @@ def dyadic_query(
     return result
 
 
-
-
-
-
 def _make_finest_increment_body(state, current, *, input_lie_basis, cache_lie_basis, tensor_basis):
     current_bucket, current_acc, current_out = state
     bucket, data = current
@@ -265,8 +330,6 @@ def _make_finest_increment_body(state, current, *, input_lie_basis, cache_lie_ba
     acc, out = jax.lax.cond(bucket == current_bucket, same_bucket, next_bucket)
 
     return (bucket, acc, out), None
-
-
 
 
 @partial(jax.jit, static_argnames=("resolution", "cache_lie_basis", "input_lie_basis"))
@@ -329,7 +392,6 @@ def _extend_from_finest_level(finest: jax.Array, *, resolution: int, cache_lie_b
     levels.append(zero)
 
     return jnp.concatenate(levels, axis=0)
-
 
 
 class LieIncrementStream(Stream[Lie, FreeTensor]):
@@ -623,31 +685,32 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
             interval.interval_type,
         )
 
-    def _query_init(self, k1: int, k2: int, n: int) -> Lie:
-        if k1 == k2:
-            return self._zero_log_signature()
-
-        if self._interval_type == IntervalType.ClOpen:
-            return self._query_dyadic(k1, n)
-
-        return self._query_dyadic(k2, n)
-
-    def _query_get(self, k: int, n: int, digit: int) -> Lie:
-        if not digit:
-            return self._zero_log_signature()
-
-        return self._query_dyadic(k, n)
-
-    def _query_combine(self, left: Lie, acc: Lie, right: Lie) -> Lie:
-        ft_result = FreeTensor.identity(
-            self._group_basis, dtype=acc.data.dtype, batch_dims=self._cache.shape[1:-1]
-        )
-
-        ft_result = ft_fmexp(ft_result, lie_to_tensor(left))
-        ft_result = ft_fmexp(ft_result, lie_to_tensor(acc))
-        ft_result = ft_fmexp(ft_result, lie_to_tensor(right))
-
-        return to_log_signature(ft_result)
+    #
+    # def _query_init(self, k1: int, k2: int, n: int) -> Lie:
+    #     if k1 == k2:
+    #         return self._zero_log_signature()
+    #
+    #     if self._interval_type == IntervalType.ClOpen:
+    #         return self._query_dyadic(k1, n)
+    #
+    #     return self._query_dyadic(k2, n)
+    #
+    # def _query_get(self, k: int, n: int, digit: int) -> Lie:
+    #     if not digit:
+    #         return self._zero_log_signature()
+    #
+    #     return self._query_dyadic(k, n)
+    #
+    # def _query_combine(self, left: Lie, acc: Lie, right: Lie) -> Lie:
+    #     ft_result = FreeTensor.identity(
+    #         self._group_basis, dtype=acc.data.dtype, batch_dims=self._cache.shape[1:-1]
+    #     )
+    #
+    #     ft_result = ft_fmexp(ft_result, lie_to_tensor(left))
+    #     ft_result = ft_fmexp(ft_result, lie_to_tensor(acc))
+    #     ft_result = ft_fmexp(ft_result, lie_to_tensor(right))
+    #
+    #     return to_log_signature(ft_result)
 
     def log_signature(self, interval: Interval | None = None) -> Lie:
         """
@@ -663,29 +726,46 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
 
         inf = jnp.asarray(interval.inf)
         sup = jnp.asarray(interval.sup)
-        if inf.size != 1 or sup.size != 1:
-            raise ValueError(
-                "LieIncrementStream only supports scalar interval endpoints "
-                "or single-element endpoint arrays"
-            )
-        if inf.shape or sup.shape:
-            interval = RealInterval(inf.reshape(()), sup.reshape(()), interval.interval_type)
+        # if inf.size != 1 or sup.size != 1:
+        #     raise ValueError(
+        #         "LieIncrementStream only supports scalar interval endpoints "
+        #         "or single-element endpoint arrays"
+        #     )
+        # if inf.shape or sup.shape:
+        #     interval = RealInterval(inf.reshape(()), sup.reshape(()), interval.interval_type)
 
-        query_interval = intersection(interval, self.support)
-        if jnp.all(query_interval.length == 0):
-            return self._zero_log_signature()
+        clipped_inf = jnp.clip(inf, self._support.inf, self._support.sup)
+        clipped_sup = jnp.clip(sup, self._support.inf, self._support.sup)
+        # query_interval = intersection(interval, self.support)
+        # if jnp.all(query_interval.length == 0):
+        #     return self._zero_log_signature()
 
-        reparam_query = self._reparamterise(query_interval)
+        # reparam_query = self._reparamterise(query_interval)
+        reparam_inf = (clipped_inf - self._support.inf) / (self._support.sup - self._support.inf)
+        reparam_sup = (clipped_sup - self._support.inf) / (self._support.sup - self._support.inf)
 
-        result = dyadic_query(
-            reparam_query,
-            self._resolution,
-            self._query_init,
-            self._query_get,
-            self._query_get,
-            self._query_combine,
-            self._interval_type,
+        context = _QueryContext(self._cache, self._lie_basis, self._lie_basis, self._group_basis)
+
+        result = _query_dyadic_cache(
+            reparam_inf,
+            reparam_sup,
+            context,
+            resolution=self._resolution,
+            init=_dyadic_query_init_lie,
+            get_left=_dyadic_tree_get_lie,
+            get_right=_dyadic_tree_get_lie,
+            combine=_tree_lie_combine,
         )
+
+        # result = dyadic_query(
+        #     reparam_query,
+        #     self._resolution,
+        #     self._query_init,
+        #     self._query_get,
+        #     self._query_get,
+        #     self._query_combine,
+        #     self._interval_type,
+        # )
 
         return result
 

@@ -172,6 +172,7 @@ def test_log_signature_accepts_singleton_array_interval_endpoints():
     assert jnp.allclose(actual_sig.data, expected_sig.data, atol=1e-6)
 
 
+@pytest.mark.skip("old behaviour")
 def test_log_signature_rejects_nonsingleton_array_interval_endpoints():
     lie_basis = LieBasis(width=1, depth=1)
     cache = jnp.zeros((4, lie_basis.size()), dtype=jnp.float32)
@@ -192,26 +193,18 @@ def test_log_signature_rejects_nonsingleton_array_interval_endpoints():
         stream.log_signature(query)
 
 
-def test_log_signature_without_interval_uses_support(monkeypatch):
+def test_log_signature_without_interval_uses_support():
     lie_basis = LieBasis(width=1, depth=1)
-    cache = jnp.zeros((4, lie_basis.size()), dtype=jnp.float32)
+    cache = jnp.array([[1.0], [2.0], [3.0], [0.0]], dtype=jnp.float32)
     support = RealInterval(1.0, 3.0, IntervalType.ClOpen)
     stream = LieIncrementStream(cache, lie_basis, support=support, resolution=1)
-    captured = {}
-
-    def fake_reparamterise(interval):
-        captured["interval"] = interval
-        return RealInterval(0.0, 0.0, IntervalType.ClOpen)
-
-    monkeypatch.setattr(stream, "_reparamterise", fake_reparamterise)
 
     result = stream.log_signature()
 
-    assert captured["interval"] == support
-    assert jnp.allclose(result.data, rpj.Lie.zero(lie_basis).data)
+    assert jnp.allclose(result.data, jnp.asarray([3.0], dtype=jnp.float32))
 
 
-def test_log_signature_of_empty_interval_returns_zero_without_query(monkeypatch):
+def test_log_signature_of_empty_interval_returns_zero():
     lie_basis = LieBasis(width=1, depth=1)
     cache = jnp.array([[1.0], [2.0], [3.0], [0.0]], dtype=jnp.float32)
     stream = LieIncrementStream(
@@ -221,14 +214,40 @@ def test_log_signature_of_empty_interval_returns_zero_without_query(monkeypatch)
         resolution=1,
     )
 
-    def fail_reparamterise(_interval):
-        raise AssertionError("empty intervals should return before reparametrisation")
-
-    monkeypatch.setattr(stream, "_reparamterise", fail_reparamterise)
-
     result = stream.log_signature(RealInterval(0.5, 0.5, IntervalType.ClOpen))
 
     assert jnp.allclose(result.data, rpj.Lie.zero(lie_basis).data)
+
+
+@pytest.mark.parametrize(
+    ("inf", "sup", "expected"),
+    [
+        (0.100, 0.120, 0.0),
+        (0.100, 0.125, 0.0),
+        (0.125, 0.200, 2.5),
+        (0.125, 0.130, 2.5),
+        (0.249, 0.251, -1.25),
+    ],
+)
+def test_log_signature_of_short_interval_uses_contained_endpoint(
+    inf,
+    sup,
+    expected,
+):
+    lie_basis = LieBasis(width=1, depth=1)
+    cache = jnp.zeros((16, lie_basis.size()), dtype=jnp.float32)
+    cache = cache.at[1, 0].set(2.5)
+    cache = cache.at[2, 0].set(-1.25)
+    stream = LieIncrementStream(
+        cache,
+        lie_basis,
+        support=RealInterval(0.0, 1.0, IntervalType.ClOpen),
+        resolution=3,
+    )
+
+    result = stream.log_signature(RealInterval(inf, sup, IntervalType.ClOpen))
+
+    assert jnp.allclose(result.data, jnp.asarray([expected], dtype=jnp.float32))
 
 
 def _build_l_shape_stream(t0, t1, increments):
