@@ -90,15 +90,27 @@ class _QueryContext:
     query_basis: Basis
     group_basis: Basis
 
+def _is_clopen(itype: IntervalType) -> bool:
+    return itype == IntervalType.ClOpen
 
 @partial(jax.jit,
-         static_argnames=("resolution", 'init', 'get_left', 'get_right', 'combine'))
+         static_argnames=(
+             "resolution",
+             "query_interval_type",
+             "cache_interval_type",
+             "init",
+             "get_left",
+             "get_right",
+             "combine",
+         ))
 def _query_dyadic_cache(
         infs: jax.Array,
         sups: jax.Array,
         context: Any,
         *,
         resolution: int,
+        query_interval_type: IntervalType,
+        cache_interval_type: IntervalType,
         init: Callable,
         get_left: Callable,
         get_right: Callable,
@@ -106,6 +118,17 @@ def _query_dyadic_cache(
 ):
     inf_scaled = jnp.ldexp(infs, resolution)
     sup_scaled = jnp.ldexp(sups, resolution)
+
+    # When the query and cache use different endpoint conventions, move the
+    # endpoint excluded by the query in by one finest-level interval if it is
+    # exactly aligned. Unaligned endpoints already round inward.
+    if not _is_clopen(query_interval_type) and _is_clopen(cache_interval_type):
+        inf_is_aligned = inf_scaled == jnp.ceil(inf_scaled)
+        inf_scaled = jnp.where(inf_is_aligned, inf_scaled + 1, inf_scaled)
+    elif _is_clopen(query_interval_type) and not _is_clopen(cache_interval_type):
+        sup_is_aligned = sup_scaled == jnp.floor(sup_scaled)
+        sup_scaled = jnp.where(sup_is_aligned, sup_scaled - 1, sup_scaled)
+
     inf_integer = jnp.ceil(inf_scaled).astype(jnp.int32)
     sup_integer = jnp.ceil(sup_scaled).astype(jnp.int32)
 
@@ -751,6 +774,8 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
             reparam_sup,
             context,
             resolution=self._resolution,
+            query_interval_type=interval.interval_type,
+            cache_interval_type=self._interval_type,
             init=_dyadic_query_init_lie,
             get_left=_dyadic_tree_get_lie,
             get_right=_dyadic_tree_get_lie,

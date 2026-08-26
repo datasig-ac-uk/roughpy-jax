@@ -250,6 +250,72 @@ def test_log_signature_of_short_interval_uses_contained_endpoint(
     assert jnp.allclose(result.data, jnp.asarray([expected], dtype=jnp.float32))
 
 
+def test_opencl_query_excludes_aligned_clopen_cache_endpoint():
+    lie_basis = LieBasis(width=1, depth=1)
+    cache = jnp.zeros((16, lie_basis.size()), dtype=jnp.float32)
+    cache = cache.at[2, 0].set(2.5)
+    cache = cache.at[3, 0].set(-1.25)
+    stream = LieIncrementStream(
+        cache,
+        lie_basis,
+        support=RealInterval(0.0, 1.0, IntervalType.ClOpen),
+        resolution=3,
+    )
+
+    result = stream.log_signature(
+        RealInterval(0.25, 0.5, IntervalType.OpenCl)
+    )
+
+    assert jnp.allclose(result.data, jnp.asarray([-1.25], dtype=jnp.float32))
+
+
+def test_opencl_query_does_not_nudge_unaligned_endpoint():
+    lie_basis = LieBasis(width=1, depth=1)
+    cache = jnp.zeros((16, lie_basis.size()), dtype=jnp.float32)
+    cache = cache.at[2, 0].set(2.5)
+    stream = LieIncrementStream(
+        cache,
+        lie_basis,
+        support=RealInterval(0.0, 1.0, IntervalType.ClOpen),
+        resolution=3,
+    )
+
+    result = stream.log_signature(
+        RealInterval(0.249, 0.251, IntervalType.OpenCl)
+    )
+
+    assert jnp.allclose(result.data, jnp.asarray([2.5], dtype=jnp.float32))
+
+
+def test_batched_opencl_queries_match_inward_nudged_clopen_queries():
+    lie_basis = LieBasis(width=1, depth=1)
+    cache = jnp.zeros((16, lie_basis.size()), dtype=jnp.float32)
+    cache = cache.at[:8, 0].set(jnp.arange(1, 9, dtype=jnp.float32))
+    stream = LieIncrementStream(
+        cache,
+        lie_basis,
+        support=RealInterval(0.0, 1.0, IntervalType.ClOpen),
+        resolution=3,
+    )
+
+    opencl = stream.log_signature(
+        RealInterval(
+            jnp.asarray([0.25, 0.20, 0.50]),
+            jnp.asarray([0.75, 0.60, 0.55]),
+            IntervalType.OpenCl,
+        )
+    )
+    nudged_clopen = stream.log_signature(
+        RealInterval(
+            jnp.asarray([0.375, 0.20, 0.625]),
+            jnp.asarray([0.75, 0.60, 0.55]),
+            IntervalType.ClOpen,
+        )
+    )
+
+    assert jnp.allclose(opencl.data, nudged_clopen.data)
+
+
 def _build_l_shape_stream(t0, t1, increments):
     """Build a width-2 depth-2 LieIncrementStream from a 2D increment path.
 
