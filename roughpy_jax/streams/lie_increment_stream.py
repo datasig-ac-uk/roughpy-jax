@@ -1,8 +1,9 @@
-import math
 import dataclasses
-from functools import partial
+import inspect
+import math
 from collections.abc import Callable
-from typing import TypeAlias, TypeVar, Any
+from functools import partial
+from typing import Any, TypeAlias, TypeVar
 
 import jax
 import jax.numpy as jnp
@@ -18,13 +19,12 @@ from roughpy_jax.algebra import (
     lie_to_tensor,
     to_log_signature,
 )
-from roughpy_jax.bases import to_tensor_basis, Basis
+from roughpy_jax.bases import Basis, to_tensor_basis
 from roughpy_jax.intervals import (
     DyadicInterval,
     Interval,
     IntervalType,
     RealInterval,
-    intersection,
 )
 
 from .concepts import Stream
@@ -41,13 +41,10 @@ LeftT = TypeVar("LeftT")
 RightT = TypeVar("RightT")
 AccT = TypeVar("AccT")
 
-DQInitT: TypeAlias = Callable[
-    [int, int, int],
-    AccT,
-]
-DQLeftGetterT: TypeAlias = Callable[[int, int, int], LeftT]
-DQRightGetterT: TypeAlias = Callable[[int, int, int], RightT]
-DQCombineT: TypeAlias = Callable[[LeftT, AccT, RightT], AccT]
+DQInitT: TypeAlias = Callable[[Any, jax.Array, jax.Array, jax.Array], AccT]
+DQLeftGetterT: TypeAlias = Callable[[Any, jax.Array, jax.Array, jax.Array], LeftT]
+DQRightGetterT: TypeAlias = Callable[[Any, jax.Array, jax.Array, jax.Array], RightT]
+DQCombineT: TypeAlias = Callable[[Any, LeftT, AccT, RightT], AccT]
 
 
 def _resolve_short_case(
@@ -245,7 +242,7 @@ def _tree_lie_combine(context: _QueryContext, left: Lie, accumulator: Lie, right
     return to_log_signature(result, context.query_basis)
 
 
-def dyadic_query(
+def _dyadic_query_legacy(
         query: Interval,
         resolution: int,
         init: DQInitT,
@@ -330,6 +327,50 @@ def dyadic_query(
     return result
 
 
+def dyadic_query(
+        query: Interval,
+        resolution: int,
+        init: DQInitT,
+        get_left: DQLeftGetterT,
+        get_right: DQRightGetterT,
+        combine: DQCombineT,
+        cache_interval_type: IntervalType = IntervalType.ClOpen,
+        *,
+        context: Any = None,
+) -> AccT:
+    """Query a dyadic cache over one or more intervals.
+
+    Callback arguments receive ``context`` as their first argument.  Endpoint
+    arrays are supported and are treated as leading query batch dimensions; the
+    callback return values must consequently be JAX-compatible pytrees with
+    those dimensions preserved.
+
+    The callback contract used before batched queries were supported is retained
+    for source compatibility.  Legacy callbacks are selected by their arity
+    and use the original scalar Python implementation.
+    """
+    # Keep the old callback API working for downstream users.  The new API is
+    # deliberately dispatched to the same JIT kernel used by LieIncrementStream.
+    if len(inspect.signature(init).parameters) == 3:
+        return _dyadic_query_legacy(
+            query, resolution, init, get_left, get_right, combine,
+            cache_interval_type,
+        )
+
+    return _query_dyadic_cache(
+        jnp.asarray(query.inf),
+        jnp.asarray(query.sup),
+        context,
+        resolution=resolution,
+        query_interval_type=query.interval_type,
+        cache_interval_type=cache_interval_type,
+        init=init,
+        get_left=get_left,
+        get_right=get_right,
+        combine=combine,
+    )
+
+
 def _make_finest_increment_body(state, current, *, input_lie_basis, cache_lie_basis, tensor_basis):
     current_bucket, current_acc, current_out = state
     bucket, data = current
@@ -365,7 +406,7 @@ def _make_finest_increment_level(buckets: jax.Array, data: jax.Array, *, resolut
     buckets = buckets[order]
     data = data[order, ...]
 
-    time_dim, *batch_dims, data_dim = data.shape
+    time_dim, *batch_dims, _ = data.shape
 
     assert time_dim == buckets.shape[0]
 
@@ -653,7 +694,7 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
                                          resolution=resolution,
                                          cache_lie_basis=lie_basis,
                                          input_lie_basis=input_data_basis)
-            for ks, ds in zip(k_arrays, data_arrays)
+            for ks, ds in zip(k_arrays, data_arrays, strict=True)
         ], axis=1)
 
         cache = _extend_from_finest_level(base, resolution=resolution, cache_lie_basis=lie_basis)
@@ -708,89 +749,35 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
             interval.interval_type,
         )
 
-    #
-    # def _query_init(self, k1: int, k2: int, n: int) -> Lie:
-    #     if k1 == k2:
-    #         return self._zero_log_signature()
-    #
-    #     if self._interval_type == IntervalType.ClOpen:
-    #         return self._query_dyadic(k1, n)
-    #
-    #     return self._query_dyadic(k2, n)
-    #
-    # def _query_get(self, k: int, n: int, digit: int) -> Lie:
-    #     if not digit:
-    #         return self._zero_log_signature()
-    #
-    #     return self._query_dyadic(k, n)
-    #
-    # def _query_combine(self, left: Lie, acc: Lie, right: Lie) -> Lie:
-    #     ft_result = FreeTensor.identity(
-    #         self._group_basis, dtype=acc.data.dtype, batch_dims=self._cache.shape[1:-1]
-    #     )
-    #
-    #     ft_result = ft_fmexp(ft_result, lie_to_tensor(left))
-    #     ft_result = ft_fmexp(ft_result, lie_to_tensor(acc))
-    #     ft_result = ft_fmexp(ft_result, lie_to_tensor(right))
-    #
-    #     return to_log_signature(ft_result)
-
     def log_signature(self, interval: Interval | None = None) -> Lie:
         """
         Compute the log signature over an interval.
 
-        Whilst intervals do support batching as arrays, and lie increment
-        streams may be amenable to batched log-signature calculation, this
-        functionality is not yet enabled. For now, only single intervals
-        will be accepted by this method. This may change in a future release.
+        Endpoint arrays are treated as leading query batch dimensions.
         """
         if interval is None:
             interval = self._support
 
         inf = jnp.asarray(interval.inf)
         sup = jnp.asarray(interval.sup)
-        # if inf.size != 1 or sup.size != 1:
-        #     raise ValueError(
-        #         "LieIncrementStream only supports scalar interval endpoints "
-        #         "or single-element endpoint arrays"
-        #     )
-        # if inf.shape or sup.shape:
-        #     interval = RealInterval(inf.reshape(()), sup.reshape(()), interval.interval_type)
 
         clipped_inf = jnp.clip(inf, self._support.inf, self._support.sup)
         clipped_sup = jnp.clip(sup, self._support.inf, self._support.sup)
-        # query_interval = intersection(interval, self.support)
-        # if jnp.all(query_interval.length == 0):
-        #     return self._zero_log_signature()
-
-        # reparam_query = self._reparamterise(query_interval)
         reparam_inf = (clipped_inf - self._support.inf) / (self._support.sup - self._support.inf)
         reparam_sup = (clipped_sup - self._support.inf) / (self._support.sup - self._support.inf)
 
         context = _QueryContext(self._cache, self._lie_basis, self._lie_basis, self._group_basis)
 
-        result = _query_dyadic_cache(
-            reparam_inf,
-            reparam_sup,
-            context,
-            resolution=self._resolution,
-            query_interval_type=interval.interval_type,
-            cache_interval_type=self._interval_type,
-            init=_dyadic_query_init_lie,
-            get_left=_dyadic_tree_get_lie,
-            get_right=_dyadic_tree_get_lie,
-            combine=_tree_lie_combine,
+        result = dyadic_query(
+            RealInterval(reparam_inf, reparam_sup, interval.interval_type),
+            self._resolution,
+            _dyadic_query_init_lie,
+            _dyadic_tree_get_lie,
+            _dyadic_tree_get_lie,
+            _tree_lie_combine,
+            self._interval_type,
+            context=context,
         )
-
-        # result = dyadic_query(
-        #     reparam_query,
-        #     self._resolution,
-        #     self._query_init,
-        #     self._query_get,
-        #     self._query_get,
-        #     self._query_combine,
-        #     self._interval_type,
-        # )
 
         return result
 
@@ -801,10 +788,7 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
         """
         Compute the signature over an interval.
 
-        Whilst intervals do support batching as arrays, and lie increment
-        streams may be amenable to batched signature calculation, this
-        functionality is not yet enabled. For now, only single intervals
-        will be accepted by this method. This may change in a future release.
+        Endpoint arrays are treated as leading query batch dimensions.
         """
         log_sig = self.log_signature(interval)
         tensor = lie_to_tensor(log_sig)

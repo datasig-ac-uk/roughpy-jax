@@ -172,25 +172,34 @@ def test_log_signature_accepts_singleton_array_interval_endpoints():
     assert jnp.allclose(actual_sig.data, expected_sig.data, atol=1e-6)
 
 
-@pytest.mark.skip("old behaviour")
-def test_log_signature_rejects_nonsingleton_array_interval_endpoints():
+def test_batched_log_signature_and_signature_match_individual_queries():
     lie_basis = LieBasis(width=1, depth=1)
-    cache = jnp.zeros((4, lie_basis.size()), dtype=jnp.float32)
+    cache = jnp.zeros((16, lie_basis.size()), dtype=jnp.float32)
+    cache = cache.at[:8, 0].set(jnp.arange(1, 9, dtype=jnp.float32))
     stream = LieIncrementStream(
         cache,
         lie_basis,
         support=RealInterval(0.0, 1.0, IntervalType.ClOpen),
-        resolution=1,
+        resolution=3,
     )
 
     query = RealInterval(
-        jnp.array([0.25, 0.5], dtype=jnp.float32),
-        jnp.array([0.75, 0.5], dtype=jnp.float32),
+        jnp.array([0.0, 0.25, 0.5], dtype=jnp.float32),
+        jnp.array([0.25, 0.75, 1.0], dtype=jnp.float32),
         IntervalType.ClOpen,
     )
 
-    with pytest.raises(ValueError, match="single-element endpoint arrays"):
-        stream.log_signature(query)
+    batched_log = stream.log_signature(query)
+    batched_sig = stream.signature(query)
+
+    for i in range(3):
+        scalar_query = RealInterval(query.inf[i], query.sup[i], query.interval_type)
+        assert jnp.allclose(
+            batched_log.data[i], stream.log_signature(scalar_query).data
+        )
+        assert jnp.allclose(
+            batched_sig.data[i], stream.signature(scalar_query).data
+        )
 
 
 def test_log_signature_without_interval_uses_support():

@@ -1,7 +1,7 @@
 import math
 from collections import deque
 
-import jax,numpy as jnp
+import jax.numpy as jnp
 import pytest
 from roughpy_jax.intervals import IntervalType, RealInterval
 from roughpy_jax.streams.lie_increment_stream import dyadic_query
@@ -202,6 +202,50 @@ def test_short_intervals_include_resolution_endpoint_if_and_only_if_contained(
 
 
 @pytest.mark.parametrize(
+    "query_type,cache_type",
+    [
+        (IntervalType.ClOpen, IntervalType.ClOpen),
+        (IntervalType.OpenCl, IntervalType.ClOpen),
+        (IntervalType.ClOpen, IntervalType.OpenCl),
+        (IntervalType.OpenCl, IntervalType.OpenCl),
+    ],
+)
+def test_short_intervals_handle_all_query_and_cache_interval_type_pairs(
+    query_type, cache_type
+):
+    """A short query must find a contained finest-resolution endpoint.
+
+    The endpoint is represented as a left endpoint for a clopen cache and as
+    a right endpoint for an open-closed cache.  The query convention must not
+    change the result when the endpoint lies strictly inside the query.
+    """
+    query = RealInterval(0.249, 0.251, query_type)
+
+    result = _collect_endpoints(query, resolution=3, cache_interval_type=cache_type)
+
+    assert result == [0.25]
+
+
+@pytest.mark.parametrize(
+    "query_type,cache_type",
+    [
+        (IntervalType.ClOpen, IntervalType.ClOpen),
+        (IntervalType.OpenCl, IntervalType.ClOpen),
+        (IntervalType.ClOpen, IntervalType.OpenCl),
+        (IntervalType.OpenCl, IntervalType.OpenCl),
+    ],
+)
+def test_short_intervals_exclude_finest_endpoint_outside_query(
+    query_type, cache_type
+):
+    query = RealInterval(0.251, 0.26, query_type)
+
+    result = _collect_endpoints(query, resolution=3, cache_interval_type=cache_type)
+
+    assert result == []
+
+
+@pytest.mark.parametrize(
     "query,cache_interval_type",
     [
         (RealInterval(0.25, 0.25, IntervalType.ClOpen), IntervalType.ClOpen),
@@ -217,3 +261,32 @@ def test_empty_intervals_always_return_empty(query, cache_interval_type):
         cache_interval_type=cache_interval_type,
     )
     assert result == []
+
+
+def test_batched_callback_api_uses_the_dyadic_query_kernel():
+    def init(context, k1, k2, n):
+        return k2 - k1
+
+    def get(context, k, n, digit):
+        return jnp.where(digit != 0, k, 0)
+
+    def combine(context, left, accumulator, right):
+        return left + accumulator + right
+
+    query = RealInterval(
+        jnp.asarray([0.0, 0.125, 0.25]),
+        jnp.asarray([0.5, 0.5, 0.75]),
+        IntervalType.ClOpen,
+    )
+
+    actual = dyadic_query(
+        query, 3, init, get, get, combine, context=None
+    )
+    expected = jnp.asarray([
+        dyadic_query(RealInterval(float(query.inf[i]), float(query.sup[i]), query.interval_type),
+                     3, init, get, get, combine, context=None)
+        for i in range(3)
+    ])
+
+    assert actual.shape == (3,)
+    assert jnp.allclose(actual, expected)
