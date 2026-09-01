@@ -685,9 +685,21 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
         time_arrays = [(ts.astype(time_dtype) - shift) / sf for ts in time_arrays]
 
         if resolution is None:
-            min_diff = min(jnp.min(jnp.diff(ts, axis=-1)) for ts in time_arrays)
-            _, exp = jnp.frexp(min_diff)
-            resolution = int(1 - exp)
+            min_diffs = []
+            for ts in time_arrays:
+                diffs = jnp.diff(jnp.sort(ts))
+                positive_diffs = diffs[diffs > 0]
+                if positive_diffs.size:
+                    min_diffs.append(jnp.min(positive_diffs))
+
+            if min_diffs:
+                min_diff = min(min_diffs)
+                _, exp = jnp.frexp(min_diff)
+                resolution = max(0, int(1 - exp))
+            else:
+                # A singleton input, or repeated indistinguishable timestamps,
+                # needs only one finest-level bucket.
+                resolution = 0
 
         tensor_basis = to_tensor_basis(lie_basis)
 
