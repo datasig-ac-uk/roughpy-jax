@@ -58,10 +58,6 @@ def test_partition_pytree_has_dynamic_endpoint_leaves(interval_type):
 @pytest.mark.parametrize(
     ("interval", "expected_length"),
     [
-        (
-            DyadicInterval(k=3, n=2, _interval_type=IntervalType.ClOpen),
-            0.25,
-        ),
         (RealInterval(0.25, 0.75, IntervalType.ClOpen), 0.5),
         (Partition([0.25, 0.5, 0.75], IntervalType.ClOpen), 0.5),
     ],

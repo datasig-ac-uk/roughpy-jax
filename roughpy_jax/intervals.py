@@ -220,22 +220,6 @@ class DyadicInterval(Dyadic):
         raise NotImplementedError("DyadicInterval intersection is not implemented yet")
 
 
-def _dyadic_interval_tree_flatten(interval):
-    return (), (interval.k, interval.n, interval._interval_type)
-
-
-def _dyadic_interval_tree_unflatten(aux_data, _children):
-    k, n, interval_type = aux_data
-    return DyadicInterval(k=k, n=n, _interval_type=interval_type)
-
-
-jax.tree_util.register_pytree_node(
-    DyadicInterval,
-    _dyadic_interval_tree_flatten,
-    _dyadic_interval_tree_unflatten,
-)
-
-
 @dataclass(frozen=True)
 class RealInterval:
     """A interval in the real line or collection thereof.
