@@ -469,6 +469,7 @@ def _extend_from_finest_level(
     return jnp.concatenate(levels, axis=0)
 
 
+@jax.tree_util.register_pytree_node_class
 class LieIncrementStream(Stream[Lie, FreeTensor]):
     """
     Stream backed by a contiguous cache of dyadic log-signatures.
@@ -524,6 +525,22 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
         self._resolution = int(resolution)
         self._interval_type = interval_type
         self._zero_index = cache_length - 1
+
+    def tree_flatten(self):
+        children = (self._cache, self._support)
+        aux_data = (
+            self._lie_basis,
+            self._group_basis,
+            self._resolution,
+            self._interval_type,
+        )
+        return children, aux_data
+
+    @classmethod
+    def tree_unflatten(cls, aux_data, children):
+        cache, support = children
+        lie_basis, group_basis, resolution, interval_type = aux_data
+        return cls(cache, lie_basis, resolution, support, group_basis, interval_type)
 
     @staticmethod
     def _stream_to_cache(

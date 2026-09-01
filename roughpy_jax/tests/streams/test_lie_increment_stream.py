@@ -1,3 +1,4 @@
+import jax
 import jax.numpy as jnp
 import pytest
 
@@ -19,6 +20,56 @@ def test_constructor_rejects_opencl_cache():
             resolution=1,
             interval_type=IntervalType.OpenCl,
         )
+
+
+def test_pytree_round_trip_preserves_stream_data_and_metadata():
+    lie_basis = LieBasis(width=1, depth=1)
+    group_basis = TensorBasis(width=1, depth=1)
+    cache = jnp.arange(16, dtype=jnp.float32).reshape(8, 2, 1)
+    support = RealInterval(2.0, 5.0, IntervalType.ClOpen)
+    stream = LieIncrementStream(
+        cache,
+        lie_basis,
+        resolution=2,
+        support=support,
+        group_basis=group_basis,
+    )
+
+    leaves, treedef = jax.tree_util.tree_flatten(stream)
+    rebuilt = jax.tree_util.tree_unflatten(treedef, leaves)
+
+    assert len(leaves) == 3
+    assert isinstance(rebuilt, LieIncrementStream)
+    assert rebuilt.lie_basis == lie_basis
+    assert rebuilt.group_basis == group_basis
+    assert rebuilt.resolution == 2
+    assert rebuilt.support == support
+    assert rebuilt.batch_dims == (2,)
+    assert rebuilt.dtype == jnp.float32
+    assert jnp.array_equal(rebuilt._cache, cache)
+
+
+def test_pytree_stream_can_be_passed_to_jit():
+    lie_basis = LieBasis(width=1, depth=1)
+    cache = jnp.array(
+        [[1.0], [2.0], [4.0], [8.0], [3.0], [12.0], [15.0], [0.0]],
+        dtype=jnp.float32,
+    )
+    stream = LieIncrementStream(
+        cache,
+        lie_basis,
+        resolution=2,
+        support=RealInterval(2.0, 4.0, IntervalType.ClOpen),
+    )
+
+    @jax.jit
+    def query(candidate, inf, sup):
+        interval = RealInterval(inf, sup, IntervalType.ClOpen)
+        return candidate.log_signature(interval).data
+
+    actual = query(stream, jnp.asarray(2.0), jnp.asarray(3.0))
+
+    assert jnp.allclose(actual, jnp.asarray([3.0]))
 
 
 def test_from_stream_rejects_nonpositive_resolution():
