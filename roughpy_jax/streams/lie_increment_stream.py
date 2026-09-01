@@ -466,6 +466,9 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
     cache axis packs log-signatures over dyadic intervals of lengths between
     2^-R and 1 in steps of 2. The final element of the cache axis is unused
     by the geometric series of dyadic intervals and should be zero.
+
+    Only left-closed, right-open (ClOpen) dyadic caches are currently
+    supported. This may change in the future.
     """
 
     @staticmethod
@@ -481,6 +484,11 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
             group_basis: TensorBasis | None = None,
             interval_type: IntervalType = IntervalType.ClOpen,
     ):
+        if interval_type != IntervalType.ClOpen:
+            raise ValueError(
+                "LieIncrementStream only supports ClOpen dyadic caches"
+            )
+
         if cache.ndim < 2:
             raise ValueError("cache must have shape (cache_length, ..., lie_dim)")
 
@@ -705,6 +713,7 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
             resolution,
             support=support,
             group_basis=tensor_basis,
+            interval_type=interval_type,
             **kwargs,
         )
 
