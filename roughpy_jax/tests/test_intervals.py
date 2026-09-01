@@ -1,5 +1,7 @@
 import dataclasses
 
+import jax
+import jax.numpy as jnp
 import pytest
 from roughpy_jax.intervals import (
     Dyadic,
@@ -10,6 +12,66 @@ from roughpy_jax.intervals import (
     RealInterval,
     intersection,
 )
+
+
+@pytest.mark.parametrize("interval_type", list(IntervalType))
+def test_real_interval_pytree_has_dynamic_endpoint_leaves(interval_type):
+    interval = RealInterval(
+        jnp.asarray([0.0, 1.0]),
+        jnp.asarray([0.5, 2.0]),
+        interval_type,
+    )
+
+    leaves, treedef = jax.tree_util.tree_flatten(interval)
+    rebuilt = jax.tree_util.tree_unflatten(treedef, leaves)
+
+    assert len(leaves) == 2
+    assert isinstance(rebuilt, RealInterval)
+    assert rebuilt.interval_type is interval_type
+    assert jnp.array_equal(rebuilt.inf, interval.inf)
+    assert jnp.array_equal(rebuilt.sup, interval.sup)
+
+
+@pytest.mark.parametrize("interval_type", list(IntervalType))
+def test_partition_pytree_has_dynamic_endpoint_leaves(interval_type):
+    partition = Partition(
+        [jnp.asarray(0.0), jnp.asarray(0.5), jnp.asarray(1.0)],
+        interval_type,
+    )
+
+    leaves, treedef = jax.tree_util.tree_flatten(partition)
+    rebuilt = jax.tree_util.tree_unflatten(treedef, leaves)
+
+    assert len(leaves) == 3
+    assert isinstance(rebuilt, Partition)
+    assert rebuilt.interval_type is interval_type
+    assert all(
+        jnp.array_equal(actual, expected)
+        for actual, expected in zip(
+            rebuilt._endpoints,
+            partition._endpoints,
+            strict=True,
+        )
+    )
+
+
+@pytest.mark.parametrize(
+    ("interval", "expected_length"),
+    [
+        (
+            DyadicInterval(k=3, n=2, _interval_type=IntervalType.ClOpen),
+            0.25,
+        ),
+        (RealInterval(0.25, 0.75, IntervalType.ClOpen), 0.5),
+        (Partition([0.25, 0.5, 0.75], IntervalType.ClOpen), 0.5),
+    ],
+)
+def test_interval_pytree_can_be_passed_to_jit(interval, expected_length):
+    @jax.jit
+    def interval_length(candidate):
+        return candidate.length
+
+    assert jnp.allclose(interval_length(interval), expected_length)
 
 
 @pytest.mark.parametrize(
