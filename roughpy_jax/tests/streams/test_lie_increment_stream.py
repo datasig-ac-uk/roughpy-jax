@@ -294,6 +294,50 @@ def test_log_signature_outside_support_returns_zero(interval_type):
 
 
 @pytest.mark.parametrize(
+    ("query", "clipped", "expected_data"),
+    [
+        (
+            RealInterval(0.0, 2.1, IntervalType.ClOpen),
+            RealInterval(1.0, 2.1, IntervalType.ClOpen),
+            7.0,
+        ),
+        (
+            RealInterval(1.9, 4.0, IntervalType.ClOpen),
+            RealInterval(1.9, 3.0, IntervalType.ClOpen),
+            12.0,
+        ),
+    ],
+)
+def test_log_signature_partially_overlapping_support_is_clipped(
+    query,
+    clipped,
+    expected_data,
+):
+    lie_basis = LieBasis(width=1, depth=1)
+    finest = jnp.array([[1.0], [2.0], [4.0], [8.0]], dtype=jnp.float32)
+    cache = jnp.concatenate(
+        (
+            finest,
+            jnp.array([[3.0], [12.0]], dtype=jnp.float32),
+            jnp.array([[15.0], [0.0]], dtype=jnp.float32),
+        ),
+        axis=0,
+    )
+    stream = LieIncrementStream(
+        cache,
+        lie_basis,
+        support=RealInterval(1.0, 3.0, IntervalType.ClOpen),
+        resolution=2,
+    )
+
+    actual = stream.log_signature(query)
+    expected = stream.log_signature(clipped)
+
+    assert jnp.allclose(actual.data, expected.data)
+    assert jnp.allclose(actual.data, jnp.asarray([expected_data]))
+
+
+@pytest.mark.parametrize(
     ("inf", "sup", "expected"),
     [
         (0.100, 0.120, 0.0),
