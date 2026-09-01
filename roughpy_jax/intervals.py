@@ -238,21 +238,23 @@ jax.tree_util.register_pytree_node(
 
 @dataclass(frozen=True)
 class RealInterval:
-    """
-    Represents a real interval with specified bounds and interval type.
-    This class is used to define and represent a mathematical interval in the real number
-    line. It includes the lower bound, upper bound, and the type of interval (e.g., open,
-    closed). The class is immutable and all fields are frozen upon initialization.
-    :ivar interval_type: Indicates the type of interval (e.g., open, closed).
-    :type interval_type: IntervalType
-    :ivar inf: The lower bound of the interval.
-    :type inf: RealT
-    :ivar sup: The upper bound of the interval.
-    :type sup: RealT
+    """A interval in the real line or collection thereof.
+
+    The lower and upper endpoints are arrays with broadcast-compatible shapes.
+    Scalar arrays represent a single interval, while non-scalar arrays represent
+    a batch of intervals whose batch shape is the broadcast shape of the two
+    endpoints. A single endpoint convention applies to the entire batch.
+
+    ``RealInterval`` is a pytree with the endpoint arrays as dynamic leaves and
+    the interval type as static metadata.
+
+    :ivar inf: Lower endpoint array.
+    :ivar sup: Upper endpoint array.
+    :ivar interval_type: Shared endpoint convention for the interval batch.
     """
 
-    _inf: float | Array
-    _sup: float | Array
+    _inf: Array
+    _sup: Array
     _interval_type: IntervalType
 
     def __str__(self) -> str:
@@ -263,15 +265,15 @@ class RealInterval:
         return self._interval_type
 
     @property
-    def inf(self) -> float | Array:
+    def inf(self) ->  Array:
         return self._inf
 
     @property
-    def sup(self) -> float | Array:
+    def sup(self) ->  Array:
         return self._sup
 
     @property
-    def length(self) -> float | Array:
+    def length(self) -> Array:
         return BaseInterval.length(self)
 
     @classmethod
