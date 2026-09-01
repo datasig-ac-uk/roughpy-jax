@@ -454,6 +454,50 @@ def test_from_increments_recovers_analytic_levy_area_on_nonunit_support():
     assert not jnp.allclose(rt, ur, atol=1e-6)
 
 
+def test_from_increments_subinterval_satisfies_chen_identity():
+    lie_basis = LieBasis(width=2, depth=2)
+    timestamps = jnp.linspace(0.0, 1.0, 9, dtype=jnp.float32)
+    data = jnp.array(
+        [
+            [0.0, 0.0],
+            [1.0, 0.0],
+            [0.0, 1.0],
+            [0.5, 0.0],
+            [0.0, -0.25],
+            [-0.5, 0.0],
+            [0.0, 0.75],
+            [0.25, 0.0],
+            [0.0, 0.0],
+        ],
+        dtype=jnp.float32,
+    )
+    stream = LieIncrementStream.from_increments(
+        timestamps=timestamps,
+        data=data,
+        resolution=4,
+        input_data_basis=None,
+        lie_basis=lie_basis,
+    )
+    support_length = stream.support.sup - stream.support.inf
+
+    inf = stream.support.inf + 0.13 * support_length
+    split = stream.support.inf + 0.53 * support_length
+    sup = stream.support.inf + 0.89 * support_length
+    whole = stream.log_signature(
+        RealInterval(inf, sup, IntervalType.ClOpen)
+    )
+    left = stream.log_signature(
+        RealInterval(inf, split, IntervalType.ClOpen)
+    )
+    right = stream.log_signature(
+        RealInterval(split, sup, IntervalType.ClOpen)
+    )
+
+    combined = rpj.cbh(left, right, lie_basis=lie_basis)
+
+    assert jnp.allclose(whole.data, combined.data, atol=1e-6)
+
+
 def test_from_increments_is_invariant_to_timestamp_rescaling():
     """The signature depends on increment order, not the timestamp scale/offset.
 
