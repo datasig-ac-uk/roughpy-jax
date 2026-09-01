@@ -437,7 +437,18 @@ def _make_finest_increment_level(buckets: jax.Array, data: jax.Array, *, resolut
 
 
 @partial(jax.jit, static_argnames=("resolution", "cache_lie_basis"))
-def _extend_from_finest_level(finest: jax.Array, *, resolution: int, cache_lie_basis: LieBasis) -> jax.Array:
+def _extend_from_finest_level(
+        finest: jax.Array,
+        *,
+        resolution: int,
+        cache_lie_basis: LieBasis,
+) -> jax.Array:
+    # The stacking of input arrays in the wrapping function always introduces a new batching
+    # dimension, which might be 1 if the input data was a single array. To preserve the batch
+    # layout of the input data, we squeeze out the extra dimension if it is 1.
+    if finest.shape[1] == 1:
+        finest = jnp.squeeze(finest, axis=1)
+
     levels = [finest]
 
     for i in range(resolution):
@@ -540,6 +551,7 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
             [f(k, resolution).data for k in range(1 << resolution)],
             axis=0,
         )
+        finest = jnp.expand_dims(finest, axis=1)
 
         return _extend_from_finest_level(
             finest,
@@ -626,6 +638,9 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
                 f"Time dimension mismatch at index 0: expected {time_lens[0]}, got {dt_dim}"
             )
 
+        #TODO: Currently this check requires that all data arrays have the same batch dimensions
+        # but this is perhaps not quite the behaviour we want. It makes sense to concatenate
+        # along the initial batching dimension if all the trailing entries match.
         dtypes = [ds.dtype]
         for i, (ds, expected_dt) in enumerate(
                 zip(data_arrays[1:], time_lens[1:], strict=True), start=1

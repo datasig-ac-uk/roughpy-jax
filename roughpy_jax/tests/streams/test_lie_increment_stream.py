@@ -429,8 +429,9 @@ def test_from_increments_automatic_resolution_preserves_finest_level_data():
     buckets = jnp.floor(
         jnp.ldexp(normalised_timestamps, stream.resolution)
     ).astype(jnp.int32)
-    finest = stream._cache[: 1 << stream.resolution, 0, :]
+    finest = stream._cache[: 1 << stream.resolution, :]
 
+    assert stream.batch_dims == ()
     assert jnp.unique(buckets).size == timestamps.size
     assert jnp.allclose(finest[buckets], data)
 
@@ -498,6 +499,48 @@ def test_from_increments_supports_multiple_batched_input_streams():
             lie_basis=basis,
         )
         assert jnp.allclose(actual[i], single.log_signature(single.support).data)
+
+
+def test_from_increments_preserves_batch_dims_of_single_data_array():
+    timestamps = jnp.array([0.0, 0.5, 1.0], dtype=jnp.float32)
+    data = jnp.arange(18, dtype=jnp.float32).reshape(3, 2, 3, 1)
+    basis = LieBasis(width=1, depth=1)
+
+    stream = LieIncrementStream.from_increments(
+        timestamps=timestamps,
+        data=data,
+        resolution=2,
+        input_data_basis=None,
+        lie_basis=basis,
+    )
+
+    assert stream.batch_dims == (2, 3)
+    assert stream.log_signature(stream.support).data.shape == (2, 3, basis.size())
+    assert jnp.allclose(
+        stream.log_signature(stream.support).data,
+        data.sum(axis=0),
+    )
+
+
+def test_from_increments_preserves_leading_unit_data_batch_dimension():
+    timestamps = jnp.array([0.0, 0.5, 1.0], dtype=jnp.float32)
+    data = jnp.arange(6, dtype=jnp.float32).reshape(3, 1, 2, 1)
+    basis = LieBasis(width=1, depth=1)
+
+    stream = LieIncrementStream.from_increments(
+        timestamps=timestamps,
+        data=data,
+        resolution=2,
+        input_data_basis=None,
+        lie_basis=basis,
+    )
+
+    assert stream.batch_dims == (1, 2)
+    assert stream.log_signature(stream.support).data.shape == (1, 2, basis.size())
+    assert jnp.allclose(
+        stream.log_signature(stream.support).data,
+        data.sum(axis=0),
+    )
 
 
 def test_from_increments_sorts_each_input_by_timestamp():
