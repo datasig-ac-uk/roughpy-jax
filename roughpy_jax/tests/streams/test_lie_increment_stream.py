@@ -8,6 +8,19 @@ from roughpy_jax.streams import PiecewiseAbelianStream
 from roughpy_jax.streams.lie_increment_stream import LieIncrementStream
 
 
+def test_constructor_rejects_opencl_cache():
+    lie_basis = LieBasis(width=1, depth=1)
+    cache = jnp.zeros((4, lie_basis.size()), dtype=jnp.float32)
+
+    with pytest.raises(ValueError, match="only supports ClOpen dyadic caches"):
+        LieIncrementStream(
+            cache,
+            lie_basis,
+            resolution=1,
+            interval_type=IntervalType.OpenCl,
+        )
+
+
 def test_from_stream_rejects_nonpositive_resolution():
     class DummyStream:
         lie_basis = LieBasis(width=1, depth=1)
@@ -202,6 +215,34 @@ def test_batched_log_signature_and_signature_match_individual_queries():
         )
 
 
+def test_query_batch_dimensions_precede_stream_batch_dimensions():
+    lie_basis = LieBasis(width=1, depth=1)
+    resolution = 2
+    stream_batch_dims = (2, 3)
+    finest = jnp.arange(
+        1,
+        1 + (1 << resolution) * 2 * 3,
+        dtype=jnp.float32,
+    ).reshape(1 << resolution, *stream_batch_dims, lie_basis.size())
+    next_level = finest.reshape(2, 2, *stream_batch_dims, 1).sum(axis=1)
+    root = next_level.sum(axis=0, keepdims=True)
+    zero = jnp.zeros((1, *stream_batch_dims, 1), dtype=jnp.float32)
+    cache = jnp.concatenate((finest, next_level, root, zero), axis=0)
+    stream = LieIncrementStream(cache, lie_basis, resolution=resolution)
+
+    bucket_indices = jnp.array([[0, 1], [2, 3]], dtype=jnp.int32)
+    query = RealInterval(
+        bucket_indices / float(1 << resolution),
+        (bucket_indices + 1) / float(1 << resolution),
+        IntervalType.ClOpen,
+    )
+
+    result = stream.log_signature(query)
+
+    assert result.data.shape == (2, 2, *stream_batch_dims, lie_basis.size())
+    assert jnp.allclose(result.data, finest[bucket_indices])
+
+
 def test_log_signature_without_interval_uses_support():
     lie_basis = LieBasis(width=1, depth=1)
     cache = jnp.array([[1.0], [2.0], [3.0], [0.0]], dtype=jnp.float32)
@@ -226,6 +267,30 @@ def test_log_signature_of_empty_interval_returns_zero():
     result = stream.log_signature(RealInterval(0.5, 0.5, IntervalType.ClOpen))
 
     assert jnp.allclose(result.data, rpj.Lie.zero(lie_basis).data)
+
+
+@pytest.mark.parametrize("interval_type", list(IntervalType))
+def test_log_signature_outside_support_returns_zero(interval_type):
+    lie_basis = LieBasis(width=1, depth=1)
+    stream_batch_dims = (2, 3)
+    cache = jnp.ones((4, *stream_batch_dims, lie_basis.size()), dtype=jnp.float32)
+    cache = cache.at[-1].set(0.0)
+    stream = LieIncrementStream(
+        cache,
+        lie_basis,
+        support=RealInterval(2.0, 4.0, IntervalType.ClOpen),
+        resolution=1,
+    )
+    query = RealInterval(
+        jnp.array([-2.0, 4.0, 5.0], dtype=jnp.float32),
+        jnp.array([-1.0, 5.0, 8.0], dtype=jnp.float32),
+        interval_type,
+    )
+
+    result = stream.log_signature(query)
+
+    assert result.data.shape == (3, *stream_batch_dims, lie_basis.size())
+    assert jnp.allclose(result.data, jnp.zeros_like(result.data))
 
 
 @pytest.mark.parametrize(
@@ -343,6 +408,31 @@ def _build_l_shape_stream(t0, t1, increments):
         interval_type=IntervalType.ClOpen,
         time_dtype=jnp.float64.dtype,
     )
+
+
+def test_from_increments_automatic_resolution_preserves_finest_level_data():
+    lie_basis = LieBasis(width=1, depth=1)
+    timestamps = jnp.array([1.0, 0.0, 0.75, 0.25, 0.5], dtype=jnp.float32)
+    data = jnp.array([[5.0], [1.0], [4.0], [2.0], [3.0]], dtype=jnp.float32)
+
+    stream = LieIncrementStream.from_increments(
+        timestamps=timestamps,
+        data=data,
+        resolution=None,
+        input_data_basis=None,
+        lie_basis=lie_basis,
+    )
+
+    normalised_timestamps = (
+        timestamps.astype(jnp.float32) - stream.support.inf
+    ) / (stream.support.sup - stream.support.inf)
+    buckets = jnp.floor(
+        jnp.ldexp(normalised_timestamps, stream.resolution)
+    ).astype(jnp.int32)
+    finest = stream._cache[: 1 << stream.resolution, 0, :]
+
+    assert jnp.unique(buckets).size == timestamps.size
+    assert jnp.allclose(finest[buckets], data)
 
 
 def test_from_increments_recovers_analytic_levy_area_on_nonunit_support():
@@ -497,6 +587,18 @@ def test_from_increments_pads_data_to_the_input_basis():
         expected.data,
         atol=1e-6,
     )
+
+
+def test_from_increments_rejects_opencl_cache():
+    with pytest.raises(ValueError, match="only supports ClOpen dyadic caches"):
+        LieIncrementStream.from_increments(
+            timestamps=jnp.array([0.0, 1.0], dtype=jnp.float32),
+            data=jnp.array([[1.0], [0.0]], dtype=jnp.float32),
+            resolution=1,
+            input_data_basis=None,
+            lie_basis=LieBasis(width=1, depth=1),
+            interval_type=IntervalType.OpenCl,
+        )
 
 
 @pytest.mark.parametrize(
