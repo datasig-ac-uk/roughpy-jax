@@ -1,15 +1,14 @@
 from __future__ import annotations
 
 import enum
-import math
-import numbers
 import typing
-from dataclasses import dataclass
+from dataclasses import FrozenInstanceError, dataclass
 from typing import Protocol, TypeVar
 
 import jax
 import jax.numpy as jnp
 from jax import Array
+from jax.typing import ArrayLike
 
 RealT = TypeVar("RealT")
 
@@ -129,62 +128,55 @@ def intersection(
     return RealInterval.intersection(left_interval, right_interval)
 
 
-@dataclass(frozen=True)
 class Dyadic:
     """
     Represents a dyadic number in mathematics.
     Dyadic numbers are numbers of the form k * (2^-n), where k is an integer and
     n is a non-negative integer.
+    ``k`` and ``n`` are scalar JAX arrays. Keeping the components as arrays is
+    important when dyadics are created or consumed inside JAX transformations.
+
     :ivar k: Integer component of the dyadic number.
-    :type k: int
+    :type k: Array
     :ivar n: Exponent of 2 in the dyadic number.
-    :type n: int
+    :type n: Array
     """
 
-    k: int
-    n: int
+    def __init__(self, k: ArrayLike, n: ArrayLike) -> None:
+        k = jnp.asarray(k)
+        n = jnp.asarray(n)
 
-    def __post_init__(self) -> None:
-        # NOTE: This whole method feels a little unnecessary since the dataclass will already enforce that k and n are
-        # integers but it does allow for some flexibility in accepting float inputs that are integer-valued, which could
-        # be convenient in some cases. It also allows us to provide more informative error messages if the inputs are
-        # not valid.
-
-        k = self.k
-        n = self.n
-
-        if isinstance(k, numbers.Integral):
-            k_int = int(k)
-        elif isinstance(k, float) and k.is_integer():
-            k_int = int(k)
-        else:
+        if not jnp.issubdtype(k.dtype, jnp.integer):
             raise TypeError(
-                f"Dyadic.k must be an integer-like value, got {type(k).__name__}: {k!r}"
+                f"Dyadic.k must be an integer array, got {k.dtype}: {k!r}"
+            )
+        if not jnp.issubdtype(n.dtype, jnp.integer):
+            raise TypeError(
+                f"Dyadic.n must be an integer array, got {n.dtype}: {n!r}"
             )
 
-        if isinstance(n, numbers.Integral):
-            n_int = int(n)
-        elif isinstance(n, float) and n.is_integer():
-            n_int = int(n)
-        else:
-            raise TypeError(
-                f"Dyadic.n must be an integer-like value, got {type(n).__name__}: {n!r}"
-            )
+        object.__setattr__(self, "k", k)
+        object.__setattr__(self, "n", n)
 
-        if n_int < 0:
-            raise ValueError(f"Dyadic.n must be non-negative, got {n_int}")
+    def __setattr__(self, name: str, value: object) -> None:
+        raise FrozenInstanceError(f"cannot assign to field '{name}'")
 
-        object.__setattr__(self, "k", k_int)
-        object.__setattr__(self, "n", n_int)
+    def __str__(self) -> str:
+        return f"Dyadic(k={self.k}, n={self.n})"
 
-    def __float__(self) -> float:
-        return math.ldexp(self.k, -self.n)
+    def __eq__(self, other: object) -> bool:
+        if type(self) is not type(other):
+            return False
+        other = typing.cast(Dyadic, other)
+        return bool(
+            jnp.array_equal(self.k, other.k)
+            and jnp.array_equal(self.n, other.n)
+        )
 
     def __jax_array__(self) -> Array:
-        return jnp.array(math.ldexp(self.k, -self.n))
+        return jnp.ldexp(self.k, -self.n)
 
 
-@dataclass(frozen=True)
 class DyadicInterval(Dyadic):
     """
     This subclass represents a dyadic interval, and therefore conforms to the
@@ -193,11 +185,26 @@ class DyadicInterval(Dyadic):
     and whether the interval is closed or open on either end.
     """
 
-    _interval_type: IntervalType
+    def __init__(
+        self, k: ArrayLike, n: ArrayLike, interval_type: IntervalType=IntervalType.ClOpen
+    ) -> None:
+        super().__init__(k, n)
+        object.__setattr__(self, "_interval_type", interval_type)
 
     @property
     def interval_type(self) -> IntervalType:
         return self._interval_type
+
+    def __str__(self) -> str:
+        return BaseInterval.to_string(self)
+
+    def __eq__(self, other: object) -> bool:
+        return (
+            isinstance(other, DyadicInterval)
+            and self.interval_type == other.interval_type
+            and bool(jnp.array_equal(self.k, other.k))
+            and bool(jnp.array_equal(self.n, other.n))
+        )
 
     @property
     def inf(self) -> Array:
@@ -218,6 +225,32 @@ class DyadicInterval(Dyadic):
         cls, left: DyadicInterval, right: DyadicInterval
     ) -> DyadicInterval:
         raise NotImplementedError("DyadicInterval intersection is not implemented yet")
+
+
+def _dyadic_tree_flatten(dyadic: Dyadic):
+    return (dyadic.k, dyadic.n), None
+
+
+def _dyadic_tree_unflatten(_aux_data, children):
+    return Dyadic(*children)
+
+
+def _dyadic_interval_tree_flatten(interval: DyadicInterval):
+    return (interval.k, interval.n), interval.interval_type
+
+
+def _dyadic_interval_tree_unflatten(interval_type, children):
+    return DyadicInterval(*children, interval_type)
+
+
+jax.tree_util.register_pytree_node(
+    Dyadic, _dyadic_tree_flatten, _dyadic_tree_unflatten
+)
+jax.tree_util.register_pytree_node(
+    DyadicInterval,
+    _dyadic_interval_tree_flatten,
+    _dyadic_interval_tree_unflatten,
+)
 
 
 @dataclass(frozen=True)
@@ -265,9 +298,7 @@ class RealInterval:
         """Compute the intersection of two intervals as a RealInterval."""
         new_inf = jnp.maximum(left.inf, right.inf)
         new_sup = jnp.minimum(left.sup, right.sup)
-        return RealInterval(
-            _inf=new_inf, _sup=new_sup, _interval_type=left.interval_type
-        )
+        return RealInterval(new_inf, new_sup, left.interval_type)
 
 
 RealInterval = jax.tree_util.register_dataclass(
@@ -315,9 +346,7 @@ class Partition:
         """
         return [
             RealInterval(
-                _inf=self._endpoints[i],
-                _sup=self._endpoints[i + 1],
-                _interval_type=self.interval_type,
+                self._endpoints[i], self._endpoints[i + 1], self.interval_type
             )
             for i in range(len(self._endpoints) - 1)
         ]
@@ -329,11 +358,7 @@ class Partition:
         :return: A RealInterval representing the partition.
         :rtype: RealInterval
         """
-        return RealInterval(
-            _inf=partition.inf,
-            _sup=partition.sup,
-            _interval_type=partition.interval_type,
-        )
+        return RealInterval(partition.inf, partition.sup, partition.interval_type)
 
     @classmethod
     def truncate(
