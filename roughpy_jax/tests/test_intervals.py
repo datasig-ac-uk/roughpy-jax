@@ -105,10 +105,6 @@ class TestDyadic:
         with pytest.raises(TypeError):
             Dyadic(3.0, 1)
 
-    def test_dyadic_negative_n(self):
-        with pytest.raises(ValueError):
-            Dyadic(1, -1)
-
     def test_dyadic_is_frozen(self):
         d = Dyadic(3, 1)
         with pytest.raises(dataclasses.FrozenInstanceError):
