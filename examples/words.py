@@ -63,15 +63,15 @@ def word_to_stream(word):
         )
     elif STREAM_KIND == "piecewise_abelian":
         n = len(word)
-        data = tuple(_make_lie(letter) for letter in word)
+        data = jnp.stack([_make_lie(letter).data for letter in word])
         # JAX-jitted methods require array-like endpoint leaves; `range` is not valid here.
         endpoints = jnp.arange(n + 1, dtype=jnp.float32).tolist()
         partition = Partition(endpoints, IntervalType.ClOpen)
         return PiecewiseAbelianStream(
-            _data=data,
-            _partition=partition,
-            _lie_basis=LIE_BASIS,
-            _group_basis=TENSOR_BASIS,
+            data,
+            partition,
+            LIE_BASIS,
+            TENSOR_BASIS,
         )
     else:
         raise ValueError(f"Invalid stream kind: {STREAM_KIND!r}")
