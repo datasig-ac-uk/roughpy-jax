@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from functools import partial
+from typing import Sequence
 
 import jax
 import jax.numpy as jnp
@@ -244,7 +245,8 @@ def to_piecewise_abelian_stream(
     return new_stream
 
 
-def piecewise_abelian_stream_from_data(data: DenseLie, partition: Partition) -> PiecewiseAbelianStream:
+def piecewise_abelian_stream_from_data(data: DenseLie | tuple[DenseLie, ...] | list[DenseLie],
+                                       partition: Partition) -> PiecewiseAbelianStream:
     """
     Construct a PiecewiseAbelianStream from Lie data and partition
     :param data: Lie data with shape (P, ..., L)
@@ -255,8 +257,16 @@ def piecewise_abelian_stream_from_data(data: DenseLie, partition: Partition) -> 
     if len(partition.batch_dims) > 0:
         raise ValueError("batched partitions for piecewise abelian streams are not supported")
 
-    lie_basis = data.basis
-    lie_data = data.data
+    if isinstance(data, (list, tuple)):
+        if len(data) == 0:
+            raise ValueError("data must not be empty")
+
+        lie_basis = data[0].basis
+        check_basis_compat(*(lie.basis for lie in data), exact=True, same_type=True)
+        lie_data = jnp.stack([item for item in data])
+    else:
+        lie_basis = data.basis
+        lie_data = data.data
 
     partition_check, *batch_dims, lie_dim = lie_data.shape
 
