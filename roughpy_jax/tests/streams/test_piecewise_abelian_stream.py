@@ -5,6 +5,7 @@ import roughpy_jax as rpj
 from roughpy_jax.algebra import FreeTensor, ft_fmexp, lie_to_tensor, to_log_signature
 from roughpy_jax.intervals import IntervalType, Partition, RealInterval
 from roughpy_jax.streams import PiecewiseAbelianStream
+from roughpy_jax.streams.piecewise_abelian_stream import to_piecewise_abelian_stream
 
 
 class PASHelper:
@@ -100,15 +101,6 @@ class TestPiecewiseAbelianStream:
 
         assert jnp.allclose(log_sig.data, expected_log_sig.data, atol=1e-6)
 
-    def test_log_signature_rejects_nonsingleton_array_interval_endpoints(self, pas_data):
-        query_interval = RealInterval(
-            jnp.array([0.25, 0.5], dtype=pas_data.dtype),
-            jnp.array([0.75, 1.5], dtype=pas_data.dtype),
-            IntervalType.ClOpen,
-        )
-
-        with pytest.raises(ValueError, match="single-element endpoint arrays"):
-            pas_data.stream.log_signature(query_interval)
 
     def test_log_signature_cbh(self, pas_data):
         """Test that the log signature of the stream over [0.5, 1.5] is CBH(0.5*L1, 0.5*L2)."""
@@ -164,6 +156,22 @@ class TestPiecewiseAbelianStream:
         assert support.inf == pas_data.partition.inf
         assert support.sup == pas_data.partition.sup
         assert support.interval_type == pas_data.partition.interval_type
+
+    def test_to_piecewise_abelian_stream(self, pas_data):
+        """Conversion queries all partition pieces as one batched interval."""
+        partition = Partition(
+            [0.0, 0.5, 1.0, 1.5, 2.0],
+            IntervalType.ClOpen,
+        )
+
+        converted = to_piecewise_abelian_stream(pas_data.stream, partition)
+        query_intervals = partition.to_intervals()
+
+        expected = pas_data.stream.log_signature(query_intervals)
+        actual = converted.log_signature(query_intervals)
+
+        assert actual.data.shape == expected.data.shape
+        assert jnp.allclose(actual.data, expected.data, atol=1e-6)
 
     @pytest.mark.extra
     @pytest.mark.parametrize("static", [True, False])

@@ -3,7 +3,7 @@ from __future__ import annotations
 import enum
 import typing
 from dataclasses import FrozenInstanceError, dataclass
-from typing import Protocol, TypeVar
+from typing import Any, Protocol, TypeVar
 
 import jax
 import jax.numpy as jnp
@@ -78,8 +78,8 @@ class BaseInterval:
 
 
 def intersection(
-    left_interval: Interval,
-    right_interval: Interval,
+        left_interval: Interval,
+        right_interval: Interval,
 ) -> RealInterval | DyadicInterval | Partition:
     """
     Calculate the intersection of two intervals, dispatching to the
@@ -97,7 +97,7 @@ def intersection(
     :return: The intersection.
     """
     if not isinstance(left_interval, Interval) or not isinstance(
-        right_interval, Interval
+            right_interval, Interval
     ):
         raise TypeError("Both arguments must be of type Interval")
 
@@ -106,11 +106,11 @@ def intersection(
 
     # Two dyadics → dyadic class method
     if isinstance(left_interval, DyadicInterval) and isinstance(
-        right_interval, DyadicInterval
+            right_interval, DyadicInterval
     ):
         return DyadicInterval.intersection(left_interval, right_interval)
     elif isinstance(left_interval, DyadicInterval) or isinstance(
-        right_interval, DyadicInterval
+            right_interval, DyadicInterval
     ):
         raise ValueError("Cannot intersect a DyadicInterval with a non-DyadicInterval")
 
@@ -186,7 +186,7 @@ class DyadicInterval(Dyadic):
     """
 
     def __init__(
-        self, k: ArrayLike, n: ArrayLike, interval_type: IntervalType=IntervalType.ClOpen
+            self, k: ArrayLike, n: ArrayLike, interval_type: IntervalType = IntervalType.ClOpen
     ) -> None:
         super().__init__(k, n)
         object.__setattr__(self, "_interval_type", interval_type)
@@ -200,10 +200,10 @@ class DyadicInterval(Dyadic):
 
     def __eq__(self, other: object) -> bool:
         return (
-            isinstance(other, DyadicInterval)
-            and self.interval_type == other.interval_type
-            and bool(jnp.array_equal(self.k, other.k))
-            and bool(jnp.array_equal(self.n, other.n))
+                isinstance(other, DyadicInterval)
+                and self.interval_type == other.interval_type
+                and bool(jnp.array_equal(self.k, other.k))
+                and bool(jnp.array_equal(self.n, other.n))
         )
 
     @property
@@ -222,7 +222,7 @@ class DyadicInterval(Dyadic):
 
     @classmethod
     def intersection(
-        cls, left: DyadicInterval, right: DyadicInterval
+            cls, left: DyadicInterval, right: DyadicInterval
     ) -> DyadicInterval:
         raise NotImplementedError("DyadicInterval intersection is not implemented yet")
 
@@ -282,11 +282,11 @@ class RealInterval:
         return self._interval_type
 
     @property
-    def inf(self) ->  Array:
+    def inf(self) -> Array:
         return self._inf
 
     @property
-    def sup(self) ->  Array:
+    def sup(self) -> Array:
         return self._sup
 
     @property
@@ -308,120 +308,129 @@ RealInterval = jax.tree_util.register_dataclass(
 )
 
 
-@dataclass(frozen=True)
+@jax.tree_util.register_pytree_node_class
 class Partition:
-    _endpoints: list
-    _interval_type: IntervalType
+    """A sorted partition of an interval.
 
-    def __len__(self) -> int:
-        return len(self._endpoints) - 1
+    ``endpoints`` is stored as a JAX array. Its final axis contains the
+    endpoints of each partition, while any preceding axes are batch
+    dimensions. For example, an array with shape ``(batch, points)``
+    represents ``batch`` partitions, each containing ``points`` endpoints.
+
+    Endpoints are sorted when the partition is constructed. Duplicate
+    endpoints are retained and represent empty subintervals. This is useful
+    when combining partitions with different numbers of endpoints, since
+    padding can be performed by repeating the final endpoint without changing
+    the array shape.
+
+    The partition is a JAX pytree. The endpoint array is its dynamic leaf and
+    ``interval_type`` is static metadata.
+
+    Args:
+        endpoints: Array-like endpoint values. The final axis must contain at
+            least two endpoints.
+        interval_type: Whether the intervals are left-closed/right-open or
+            left-open/right-closed.
+
+    Attributes:
+        endpoints: Sorted endpoint array with shape ``(..., n_endpoints)``.
+        interval_type: Shared endpoint convention for all represented
+            intervals.
+    """
+
+    endpoints: Array
+    interval_type: IntervalType
+
+    def __init__(self, endpoints: ArrayLike, interval_type: IntervalType):
+        """Construct a partition from array-like endpoints."""
+        endpoints = jnp.sort(jnp.asarray(endpoints))
+
+        if endpoints.shape[-1] < 2:
+            raise ValueError("Partition must have at least two endpoints")
+
+        self.endpoints = endpoints
+        self.interval_type = interval_type
 
     def __str__(self) -> str:
-        return BaseInterval.to_string(self)
-
-    @property
-    def interval_type(self) -> IntervalType:
-        return self._interval_type
+        """Return a compact representation using the outer endpoints."""
+        inner = f"{self.inf}, ..., {self.sup}"
+        if self.interval_type == IntervalType.ClOpen:
+            return f"[{inner})"
+        return f"({inner}]"
 
     @property
     def inf(self) -> Array:
-        return jnp.asarray(self._endpoints[0])
+        """Return the first endpoint for each batch element."""
+        return self.endpoints[..., 0]
 
     @property
     def sup(self) -> Array:
-        return jnp.asarray(self._endpoints[-1])
+        """Return the final endpoint for each batch element."""
+        return self.endpoints[..., -1]
+
+    @property
+    def batch_dims(self) -> tuple[int, ...]:
+        """Return the shape of the partition batch dimensions."""
+        return self.endpoints.shape[:-1]
+
+    @property
+    def dtype(self) -> jnp.dtype:
+        """Return the dtype of the endpoint array."""
+        return self.endpoints.dtype
+
+    def __len__(self) -> int:
+        """Return the number of subintervals in each partition."""
+        return self.endpoints.shape[-1] - 1
 
     @property
     def length(self) -> Array:
-        return BaseInterval.length(self)
+        """Return the outer interval length for each batch element."""
+        return self.sup - self.inf
 
-    def to_intervals(self) -> list[RealInterval]:
-        """
-        Convert the partition into a list of RealIntervals corresponding to
-        the subintervals defined by the partition.
-        :param partition: The Partition to convert.
-        :type partition: Partition
-        :return: A list of RealIntervals representing the subintervals of the partition.
-        :rtype: list[RealInterval]
-        """
-        return [
-            RealInterval(
-                self._endpoints[i], self._endpoints[i + 1], self.interval_type
-            )
-            for i in range(len(self._endpoints) - 1)
-        ]
-
-    @staticmethod
-    def to_real_interval(partition: Partition) -> RealInterval[RealT]:
-        """
-        Convert the partition to a RealInterval.
-        :return: A RealInterval representing the partition.
-        :rtype: RealInterval
-        """
-        return RealInterval(partition.inf, partition.sup, partition.interval_type)
+    def tree_flatten(self) -> tuple[Any, Any]:
+        return (self.endpoints,), (self.interval_type,)
 
     @classmethod
-    def truncate(
-        cls, partition: Partition, other: Interval
-    ) -> Partition | RealInterval:
+    def tree_unflatten(cls, aux_data: Any, children: Any):
+        obj = cls.__new__(cls)
+        obj.endpoints = children[0]
+        obj.interval_type = aux_data[0]
+
+        return obj
+
+    def to_intervals(self) -> RealInterval:
+        """Return all subintervals as one batched :class:`RealInterval`."""
+        return RealInterval(self.endpoints[..., :-1], self.endpoints[..., 1:], self.interval_type)
+
+    def truncate(self, other: Interval) -> Partition:
         """
-        Calculate the intersection of this partition with another Interval.
-        :param other: The other interval to intersect with.
-        :type other: RealInterval
-        :return: A new Partition representing the intersection, or a degenerate
-        interval if there is no intersection.
-        :rtype: Partition | RealInterval
+        Clip every endpoint to the bounds of ``other``.
+
+        This does not change the size of the array, so any endpoints that
+        lie outside the other interval are repeated.
+
+        The interval types of the partition and the interval must match.
         """
-        # Here we convert to RealInterval to perform the intersection logic
-        intermediate_itvl = cls.to_real_interval(partition)
-        intersect_itvl = RealInterval.intersection(intermediate_itvl, other)
-        if intersect_itvl.length == 0:
-            return intersect_itvl  # Return the degenerate interval representing the empty intersection
+        if self.interval_type != other.interval_type:
+            raise ValueError("Cannot truncate partitions with different interval type")
+        return Partition(jnp.clip(self.endpoints, other.inf, other.sup), self.interval_type)
 
-        new_endpoints = []
-        # 1) Add new inf if it is within bounds of old interval
-        if partition.inf < intersect_itvl.inf:
-            new_endpoints.append(intersect_itvl.inf)
-        # 2) Include all inner points
-        for ep in partition._endpoints:
-            if intersect_itvl.inf <= ep <= intersect_itvl.sup:
-                new_endpoints.append(ep)
-        # 3) Add new sup if within bounds of old interval
-        if intersect_itvl.sup < partition.sup:
-            new_endpoints.append(intersect_itvl.sup)
-
-        return cls(
-            _endpoints=new_endpoints,
-            _interval_type=partition.interval_type,
-        )
-
-    @classmethod
-    def merge(cls, left: Partition, right: Partition) -> Partition | RealInterval:
+    def merge(self, other: Partition) -> Partition:
         """
-        Merge this partition with another Partition.
-        :param other: The other partition to merge with.
-        :type other: Partition
-        :return: A new Partition representing the merged partitions.
-        :rtype: Partition
+        Interleave the endpoints from two partitions.
+
+        This performans an interval union of the two domains spanned by the
+        arguments, and with the now contained inf and sup end points becoming new
+        interior endpoints
+
+        Duplicate endpoints are preserved.
         """
-        if left.interval_type != right.interval_type:
-            raise TypeError("Both partitions must be of the same IntervalType")
+        if self.interval_type != other.interval_type:
+            raise ValueError("Cannot merge partitions with different interval types")
 
-        left_itvl = cls.to_real_interval(left)
-        right_itvl = cls.to_real_interval(right)
-        inters = RealInterval.intersection(left_itvl, right_itvl)
-        if inters.length == 0:
-            return inters  # Return the degenerate interval representing the empty intersection
+        # The constructor will sort the endpoints
+        endpoints = jnp.concatenate((self.endpoints, other.endpoints), axis=-1)
+        return Partition(endpoints, self.interval_type)
 
-        new_endpoints = sorted(set(left._endpoints) | set(right._endpoints))
-        return cls(
-            _endpoints=new_endpoints,
-            _interval_type=left.interval_type,
-        )
-
-
-Partition = jax.tree_util.register_dataclass(
-    Partition,
-    data_fields=["_endpoints"],
-    meta_fields=["_interval_type"],
-)
+    def to_real_interval(self) -> RealInterval:
+        return RealInterval(self.inf, self.sup, self.interval_type)

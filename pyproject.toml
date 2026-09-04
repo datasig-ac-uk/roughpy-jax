@@ -63,6 +63,7 @@ logging.level = "INFO"
 cmake.build-type = "Release"
 experimental = true
 wheel.py-api = "cp311"
+editable.mode = "inplace"
 
 [tool.cibuildwheel]
 build = "cp311-*"

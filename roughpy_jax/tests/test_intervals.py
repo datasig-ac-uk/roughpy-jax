@@ -33,7 +33,7 @@ def test_real_interval_pytree_has_dynamic_endpoint_leaves(interval_type):
 
 
 @pytest.mark.parametrize("interval_type", list(IntervalType))
-def test_partition_pytree_has_dynamic_endpoint_leaves(interval_type):
+def test_partition_pytree_has_dynamic_endpoint_leaf(interval_type):
     partition = Partition(
         [jnp.asarray(0.0), jnp.asarray(0.5), jnp.asarray(1.0)],
         interval_type,
@@ -42,17 +42,11 @@ def test_partition_pytree_has_dynamic_endpoint_leaves(interval_type):
     leaves, treedef = jax.tree_util.tree_flatten(partition)
     rebuilt = jax.tree_util.tree_unflatten(treedef, leaves)
 
-    assert len(leaves) == 3
+    assert len(leaves) == 1
+    assert jnp.array_equal(leaves[0], partition.endpoints)
     assert isinstance(rebuilt, Partition)
     assert rebuilt.interval_type is interval_type
-    assert all(
-        jnp.array_equal(actual, expected)
-        for actual, expected in zip(
-            rebuilt._endpoints,
-            partition._endpoints,
-            strict=True,
-        )
-    )
+    assert jnp.array_equal(rebuilt.endpoints, partition.endpoints)
 
 
 @pytest.mark.parametrize(
@@ -309,25 +303,21 @@ class TestPartition:
     def test_partition_to_intervals(self, partition, interval_type):
         p = partition
         intervals = p.to_intervals()
-        assert len(intervals) == 2
-        assert intervals[0].inf == pytest.approx(0.0)
-        assert intervals[0].sup == pytest.approx(0.5)
-        assert intervals[1].inf == pytest.approx(0.5)
-        assert intervals[1].sup == pytest.approx(1.0)
-        assert intervals[0].interval_type is interval_type
-        assert intervals[1].interval_type is interval_type
+        assert isinstance(intervals, RealInterval)
+        assert jnp.array_equal(intervals.inf, jnp.asarray([0.0, 0.5]))
+        assert jnp.array_equal(intervals.sup, jnp.asarray([0.5, 1.0]))
+        assert intervals.interval_type is interval_type
         
     def test_partition_short_length(self, interval_type):
-        p = Partition([0.0], interval_type)
-        assert len(p) == 0
-        assert p.length == pytest.approx(0.0)
+        with pytest.raises(ValueError, match="at least two endpoints"):
+            Partition([0.0], interval_type)
         
     def test_partition_to_string(self, partition):
         p = Partition([0.0, 1.0], IntervalType.ClOpen)
-        assert str(p) == "[0.0, 1.0)"
+        assert str(p) == "[0.0, ..., 1.0)"
         
         p2 = Partition([0.0, 1.0], IntervalType.OpenCl)
-        assert str(p2) == "(0.0, 1.0]"
+        assert str(p2) == "(0.0, ..., 1.0]"
         
 class TestPartitionMergeAndTruncate:
     def test_partition_merge_aligned(self, partition, interval_type):
@@ -337,7 +327,11 @@ class TestPartitionMergeAndTruncate:
         assert isinstance(merged, Partition)
         assert merged.inf == pytest.approx(0.0)
         assert merged.sup == pytest.approx(1.0)
-        assert len(merged) == 2
+        assert len(merged) == 4
+        assert jnp.array_equal(
+            merged.endpoints,
+            jnp.asarray([0.0, 0.5, 0.5, 1.0, 1.0]),
+        )
         assert merged.interval_type is interval_type
         
     def test_partition_merge_unaligned(self, partition, interval_type):
