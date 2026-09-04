@@ -134,7 +134,6 @@ class PiecewiseAbelianStream(Stream[DenseLie, DenseFreeTensor]):
         result_tensor, _ = jax.lax.scan(combine, initial, path_data)
         return to_log_signature(result_tensor)
 
-
     @jax.jit
     def signature(self, interval: Interval) -> DenseFreeTensor:
         """
@@ -150,17 +149,22 @@ class PiecewiseAbelianStream(Stream[DenseLie, DenseFreeTensor]):
 
 
 def to_piecewise_abelian_stream(
-    stream: Stream[DenseLie, DenseFreeTensor], partition: Partition
+        stream: Stream[DenseLie, DenseFreeTensor], partition: Partition
 ) -> PiecewiseAbelianStream:
     """Convert a stream to a piecewise abelian stream."""
-    data = tuple(
-        stream.log_signature(interval) for interval in partition.to_intervals()
-    )
+    if len(partition.batch_dims) > 0:
+        raise ValueError("batched partitions for piecewise abelian streams are not supported")
+
+    intervals = partition.to_intervals()
+    log_sigs = stream.log_signature(intervals)
+
+    # TODO: This will be fixed once the internals of PiecewiseAbelianStream have been streamlined
+    data = tuple(DenseLie(log_sigs.data[i, ...], log_sigs.basis) for i in range(len(partition)))
     new_stream = PiecewiseAbelianStream(
-        _data=data,
-        _partition=partition,
-        _lie_basis=stream.lie_basis,  # ty: ignore[invalid-argument-type]
-        _group_basis=stream.group_basis,  # ty: ignore[invalid-argument-type]
+        data,
+        partition,
+        stream.lie_basis,  # ty: ignore[invalid-argument-type]
+        stream.group_basis,  # ty: ignore[invalid-argument-type]
     )
 
     return new_stream
