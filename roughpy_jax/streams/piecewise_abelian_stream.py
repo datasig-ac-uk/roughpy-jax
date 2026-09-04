@@ -27,7 +27,37 @@ from .concepts import Stream
 )
 @dataclass(frozen=True)
 class PiecewiseAbelianStream(Stream[DenseLie, DenseFreeTensor]):
-    """A stream representing a piecewise abelian path."""
+    """A stream whose log-signature is linear on each partition interval.
+
+    The partition divides one shared time domain into consecutive intervals. The
+    Lie element at position ``i`` is the log-signature increment over interval
+    ``i``. Within that interval, an increment over a subinterval is obtained by
+    scaling the stored Lie element by the proportion of the interval covered.
+    Increments from successive pieces are combined in chronological order using
+    the tensor product, or equivalently the Campbell--Baker--Hausdorff product
+    after returning to the Lie algebra.
+
+    A piecewise abelian stream must be defined over an unbatched partition. A
+    batched partition represents several different subdivisions of time, whose
+    intervals would require different corresponding piece data rather than a
+    single sequence of Lie increments. Batching is instead supported in the Lie
+    data: every piece may contain the same leading batch dimensions while sharing
+    the one partition.
+
+    Query intervals may also be batched. Query batch dimensions precede the
+    stream-data batch dimensions in the result. Thus a query with batch shape
+    ``Q`` against stream data with batch shape ``D`` produces coefficient data
+    with shape ``Q + D + (basis_size,)``.
+
+    Args:
+        _data: One Lie increment for each interval in ``_partition``. All
+            increments must use the same basis and have the same batch shape and
+            dtype.
+        _partition: The unbatched partition defining the temporal pieces.
+        _lie_basis: Basis used for Lie-valued increments and log-signatures.
+        _group_basis: Tensor basis used to combine increments and form
+            signatures.
+    """
 
     _data: tuple[DenseLie, ...]
     _partition: Partition
@@ -78,13 +108,16 @@ class PiecewiseAbelianStream(Stream[DenseLie, DenseFreeTensor]):
 
     @jax.jit
     def log_signature(self, interval: Interval) -> DenseLie:
-        """
-        Compute the log signature over an interval.
+        """Compute the log-signature over one or more query intervals.
 
-        Whilst intervals do support batching as arrays, and piecewise abelian
-        streams may be amenable to batched log-signature calculation, this
-        functionality is not yet enabled. For now, only single intervals
-        will be accepted by this method. This may change in a future release.
+        For batched interval endpoints, query dimensions precede any batch
+        dimensions carried by the stream data in the returned coefficients.
+
+        Args:
+            interval: Scalar or batched interval over which to query the stream.
+
+        Returns:
+            The log-signature over ``interval`` in the stream's Lie basis.
         """
         inf = jnp.asarray(interval.inf)
         sup = jnp.asarray(interval.sup)
@@ -136,13 +169,16 @@ class PiecewiseAbelianStream(Stream[DenseLie, DenseFreeTensor]):
 
     @jax.jit
     def signature(self, interval: Interval) -> DenseFreeTensor:
-        """
-        Compute the signature over an interval.
+        """Compute the signature over one or more query intervals.
 
-        Whilst intervals do support batching as arrays, and piecewise abelian
-        streams may be amenable to batched signature calculation, this
-        functionality is not yet enabled. For now, only single intervals
-        will be accepted by this method. This may change in a future release.
+        For batched interval endpoints, query dimensions precede any batch
+        dimensions carried by the stream data in the returned coefficients.
+
+        Args:
+            interval: Scalar or batched interval over which to query the stream.
+
+        Returns:
+            The signature over ``interval`` in the stream's group basis.
         """
         log_sig = self.log_signature(interval)
         return to_signature(log_sig, tensor_basis=self._group_basis)
@@ -151,7 +187,33 @@ class PiecewiseAbelianStream(Stream[DenseLie, DenseFreeTensor]):
 def to_piecewise_abelian_stream(
         stream: Stream[DenseLie, DenseFreeTensor], partition: Partition
 ) -> PiecewiseAbelianStream:
-    """Convert a stream to a piecewise abelian stream."""
+    """Approximate a stream by a piecewise abelian stream on a partition.
+
+    The source stream is queried over every interval of ``partition`` in one
+    batched call. Each resulting log-signature becomes the Lie increment for the
+    corresponding piece of the new stream. Consequently, the converted stream
+    has the same increment as ``stream`` over every complete partition interval,
+    while its behaviour inside each interval is the piecewise abelian
+    interpolation of that increment.
+
+    The partition must be unbatched because it defines one sequence of temporal
+    pieces shared by all stream-data batches. Batch dimensions already carried by
+    ``stream`` are preserved in every increment of the converted stream.
+
+    Args:
+        stream: Source stream whose partition increments will be sampled. Its
+            ``log_signature`` method must accept the batched interval returned by
+            :meth:`Partition.to_intervals`.
+        partition: Unbatched partition defining the pieces of the converted
+            stream.
+
+    Returns:
+        A piecewise abelian stream over ``partition`` using the source stream's
+        Lie and group bases.
+
+    Raises:
+        ValueError: If ``partition`` has batch dimensions.
+    """
     if len(partition.batch_dims) > 0:
         raise ValueError("batched partitions for piecewise abelian streams are not supported")
 
