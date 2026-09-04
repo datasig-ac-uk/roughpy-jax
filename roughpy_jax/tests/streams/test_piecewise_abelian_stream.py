@@ -5,6 +5,7 @@ import roughpy_jax as rpj
 from roughpy_jax.algebra import FreeTensor, ft_fmexp, lie_to_tensor, to_log_signature
 from roughpy_jax.intervals import IntervalType, Partition, RealInterval
 from roughpy_jax.streams import PiecewiseAbelianStream
+from roughpy_jax.streams.piecewise_abelian_stream import to_piecewise_abelian_stream
 
 
 class PASHelper:
@@ -155,6 +156,22 @@ class TestPiecewiseAbelianStream:
         assert support.inf == pas_data.partition.inf
         assert support.sup == pas_data.partition.sup
         assert support.interval_type == pas_data.partition.interval_type
+
+    def test_to_piecewise_abelian_stream(self, pas_data):
+        """Conversion queries all partition pieces as one batched interval."""
+        partition = Partition(
+            [0.0, 0.5, 1.0, 1.5, 2.0],
+            IntervalType.ClOpen,
+        )
+
+        converted = to_piecewise_abelian_stream(pas_data.stream, partition)
+        query_intervals = partition.to_intervals()
+
+        expected = pas_data.stream.log_signature(query_intervals)
+        actual = converted.log_signature(query_intervals)
+
+        assert actual.data.shape == expected.data.shape
+        assert jnp.allclose(actual.data, expected.data, atol=1e-6)
 
     @pytest.mark.extra
     @pytest.mark.parametrize("static", [True, False])
