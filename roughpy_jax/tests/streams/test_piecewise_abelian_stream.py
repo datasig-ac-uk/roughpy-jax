@@ -26,10 +26,10 @@ class PASHelper:
 
         # Create the piecewise abelian stream
         self.stream = PiecewiseAbelianStream(
-            _data=(self.l1, self.l2),
-            _partition=self.partition,
-            _lie_basis=self.lie_basis,
-            _group_basis=rpj.to_tensor_basis(self.lie_basis),
+            jnp.stack((self.l1_data, self.l2_data)),
+            self.partition,
+            self.lie_basis,
+            rpj.to_tensor_basis(self.lie_basis),
         )
 
     @property
@@ -48,12 +48,64 @@ def pas_data(rpj_batch, rpj_dtype):
 class TestPiecewiseAbelianStream:
     def test_construction(self, pas_data):
         """Test that the PiecewiseAbelianStream can be constructed without errors."""
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="Data length"):
             PiecewiseAbelianStream(
-                _data=(pas_data.l1,),  # Incorrect length of data
-                _partition=pas_data.partition,
-                _lie_basis=pas_data.lie_basis,
-                _group_basis=rpj.to_tensor_basis(pas_data.lie_basis),
+                pas_data.l1_data[None, ...],  # Incorrect piece dimension
+                pas_data.partition,
+                pas_data.lie_basis,
+                rpj.to_tensor_basis(pas_data.lie_basis),
+            )
+
+    def test_construction_validates_normalized_data_shape(self):
+        lie_basis = rpj.LieBasis(2, 2)
+        group_basis = rpj.to_tensor_basis(lie_basis)
+        partition = Partition([0.0, 1.0, 2.0], IntervalType.ClOpen)
+
+        with pytest.raises(ValueError, match="must have shape"):
+            PiecewiseAbelianStream(
+                jnp.zeros((lie_basis.size(),)),
+                partition,
+                lie_basis,
+                group_basis,
+            )
+
+        with pytest.raises(ValueError, match="Data Lie dimension"):
+            PiecewiseAbelianStream(
+                jnp.zeros((len(partition), lie_basis.size() + 1)),
+                partition,
+                lie_basis,
+                group_basis,
+            )
+
+    def test_construction_rejects_batched_partition(self):
+        lie_basis = rpj.LieBasis(2, 2)
+        partition = Partition(
+            [[0.0, 1.0, 2.0], [0.0, 2.0, 4.0]],
+            IntervalType.ClOpen,
+        )
+
+        with pytest.raises(ValueError, match="batched partition"):
+            PiecewiseAbelianStream(
+                jnp.zeros((len(partition), lie_basis.size())),
+                partition,
+                lie_basis,
+                rpj.to_tensor_basis(lie_basis),
+            )
+
+    @pytest.mark.parametrize(
+        "group_basis",
+        [rpj.TensorBasis(3, 2), rpj.TensorBasis(2, 3)],
+    )
+    def test_construction_rejects_incompatible_bases(self, group_basis):
+        lie_basis = rpj.LieBasis(2, 2)
+        partition = Partition([0.0, 1.0, 2.0], IntervalType.ClOpen)
+
+        with pytest.raises(ValueError, match="Incompatible width"):
+            PiecewiseAbelianStream(
+                jnp.zeros((len(partition), lie_basis.size())),
+                partition,
+                lie_basis,
+                group_basis,
             )
 
     def test_log_signature(self, pas_data):
@@ -101,6 +153,26 @@ class TestPiecewiseAbelianStream:
 
         assert jnp.allclose(log_sig.data, expected_log_sig.data, atol=1e-6)
 
+    def test_query_endpoints_broadcast_before_stream_batch_dimensions(self, pas_data):
+        query_interval = RealInterval(
+            jnp.array([[0.0], [0.5]], dtype=pas_data.dtype),
+            jnp.array([[0.5, 1.5, 2.0]], dtype=pas_data.dtype),
+            IntervalType.ClOpen,
+        )
+
+        actual = pas_data.stream.log_signature(query_interval)
+        expected_shape = (2, 3, *pas_data.batch_shape(), pas_data.lie_basis.size())
+
+        assert actual.data.shape == expected_shape
+        for i in range(2):
+            for j in range(3):
+                scalar_interval = RealInterval(
+                    query_interval.inf[i, 0],
+                    query_interval.sup[0, j],
+                    query_interval.interval_type,
+                )
+                expected = pas_data.stream.log_signature(scalar_interval)
+                assert jnp.allclose(actual.data[i, j], expected.data, atol=1e-6)
 
     def test_log_signature_cbh(self, pas_data):
         """Test that the log signature of the stream over [0.5, 1.5] is CBH(0.5*L1, 0.5*L2)."""
@@ -124,10 +196,10 @@ class TestPiecewiseAbelianStream:
 
         lies = tuple(make_lie(index) for index in indices)
         stream = PiecewiseAbelianStream(
-            _data=lies,
-            _partition=Partition([0.0, 1.0, 2.0, 3.0, 4.0], IntervalType.ClOpen),
-            _lie_basis=lie_basis,
-            _group_basis=tensor_basis,
+            jnp.stack([lie.data for lie in lies]),
+            Partition([0.0, 1.0, 2.0, 3.0, 4.0], IntervalType.ClOpen),
+            lie_basis,
+            tensor_basis,
         )
         query_interval = RealInterval(0.0, 4.0, IntervalType.ClOpen)
 
@@ -170,6 +242,7 @@ class TestPiecewiseAbelianStream:
         expected = pas_data.stream.log_signature(query_intervals)
         actual = converted.log_signature(query_intervals)
 
+        assert converted._data.shape == expected.data.shape
         assert actual.data.shape == expected.data.shape
         assert jnp.allclose(actual.data, expected.data, atol=1e-6)
 
