@@ -42,6 +42,11 @@ class PiecewiseAbelianStream(Stream[DenseLie, DenseFreeTensor]):
                 f"of intervals in partition {len(self._partition)}."
             )
 
+        if len(self._partition.batch_dims) > 0:
+            raise ValueError(
+                "A piecewise abelian stream cannot be defined over a batched partition."
+            )
+
     @property
     def lie_basis(self) -> Basis:
         """Return the Lie basis."""
