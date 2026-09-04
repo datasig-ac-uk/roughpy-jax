@@ -3,7 +3,6 @@ from functools import partial
 
 import jax
 import jax.numpy as jnp
-from jax import lax
 
 from roughpy_jax.algebra import (
     DenseFreeTensor,
@@ -14,8 +13,8 @@ from roughpy_jax.algebra import (
     to_log_signature,
     to_signature,
 )
-from roughpy_jax.bases import Basis, LieBasis, TensorBasis
-from roughpy_jax.intervals import Interval, Partition, RealInterval, intersection
+from roughpy_jax.bases import Basis, LieBasis, TensorBasis, check_basis_compat, to_tensor_basis
+from roughpy_jax.intervals import Interval, Partition, RealInterval
 
 from .concepts import Stream
 
@@ -41,8 +40,8 @@ class PiecewiseAbelianStream(Stream[DenseLie, DenseFreeTensor]):
     batched partition represents several different subdivisions of time, whose
     intervals would require different corresponding piece data rather than a
     single sequence of Lie increments. Batching is instead supported in the Lie
-    data: every piece may contain the same leading batch dimensions while sharing
-    the one partition.
+    data: the coefficient array has a leading piece axis followed by the stream
+    batch dimensions and the Lie coordinate axis.
 
     Query intervals may also be batched. Query batch dimensions precede the
     stream-data batch dimensions in the result. Thus a query with batch shape
@@ -50,32 +49,45 @@ class PiecewiseAbelianStream(Stream[DenseLie, DenseFreeTensor]):
     with shape ``Q + D + (basis_size,)``.
 
     Args:
-        _data: One Lie increment for each interval in ``_partition``. All
-            increments must use the same basis and have the same batch shape and
-            dtype.
+        _data: Lie increment coefficients with shape
+            ``(n_pieces, *batch_dims, lie_basis_size)``.
         _partition: The unbatched partition defining the temporal pieces.
         _lie_basis: Basis used for Lie-valued increments and log-signatures.
         _group_basis: Tensor basis used to combine increments and form
             signatures.
     """
 
-    _data: tuple[DenseLie, ...]
+    _data: jax.Array
     _partition: Partition
     _lie_basis: LieBasis
     _group_basis: TensorBasis
 
     def __post_init__(self):
         """Validate the piecewise abelian stream."""
-        if len(self._data) != len(self._partition):
+        if self._data.ndim < 2:
             raise ValueError(
-                f"Data length {len(self._data)} must match number "
+                "Piecewise abelian stream data must have shape "
+                "(n_pieces, ..., lie_basis_size)."
+            )
+
+        if self._data.shape[0] != len(self._partition):
+            raise ValueError(
+                f"Data length {self._data.shape[0]} must match number "
                 f"of intervals in partition {len(self._partition)}."
+            )
+
+        if self._data.shape[-1] != self._lie_basis.size():
+            raise ValueError(
+                f"Data Lie dimension {self._data.shape[-1]} must match "
+                f"Lie basis size {self._lie_basis.size()}."
             )
 
         if len(self._partition.batch_dims) > 0:
             raise ValueError(
                 "A piecewise abelian stream cannot be defined over a batched partition."
             )
+
+        check_basis_compat(self._lie_basis, self._group_basis, exact=True)
 
     @property
     def lie_basis(self) -> Basis:
@@ -99,12 +111,12 @@ class PiecewiseAbelianStream(Stream[DenseLie, DenseFreeTensor]):
     @property
     def dtype(self):
         """Return the coefficient dtype of the stream values."""
-        return self._data[0].data.dtype
+        return self._data.dtype
 
     @property
     def batch_dims(self) -> tuple[int, ...]:
         """Return the leading batch dimensions of the stream values."""
-        return self._data[0].data.shape[:-1]
+        return self._data.shape[1:-1]
 
     @jax.jit
     def log_signature(self, interval: Interval) -> DenseLie:
@@ -119,13 +131,16 @@ class PiecewiseAbelianStream(Stream[DenseLie, DenseFreeTensor]):
         Returns:
             The log-signature over ``interval`` in the stream's Lie basis.
         """
-        inf = jnp.asarray(interval.inf)
-        sup = jnp.asarray(interval.sup)
+        inf, sup = jnp.broadcast_arrays(
+            jnp.asarray(interval.inf),
+            jnp.asarray(interval.sup),
+        )
 
         P = len(self._partition)
         partition_intervals = self._partition.to_intervals()
-        partition_inf = partition_intervals.inf.reshape((P,) + (1,) * interval.inf.ndim)
-        partition_sup = partition_intervals.sup.reshape((P,) + (1,) * interval.sup.ndim)
+        query_dims = (1,) * inf.ndim
+        partition_inf = partition_intervals.inf.reshape((P,) + query_dims)
+        partition_sup = partition_intervals.sup.reshape((P,) + query_dims)
 
         query_inf = inf[None, ...]
         query_sup = sup[None, ...]
@@ -138,11 +153,10 @@ class PiecewiseAbelianStream(Stream[DenseLie, DenseFreeTensor]):
         pos_length = length > 0
         length = jnp.where(pos_length, length, 1.0)
 
-        scale_factors = jnp.where(pos_length, overlap / length, 0.0).astype(self._data[0].dtype)
-
-        # TODO: This is unnecessary once we replace the PAS internals to use an array
-        # instead of a tuple of Lie
-        data = jnp.stack([piece.data for piece in self._data])
+        data = self._data
+        scale_factors = jnp.where(pos_length, overlap / length, 0.0).astype(
+            data.dtype
+        )
 
         # The batch dimensions on the path data to be CBH should be
         #   (P, Q1, ..., Qk, D1, ..., Dm, L)
@@ -220,13 +234,38 @@ def to_piecewise_abelian_stream(
     intervals = partition.to_intervals()
     log_sigs = stream.log_signature(intervals)
 
-    # TODO: This will be fixed once the internals of PiecewiseAbelianStream have been streamlined
-    data = tuple(DenseLie(log_sigs.data[i, ...], log_sigs.basis) for i in range(len(partition)))
     new_stream = PiecewiseAbelianStream(
-        data,
+        log_sigs.data,
         partition,
         stream.lie_basis,  # ty: ignore[invalid-argument-type]
         stream.group_basis,  # ty: ignore[invalid-argument-type]
     )
 
     return new_stream
+
+
+def piecewise_abelian_stream_from_data(data: DenseLie, partition: Partition) -> PiecewiseAbelianStream:
+    """
+    Construct a PiecewiseAbelianStream from Lie data and partition
+    :param data: Lie data with shape (P, ..., L)
+    :param partition: partition with P intervals (must not be batched)
+    :return: New PiecewiseAbelianStream instance
+    """
+    partition_size = len(partition)
+    if len(partition.batch_dims) > 0:
+        raise ValueError("batched partitions for piecewise abelian streams are not supported")
+
+    lie_basis = data.basis
+    lie_data = data.data
+
+    partition_check, *batch_dims, lie_dim = lie_data.shape
+
+    if partition_check != partition_size:
+        raise ValueError("data shape does not match partition size")
+
+    if lie_dim != lie_basis.size():
+        raise ValueError("data shape does not match Lie basis size")
+
+    group_basis = to_tensor_basis(lie_basis)
+
+    return PiecewiseAbelianStream(lie_data, partition, lie_basis, group_basis)
