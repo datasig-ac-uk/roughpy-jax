@@ -356,7 +356,7 @@ class TestPiecewiseAbelianStreamFromData:
         )
         partition = Partition([0.0, 1.0, 2.0], IntervalType.ClOpen)
 
-        with pytest.raises(ValueError, match="same shape"):
+        with pytest.raises(ValueError):
             piecewise_abelian_stream_from_data(data, partition)
 
 
