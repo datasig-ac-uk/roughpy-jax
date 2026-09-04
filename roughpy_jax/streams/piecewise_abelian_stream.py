@@ -83,56 +83,52 @@ class PiecewiseAbelianStream(Stream[DenseLie, DenseFreeTensor]):
         """
         inf = jnp.asarray(interval.inf)
         sup = jnp.asarray(interval.sup)
-        if inf.size != 1 or sup.size != 1:
-            raise ValueError(
-                "PiecewiseAbelianStream only supports scalar interval endpoints "
-                "or single-element endpoint arrays"
-            )
-        if inf.shape or sup.shape:
-            interval = RealInterval(
-                inf.reshape(()), sup.reshape(()), interval.interval_type
-            )
 
-        initial = FreeTensor.identity(
-            self._group_basis,
-            dtype=self.dtype,
-            batch_dims=self.batch_dims,
-        )
+        P = len(self._partition)
+        partition_intervals = self._partition.to_intervals()
+        partition_inf = partition_intervals.inf.reshape((P,) + (1,) * interval.inf.ndim)
+        partition_sup = partition_intervals.sup.reshape((P,) + (1,) * interval.sup.ndim)
 
-        def get_piece(x_and_interval):
-            """
-            Get the tensor representation of a piece of the stream, scaled by the
-            intersection length with the query interval. This is designed to be
-            JIT-compilable.
-            """
-            # NOTE: This could be made more vectorized by processing all pieces at once.
-            # UPDATE: Tried and it wasn't faster, and made the code more
-            # complicated, so leaving it as is for now.
-            x, p = x_and_interval
-            intersection_length = intersection(p, interval).length
-            scale_factor = intersection_length / p.length
-            return jax.lax.cond(
-                intersection_length > 0,
-                lambda: lie_to_tensor(x, scale_factor=scale_factor),
-                lambda: FreeTensor.identity(
-                    self._group_basis,
-                    dtype=x.data.dtype,
-                    batch_dims=self.batch_dims,
-                ),
-            )
+        query_inf = inf[None, ...]
+        query_sup = sup[None, ...]
 
-        intervals = self._partition.to_intervals()
+        begin = jnp.maximum(partition_inf, query_inf)
+        end = jnp.minimum(partition_sup, query_sup)
 
-        # Stack all tensors along a leading axis into a single batched FreeTensor.
-        pieces = [get_piece((x, p)) for x, p in zip(self._data, intervals, strict=True)]
-        batched = jax.tree.map(lambda *arrs: jnp.stack(arrs), *pieces)
+        overlap = jnp.maximum(0.0, end - begin)
+        length = partition_sup - partition_inf
+        pos_length = length > 0
+        length = jnp.where(pos_length, length, 1.0)
 
-        def combine(carry, piece):
-            updated = ft_fmexp(carry, piece, self._group_basis)
-            return updated, None
+        scale_factors = jnp.where(pos_length, overlap / length, 0.0).astype(self._data[0].dtype)
 
-        result, _ = lax.scan(combine, initial, batched)
-        return to_log_signature(result)
+        # TODO: This is unnecessary once we replace the PAS internals to use an array
+        # instead of a tuple of Lie
+        data = jnp.stack([piece.data for piece in self._data])
+
+        # The batch dimensions on the path data to be CBH should be
+        #   (P, Q1, ..., Qk, D1, ..., Dm, L)
+        # where Q1, ..., Qk are the batch dimensions on the query interval and
+        # D1, ..., Dm are the batch dimensions of the stream data. We insert some
+        # extra dimensions to facilitate this specific broadcast.
+        scale_factors_extra_dims = (1,) * (data.ndim - 1)
+        data_extra_dims = (1,) * (scale_factors.ndim - 1)
+
+        scale_factors = scale_factors.reshape(scale_factors.shape + scale_factors_extra_dims)
+        data = data.reshape((P,) + data_extra_dims + data.shape[1:])
+
+        path_data = scale_factors * data
+
+        initial = FreeTensor.identity(self._group_basis, dtype=data.dtype, batch_dims=path_data.shape[1:-1])
+
+        def combine(carry, piece_data):
+            piece = DenseLie(piece_data, self._lie_basis)
+            update = ft_fmexp(carry, lie_to_tensor(piece), self._group_basis)
+            return update, None
+
+        result_tensor, _ = jax.lax.scan(combine, initial, path_data)
+        return to_log_signature(result_tensor)
+
 
     @jax.jit
     def signature(self, interval: Interval) -> DenseFreeTensor:
