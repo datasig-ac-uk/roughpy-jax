@@ -245,30 +245,50 @@ def to_piecewise_abelian_stream(
     return new_stream
 
 
-def piecewise_abelian_stream_from_data(data: DenseLie | tuple[DenseLie, ...] | list[DenseLie],
-                                       partition: Partition) -> PiecewiseAbelianStream:
-    """
-    Construct a PiecewiseAbelianStream from Lie data and partition
-    :param data: Lie data with shape (P, ..., L)
-    :param partition: partition with P intervals (must not be batched)
-    :return: New PiecewiseAbelianStream instance
+def piecewise_abelian_stream_from_data(
+    data: DenseLie | tuple[DenseLie, ...] | list[DenseLie],
+    partition: Partition,
+) -> PiecewiseAbelianStream:
+    """Construct a piecewise abelian stream from Lie data and a partition.
+
+    Args:
+        data: A single Lie with shape ``(P, ..., L)``, or a sequence of ``P``
+            Lie elements with identical shapes and bases.
+        partition: Unbatched partition containing ``P`` intervals.
+
+    Returns:
+        A piecewise abelian stream whose group basis corresponds to the Lie basis
+        of ``data``.
     """
     partition_size = len(partition)
     if len(partition.batch_dims) > 0:
-        raise ValueError("batched partitions for piecewise abelian streams are not supported")
+        raise ValueError(
+            "batched partitions for piecewise abelian streams are not supported"
+        )
 
     if isinstance(data, (list, tuple)):
         if len(data) == 0:
             raise ValueError("data must not be empty")
 
+        if not all(isinstance(item, DenseLie) for item in data):
+            raise TypeError("all data items must be DenseLie instances")
+
         lie_basis = data[0].basis
         check_basis_compat(*(lie.basis for lie in data), exact=True, same_type=True)
-        lie_data = jnp.stack([item for item in data])
-    else:
+
+        lie_data = jnp.stack([item.data for item in data])
+    elif isinstance(data, DenseLie):
+
         lie_basis = data.basis
         lie_data = data.data
+    else:
+        raise TypeError("data must be a DenseLie or a sequence of DenseLie")
 
-    partition_check, *batch_dims, lie_dim = lie_data.shape
+    if lie_data.ndim < 2:
+        raise ValueError("data must have shape (P, ..., L)")
+
+    partition_check = lie_data.shape[0]
+    lie_dim = lie_data.shape[-1]
 
     if partition_check != partition_size:
         raise ValueError("data shape does not match partition size")
