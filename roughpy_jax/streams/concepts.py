@@ -32,6 +32,16 @@ class Stream(Protocol[LieT, GroupT]):
     streams, allowing efficient calculation of both signatures and log signatures.
     The Stream interface is defined as a protocol, thus any implementation must be
     compliant with the method contracts defined herein.
+
+    Stream queries have two independent sources of batching. A stream may carry
+    intrinsic batch dimensions ``D``, reported by :attr:`batch_dims`, and the lower
+    and upper endpoints of a query interval may broadcast to a query batch shape
+    ``Q``. Query batching forms the Cartesian product of these batches; it does not
+    broadcast the query axes against the stream axes. The returned algebra element
+    therefore has batch shape ``Q + D``, with the query dimensions first and the
+    stream dimensions second. For the standard array-backed algebra types, the
+    complete coefficient shape is ``Q + D + (basis_size,)``. A scalar interval has
+    query batch shape ``()`` and consequently adds no dimensions to the result.
     """
 
     @property
@@ -67,7 +77,11 @@ class Stream(Protocol[LieT, GroupT]):
     @property
     def batch_dims(self) -> tuple[int, ...]:
         """
-        Leading batch dimensions of the values returned by the stream.
+        Intrinsic batch dimensions of the stream data.
+
+        These dimensions do not include dimensions introduced by a batched query.
+        Query dimensions precede these stream dimensions in values returned by
+        :meth:`log_signature` and :meth:`signature`.
         """
         ...
 
@@ -88,13 +102,11 @@ class Stream(Protocol[LieT, GroupT]):
         log signature is zero. (This includes the case where the query is outside
         the support of the stream.)
 
-        Whilst intervals do support batching as arrays, and the specific stream
-        types might be amenable to batched log-signature calculation, this
-        functionality is not yet enabled. For now, only single intervals
-        will be accepted by the log_signature methods. This may change in a
-        future release.
+        The endpoints may represent a batch of query intervals. If they broadcast
+        to shape ``Q`` and the stream has batch shape ``D``, the returned Lie
+        element has batch shape ``Q + D``.
 
-        :param interval: Query interval
+        :param interval: Scalar or batched query interval.
         :return: A Lie element describing the stream over the interval.
         """
         ...
@@ -114,8 +126,12 @@ class Stream(Protocol[LieT, GroupT]):
         signature is identity. (This includes the case where the query is outside
         the support of the stream.)
 
-        :param interval: Query interval
-        :return: A Lie element describing the stream over the interval.
+        The endpoints may represent a batch of query intervals. If they broadcast
+        to shape ``Q`` and the stream has batch shape ``D``, the returned group
+        element has batch shape ``Q + D``.
+
+        :param interval: Scalar or batched query interval.
+        :return: A group element describing the stream over the interval.
         """
         ...
 
