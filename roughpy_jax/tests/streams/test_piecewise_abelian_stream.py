@@ -4,7 +4,10 @@ import pytest
 import roughpy_jax as rpj
 from roughpy_jax.algebra import FreeTensor, ft_fmexp, lie_to_tensor, to_log_signature
 from roughpy_jax.intervals import IntervalType, Partition, RealInterval
-from roughpy_jax.streams import PiecewiseAbelianStream
+from roughpy_jax.streams import (
+    PiecewiseAbelianStream,
+    piecewise_abelian_stream_from_data,
+)
 from roughpy_jax.streams.piecewise_abelian_stream import to_piecewise_abelian_stream
 
 
@@ -264,6 +267,97 @@ class TestPiecewiseAbelianStream:
         assert jnp.allclose(log_sig.data, non_jit_log_sig.data, atol=1e-6)
         # Check that the log signature equals L1
         assert jnp.allclose(log_sig.data, pas_data.l1.data, atol=1e-6)
+
+
+class TestPiecewiseAbelianStreamFromData:
+    def test_constructs_from_single_batched_lie(self, pas_data):
+        data = rpj.Lie(
+            jnp.stack((pas_data.l1_data, pas_data.l2_data)),
+            pas_data.lie_basis,
+        )
+
+        stream = piecewise_abelian_stream_from_data(data, pas_data.partition)
+
+        assert jnp.array_equal(stream._data, data.data)
+        assert stream.batch_dims == pas_data.batch_shape()
+        assert stream.dtype == pas_data.dtype
+        assert stream.lie_basis == pas_data.lie_basis
+        assert stream.group_basis == pas_data.tensor_basis
+        assert jnp.allclose(
+            stream.log_signature(pas_data.interval).data,
+            pas_data.stream.log_signature(pas_data.interval).data,
+            atol=1e-6,
+        )
+
+    @pytest.mark.parametrize("container", [tuple, list])
+    def test_constructs_from_sequence_of_lies(self, pas_data, container):
+        pieces = container((pas_data.l1, pas_data.l2))
+
+        stream = piecewise_abelian_stream_from_data(pieces, pas_data.partition)
+
+        assert jnp.array_equal(
+            stream._data,
+            jnp.stack((pas_data.l1_data, pas_data.l2_data)),
+        )
+        assert stream.batch_dims == pas_data.batch_shape()
+        assert stream.lie_basis == pas_data.lie_basis
+
+    @pytest.mark.parametrize("data", [(), []])
+    def test_rejects_empty_sequence(self, data):
+        partition = Partition([0.0, 1.0], IntervalType.ClOpen)
+
+        with pytest.raises(ValueError, match="must not be empty"):
+            piecewise_abelian_stream_from_data(data, partition)
+
+    def test_rejects_data_without_piece_axis(self):
+        lie_basis = rpj.LieBasis(2, 2)
+        data = rpj.Lie(jnp.zeros((lie_basis.size(),)), lie_basis)
+        partition = Partition([0.0, 1.0], IntervalType.ClOpen)
+
+        with pytest.raises(ValueError, match="shape"):
+            piecewise_abelian_stream_from_data(data, partition)
+
+    def test_rejects_data_with_wrong_piece_count(self):
+        lie_basis = rpj.LieBasis(2, 2)
+        data = rpj.Lie(jnp.zeros((3, lie_basis.size())), lie_basis)
+        partition = Partition([0.0, 1.0, 2.0], IntervalType.ClOpen)
+
+        with pytest.raises(ValueError, match="partition size"):
+            piecewise_abelian_stream_from_data(data, partition)
+
+    def test_rejects_batched_partition(self):
+        lie_basis = rpj.LieBasis(2, 2)
+        data = rpj.Lie(jnp.zeros((2, lie_basis.size())), lie_basis)
+        partition = Partition(
+            [[0.0, 1.0, 2.0], [0.0, 2.0, 4.0]],
+            IntervalType.ClOpen,
+        )
+
+        with pytest.raises(ValueError, match="batched partitions"):
+            piecewise_abelian_stream_from_data(data, partition)
+
+    def test_rejects_sequence_with_incompatible_bases(self):
+        first_basis = rpj.LieBasis(2, 2)
+        second_basis = rpj.LieBasis(2, 3)
+        data = (
+            rpj.Lie(jnp.zeros((first_basis.size(),)), first_basis),
+            rpj.Lie(jnp.zeros((second_basis.size(),)), second_basis),
+        )
+        partition = Partition([0.0, 1.0, 2.0], IntervalType.ClOpen)
+
+        with pytest.raises(ValueError, match="Incompatible"):
+            piecewise_abelian_stream_from_data(data, partition)
+
+    def test_rejects_sequence_with_different_batch_shapes(self):
+        lie_basis = rpj.LieBasis(2, 2)
+        data = (
+            rpj.Lie(jnp.zeros((lie_basis.size(),)), lie_basis),
+            rpj.Lie(jnp.zeros((2, lie_basis.size())), lie_basis),
+        )
+        partition = Partition([0.0, 1.0, 2.0], IntervalType.ClOpen)
+
+        with pytest.raises(ValueError, match="same shape"):
+            piecewise_abelian_stream_from_data(data, partition)
 
 
 @pytest.mark.extra
