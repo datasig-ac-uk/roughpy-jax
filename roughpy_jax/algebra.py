@@ -1,4 +1,4 @@
-from typing import Any, TypeAlias, TypeVar
+from typing import Any, Sequence, TypeAlias, TypeVar
 
 import jax
 import jax.numpy as jnp
@@ -153,6 +153,179 @@ def from_jax_cotangent(
         data = cotangent
 
     return cls(data, basis)
+
+def _check_all_same_type(algebras: Sequence[AlgebraT]):
+    typ = type(algebras[0])
+    if not all(type(algebra) is typ for algebra in algebras):
+        raise TypeError("all algebras must be of the same type")
+
+
+def _compatible_for_comparison(left: AlgebraT, right: AlgebraT) -> bool:
+    if type(left) is not type(right) or left.basis != right.basis:
+        return False
+
+    try:
+        jnp.broadcast_shapes(left.batch_shape, right.batch_shape)
+    except ValueError:
+        return False
+
+    return True
+
+
+def algebra_equal(
+    left: AlgebraT,
+    right: AlgebraT,
+    equal_nan: bool = False,
+) -> jax.Array:
+    """Compare algebra elements for exact coefficient equality.
+
+    Equality requires the same concrete algebra type and basis. Batch shapes
+    may differ if they are broadcast-compatible; the comparison is performed
+    over the resulting common batch shape. The coefficients of each algebra
+    element are compared and reduced over the trailing algebra-data dimension.
+
+    :param left: First algebra to compare.
+    :param right: Second algebra to compare.
+    :param equal_nan: Whether NaNs in corresponding positions compare equal.
+    :return: A boolean JAX array with the broadcasted batch shape, or a scalar
+        boolean array when comparing unbatched algebra elements.
+    """
+    if not _compatible_for_comparison(left, right):
+        return jnp.asarray(False)
+
+    return type(left)._equal(left, right, equal_nan=equal_nan)
+
+
+def algebra_allclose(
+    left: AlgebraT,
+    right: AlgebraT,
+    rtol: jax.typing.ArrayLike = 1e-5,
+    atol: jax.typing.ArrayLike = 1e-8,
+    equal_nan: bool = False,
+) -> jax.Array:
+    """Compare algebra elements for approximate coefficient equality.
+
+    Equality requires the same concrete algebra type and basis. Batch shapes
+    may differ if they are broadcast-compatible; the comparison is performed
+    over the resulting common batch shape. Coefficients are compared using the
+    tolerance semantics of :func:`jax.numpy.isclose` and reduced over the
+    trailing algebra-data dimension.
+
+    :param left: First algebra to compare.
+    :param right: Second algebra to compare.
+    :param rtol: Relative tolerance for coefficient comparisons.
+    :param atol: Absolute tolerance for coefficient comparisons.
+    :param equal_nan: Whether NaNs in corresponding positions compare equal.
+    :return: A boolean JAX array with the broadcasted batch shape, or a scalar
+        boolean array when comparing unbatched algebra elements.
+    """
+    if not _compatible_for_comparison(left, right):
+        return jnp.asarray(False)
+
+    return type(left)._allclose(
+        left,
+        right,
+        rtol=rtol,
+        atol=atol,
+        equal_nan=equal_nan,
+    )
+
+
+def astype(
+    algebra: AlgebraT,
+    dtype: jax.typing.DTypeLike,
+) -> AlgebraT:
+    """Convert an algebra's coefficient data to a new dtype.
+
+    The concrete algebra type, basis, and batch shape are preserved. Only the
+    representation's coefficient storage is converted.
+
+    :param algebra: Algebra whose coefficients will be converted.
+    :param dtype: Target coefficient data type.
+    :return: An algebra of the same concrete type, basis, and batch shape with
+        coefficients converted to ``dtype``.
+    """
+    return type(algebra)._astype(algebra, dtype)
+
+
+def stack(algebras: Sequence[AlgebraT], axis: int=0, dtype: jax.typing.DTypeLike | None =None) -> AlgebraT:
+    """
+    Stack a sequence of algebras along a new batch axis.
+
+    All operands must have the same concrete algebra type and the same batch
+    shape. Their bases may have different depths; the representation-specific
+    implementation promotes them to a common basis before stacking them.
+
+    The new axis is inserted among the batch dimensions, leaving the trailing
+    algebra-coordinate dimension unchanged. If ``dtype`` is omitted, JAX's
+    normal type-promotion rules determine the result data type.
+
+    :param algebras: Sequence of algebras to stack.
+    :param axis: Position among the result's batch axes at which to insert the
+        new dimension.
+    :param dtype: Optional data type of the resulting algebra.
+    :return: The stacked algebra.
+    :raises ValueError: If ``algebras`` is empty, their batch shapes differ, or
+        ``axis`` is outside the batch dimensions.
+    :raises TypeError: If the operands do not have the same concrete algebra
+        type.
+    """
+    if not algebras:
+        raise ValueError("cannot stack an empty sequence of algebras")
+
+    _check_all_same_type(algebras)
+    batch_dims = get_common_batch_shape(*algebras)
+
+    # We have to adjust the axis to preserve the algebra data
+    if axis < 0:
+        axis += len(batch_dims) + 1
+
+    if axis < 0 or axis > len(batch_dims):
+        raise ValueError(f"Axis {axis} is out of bounds for batch with {batch_dims} dimensions.")
+
+    typ = type(algebras[0])
+
+    return typ.stack(algebras, axis, dtype)
+
+
+def concatenate(
+    algebras: Sequence[AlgebraT],
+    axis: int = 0,
+    dtype: jax.typing.DTypeLike | None = None,
+) -> AlgebraT:
+    """
+    Concatenate a sequence of algebras along an existing batch axis.
+
+    All operands must have the same concrete algebra type and compatible batch
+    shapes. Their bases may have different depths; the representation-specific
+    implementation promotes them to a common basis before concatenating them.
+
+    :param algebras: Sequence of algebras to concatenate.
+    :param axis: Existing batch axis along which to concatenate.
+    :param dtype: Data type of the resulting algebra.
+    :return: The concatenated algebra.
+    """
+    if not algebras:
+        raise ValueError("cannot concatenate an empty sequence of algebras")
+
+    _check_all_same_type(algebras)
+
+    batch_shape = algebras[0].batch_shape
+    batch_ndim = len(batch_shape)
+    if batch_ndim == 0:
+        raise ValueError("cannot concatenate algebras without batch dimensions")
+
+    if axis < 0:
+        axis += batch_ndim
+
+    if axis < 0 or axis >= batch_ndim:
+        raise ValueError(
+            f"Axis {axis} is out of bounds for a batch with {batch_ndim} dimensions."
+        )
+
+    typ = type(algebras[0])
+    return typ.concatenate(algebras, axis, dtype)
+
 
 
 @jax.custom_vjp

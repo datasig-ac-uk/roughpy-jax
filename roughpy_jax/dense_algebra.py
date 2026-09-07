@@ -1,10 +1,10 @@
-from typing import TypeVar, Callable, Generic, ClassVar, Type
+from typing import TypeVar, Callable, Generic, ClassVar, Type, Sequence
 
 import jax
 import jax.numpy as jnp
 import numpy as np
 
-from roughpy_jax.bases import BasisT, TensorBasis
+from roughpy_jax.bases import BasisT, TensorBasis, result_basis
 
 AlgebraT = TypeVar("AlgebraT", bound="DenseAlgebra")
 
@@ -58,10 +58,10 @@ def get_common_batch_shape(*operands) -> tuple[int, ...]:
 
 
 def broadcast_to_batch_shape(
-    data: jax.typing.ArrayLike,
-    batch_shape: tuple[int, ...],
-    *,
-    core_dims: int = 1,
+        data: jax.typing.ArrayLike,
+        batch_shape: tuple[int, ...],
+        *,
+        core_dims: int = 1,
 ) -> jax.Array:
     """
     Reshape data for broadcasting over a target batch shape and core dimensions.
@@ -115,7 +115,7 @@ def _pad_final_dim(data: jax.Array, size: int) -> jax.Array:
 
 
 def _algebra_add(
-    a: AlgebraT, b: AlgebraT, *, impl: Callable[[jax.Array, jax.Array], jax.Array]
+        a: AlgebraT, b: AlgebraT, *, impl: Callable[[jax.Array, jax.Array], jax.Array]
 ) -> AlgebraT:
     """
     Apply a pointwise binary operation to two compatible dense algebra objects.
@@ -269,6 +269,83 @@ class DenseAlgebra(Generic[BasisT]):
     def __numpy_dtype__(self):
         return np.dtype(self.data.dtype)
 
+    def __getitem__(self: AlgebraT, index) -> AlgebraT:
+        """Select a sub-batch while preserving the algebra coordinate axis.
+
+        The index is interpreted exclusively against :attr:`batch_shape`; the
+        trailing algebra-coordinate dimension is protected by an appended full
+        slice. All other indexing behavior, including advanced indexing and
+        out-of-bounds handling, follows JAX array semantics. An index that would
+        produce a zero-length batch is rejected because empty algebra batches
+        are not valid algebra objects.
+
+        :param index: JAX-compatible index into the algebra's batch dimensions.
+        :return: An algebra of the same concrete type and basis containing the
+            selected sub-batch.
+        :raises ValueError: If the index would produce an empty batch.
+        """
+        batch_index = index if isinstance(index, tuple) else (index,)
+        new_data = self.data[batch_index + (slice(None),)]
+        new_batch_shape = new_data.shape[:-1]
+
+        if 0 in new_batch_shape:
+            raise ValueError("batch index would produce an empty algebra")
+
+        return type(self)(new_data, self.basis)
+
+    @classmethod
+    def _equal(
+            cls,
+            left: AlgebraT,
+            right: AlgebraT,
+            *,
+            equal_nan: bool = False,
+    ) -> jax.Array:
+        """Compare dense coefficient arrays for exact equality."""
+        left_data, right_data = jnp.broadcast_arrays(left.data, right.data)
+        matches = left_data == right_data
+        matches = matches | (
+            jnp.asarray(equal_nan)
+            & jnp.isnan(left_data)
+            & jnp.isnan(right_data)
+        )
+        return jnp.all(matches, axis=-1)
+
+    @classmethod
+    def _allclose(
+            cls,
+            left: AlgebraT,
+            right: AlgebraT,
+            *,
+            rtol: jax.typing.ArrayLike = 1e-5,
+            atol: jax.typing.ArrayLike = 1e-8,
+            equal_nan: bool = False,
+    ) -> jax.Array:
+        """Compare dense coefficient arrays using relative and absolute tolerances."""
+        left_data, right_data = jnp.broadcast_arrays(left.data, right.data)
+        matches = jnp.isclose(
+            left_data,
+            right_data,
+            rtol=rtol,
+            atol=atol,
+            equal_nan=False,
+        )
+        matches = matches | (
+            jnp.asarray(equal_nan)
+            & jnp.isnan(left_data)
+            & jnp.isnan(right_data)
+        )
+        return jnp.all(matches, axis=-1)
+
+    @classmethod
+    def _astype(
+            cls: type[AlgebraT],
+            algebra: AlgebraT,
+            dtype: jax.typing.DTypeLike,
+    ) -> AlgebraT:
+        """Convert dense coefficient storage to a new dtype."""
+        return cls(algebra.data.astype(dtype), algebra.basis)
+
     def __add__(self, other):
         if isinstance(other, type(self)):
             return _algebra_add(self, other, impl=jnp.add)
@@ -306,10 +383,10 @@ class DenseAlgebra(Generic[BasisT]):
 
     @classmethod
     def zero(
-        cls: type[AlgebraT],
-        basis: BasisT,
-        dtype: jax.typing.DTypeLike = jnp.dtype("float32"),
-        batch_dims: tuple[int, ...] = tuple(),
+            cls: type[AlgebraT],
+            basis: BasisT,
+            dtype: jax.typing.DTypeLike = jnp.dtype("float32"),
+            batch_dims: tuple[int, ...] = tuple(),
             device: jax.Device | None = None,
     ) -> AlgebraT:
         """
@@ -330,6 +407,60 @@ class DenseAlgebra(Generic[BasisT]):
         zero_data = jnp.zeros(dtype=jnp.dtype(dtype), shape=shape, device=device)
         return cls(zero_data, basis)
 
+    @classmethod
+    def stack(cls: type[AlgebraT], algebras: Sequence[AlgebraT], axis: int = 0,
+              dtype: jax.typing.DTypeLike | None = None) -> AlgebraT:
+        """
+        Implement representation-specific storage for :func:`algebra.stack`.
+
+        This class method is an implementation hook and is not intended to be
+        called directly. Use :func:`roughpy_jax.algebra.stack` instead so that
+        the operands, batch shapes, and axis are validated before dispatching
+        to the appropriate representation.
+
+        :param algebras: Dense algebra objects whose coefficient data will be
+            stacked.
+        :param axis: Batch axis at which to insert the new dimension.
+        :param dtype: Optional data type for the resulting coefficient array.
+        :return: A dense algebra object containing the stacked coefficients.
+        """
+
+        bases = [algebra.basis for algebra in algebras]
+        basis = result_basis(*bases, strategy="max_depth")
+
+        basis_size = basis.size()
+        new_data = jnp.stack([_redepth_data(algebra.data, basis_size) for algebra in algebras], axis=axis, dtype=dtype)
+        return cls(new_data, basis)
+
+    @classmethod
+    def concatenate(
+            cls: type[AlgebraT],
+            algebras: Sequence[AlgebraT],
+            axis: int = 0,
+            dtype: jax.typing.DTypeLike | None = None,
+    ) -> AlgebraT:
+        """
+        Implement representation-specific storage for :func:`algebra.concatenate`.
+
+        This class method is an implementation hook and is not intended to be
+        called directly. Use :func:`roughpy_jax.algebra.concatenate` instead so
+        that the operands, batch shapes, and axis are validated before dispatching
+        to the appropriate representation.
+
+        :param algebras: Dense algebra objects whose coefficient data will be
+            concatenated.
+        :param axis: Existing batch axis along which to concatenate.
+        :param dtype: Optional data type for the resulting coefficient array.
+        :return: A dense algebra object containing the concatenated coefficients.
+        """
+        bases = [algebra.basis for algebra in algebras]
+        basis = result_basis(*bases, strategy="max_depth")
+
+        basis_size = basis.size()
+        data = [_redepth_data(algebra.data, basis_size) for algebra in algebras]
+        new_data = jnp.concatenate(data, axis=axis, dtype=dtype)
+        return cls(new_data, basis)
+
 
 DenseAlgebra.DualVector = DenseAlgebra
 
@@ -345,11 +476,11 @@ class DenseTensor(DenseAlgebra[TensorBasis]):
 
     @classmethod
     def identity(
-        cls: Type[AlgebraT],
-        basis: TensorBasis,
-        dtype: jax.typing.DTypeLike = jnp.dtype("float32"),
-        batch_dims: tuple[int, ...] = tuple(),
-        device: jax.Device | None = None,
+            cls: Type[AlgebraT],
+            basis: TensorBasis,
+            dtype: jax.typing.DTypeLike = jnp.dtype("float32"),
+            batch_dims: tuple[int, ...] = tuple(),
+            device: jax.Device | None = None,
     ) -> AlgebraT:
         """
             Construct the multiplicative identity in a tensor basis.
