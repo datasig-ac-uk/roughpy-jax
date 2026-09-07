@@ -173,10 +173,10 @@ def test_from_stream_constructs_equivalent_lie_increment_stream():
     l1 = rpj.Lie(jnp.array([0.0, 0.3, -0.2], dtype=jnp.float64), lie_basis)
     l2 = rpj.Lie(jnp.array([0.0, -0.1, 0.4], dtype=jnp.float64), lie_basis)
     src = PiecewiseAbelianStream(
-        _data=(l1, l2),
-        _partition=partition,
-        _lie_basis=lie_basis,
-        _group_basis=group_basis,
+        jnp.stack((l1.data, l2.data)),
+        partition,
+        lie_basis,
+        group_basis,
     )
 
     result = LieIncrementStream.from_stream(src, resolution=3)
@@ -212,10 +212,10 @@ def test_log_signature_accepts_singleton_array_interval_endpoints():
     l1 = rpj.Lie(jnp.array([0.0, 0.3, -0.2], dtype=jnp.float64), lie_basis)
     l2 = rpj.Lie(jnp.array([0.0, -0.1, 0.4], dtype=jnp.float64), lie_basis)
     src = PiecewiseAbelianStream(
-        _data=(l1, l2),
-        _partition=partition,
-        _lie_basis=lie_basis,
-        _group_basis=group_basis,
+        jnp.stack((l1.data, l2.data)),
+        partition,
+        lie_basis,
+        group_basis,
     )
     stream = LieIncrementStream.from_stream(src, resolution=3)
 
