@@ -293,6 +293,50 @@ class DenseAlgebra(Generic[BasisT]):
 
         return type(self)(new_data, self.basis)
 
+    @classmethod
+    def _equal(
+            cls,
+            left: AlgebraT,
+            right: AlgebraT,
+            *,
+            equal_nan: bool = False,
+    ) -> jax.Array:
+        """Compare dense coefficient arrays for exact equality."""
+        left_data, right_data = jnp.broadcast_arrays(left.data, right.data)
+        matches = left_data == right_data
+        matches = matches | (
+            jnp.asarray(equal_nan)
+            & jnp.isnan(left_data)
+            & jnp.isnan(right_data)
+        )
+        return jnp.all(matches, axis=-1)
+
+    @classmethod
+    def _allclose(
+            cls,
+            left: AlgebraT,
+            right: AlgebraT,
+            *,
+            rtol: jax.typing.ArrayLike = 1e-5,
+            atol: jax.typing.ArrayLike = 1e-8,
+            equal_nan: bool = False,
+    ) -> jax.Array:
+        """Compare dense coefficient arrays using relative and absolute tolerances."""
+        left_data, right_data = jnp.broadcast_arrays(left.data, right.data)
+        matches = jnp.isclose(
+            left_data,
+            right_data,
+            rtol=rtol,
+            atol=atol,
+            equal_nan=False,
+        )
+        matches = matches | (
+            jnp.asarray(equal_nan)
+            & jnp.isnan(left_data)
+            & jnp.isnan(right_data)
+        )
+        return jnp.all(matches, axis=-1)
+
     def __add__(self, other):
         if isinstance(other, type(self)):
             return _algebra_add(self, other, impl=jnp.add)

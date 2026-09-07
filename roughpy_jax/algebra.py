@@ -160,6 +160,77 @@ def _check_all_same_type(algebras: Sequence[AlgebraT]):
         raise TypeError("all algebras must be of the same type")
 
 
+def _compatible_for_comparison(left: AlgebraT, right: AlgebraT) -> bool:
+    if type(left) is not type(right) or left.basis != right.basis:
+        return False
+
+    try:
+        jnp.broadcast_shapes(left.batch_shape, right.batch_shape)
+    except ValueError:
+        return False
+
+    return True
+
+
+def algebra_equal(
+    left: AlgebraT,
+    right: AlgebraT,
+    equal_nan: bool = False,
+) -> jax.Array:
+    """Compare algebra elements for exact coefficient equality.
+
+    Equality requires the same concrete algebra type and basis. Batch shapes
+    may differ if they are broadcast-compatible; the comparison is performed
+    over the resulting common batch shape. The coefficients of each algebra
+    element are compared and reduced over the trailing algebra-data dimension.
+
+    :param left: First algebra to compare.
+    :param right: Second algebra to compare.
+    :param equal_nan: Whether NaNs in corresponding positions compare equal.
+    :return: A boolean JAX array with the broadcasted batch shape, or a scalar
+        boolean array when comparing unbatched algebra elements.
+    """
+    if not _compatible_for_comparison(left, right):
+        return jnp.asarray(False)
+
+    return type(left)._equal(left, right, equal_nan=equal_nan)
+
+
+def algebra_allclose(
+    left: AlgebraT,
+    right: AlgebraT,
+    rtol: jax.typing.ArrayLike = 1e-5,
+    atol: jax.typing.ArrayLike = 1e-8,
+    equal_nan: bool = False,
+) -> jax.Array:
+    """Compare algebra elements for approximate coefficient equality.
+
+    Equality requires the same concrete algebra type and basis. Batch shapes
+    may differ if they are broadcast-compatible; the comparison is performed
+    over the resulting common batch shape. Coefficients are compared using the
+    tolerance semantics of :func:`jax.numpy.isclose` and reduced over the
+    trailing algebra-data dimension.
+
+    :param left: First algebra to compare.
+    :param right: Second algebra to compare.
+    :param rtol: Relative tolerance for coefficient comparisons.
+    :param atol: Absolute tolerance for coefficient comparisons.
+    :param equal_nan: Whether NaNs in corresponding positions compare equal.
+    :return: A boolean JAX array with the broadcasted batch shape, or a scalar
+        boolean array when comparing unbatched algebra elements.
+    """
+    if not _compatible_for_comparison(left, right):
+        return jnp.asarray(False)
+
+    return type(left)._allclose(
+        left,
+        right,
+        rtol=rtol,
+        atol=atol,
+        equal_nan=equal_nan,
+    )
+
+
 def stack(algebras: Sequence[AlgebraT], axis: int=0, dtype: jax.typing.DTypeLike | None =None) -> AlgebraT:
     """
     Stack a sequence of algebras along a new batch axis.
