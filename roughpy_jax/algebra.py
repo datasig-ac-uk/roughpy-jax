@@ -19,7 +19,7 @@ from roughpy_jax.dense_algebra import (
     broadcast_to_batch_shape,
     get_common_batch_shape,
 )
-from roughpy_jax.ops import Operation
+from roughpy_jax.ops import Operation, _get_lie_sparse_matrices
 
 AlgebraT = TypeVar("AlgebraT", bound=DenseAlgebra)
 TensorT = TypeVar("TensorT", bound=DenseTensor)
@@ -1000,6 +1000,10 @@ def ft_log_adjoint_derivative(
         ct_x = ct_x + ft_adjoint_right_mul(u_d, ct_r_d)
         ct_r_d = ft_adjoint_left_mul(x, ct_r_d)
 
+    # ``ft_log`` ignores the unit coordinate of its input, so its derivative
+    # and adjoint derivative must both annihilate that coordinate.
+    ct_x = _remove_unit_term(ct_x)
+
     return (ct_x,)
 
 
@@ -1226,17 +1230,25 @@ def lie_to_tensor_adjoint_derivative(
     """
     Lie to tensor derivative of free tensor `ct_result` at `arg`
     """
-    l2t = arg.basis.get_l2t_matrix(arg.dtype)
+    l2t_data, l2t_indices, l2t_indptr = _get_lie_sparse_matrices(
+        arg.basis, arg.dtype
+    )[0]
     l2t_size = arg.basis.size()
-    data = csr_matvec(l2t.data, l2t.indices, l2t.indptr, l2t_size, ct_result.data)
-    if scale_factor:
+    data = csr_matvec(
+        l2t_data,
+        l2t_indices,
+        l2t_indptr,
+        l2t_size,
+        ct_result.data,
+    )
+    if scale_factor is not None:
         data = data * scale_factor
 
     return DenseLie(data, arg.basis)
 
 
 def _lie_to_tensor_vjp_fwd(arg: DenseLie, scale_factor=None):
-    result = lie_to_tensor(arg, scale_factors=scale_factor)
+    result = lie_to_tensor(arg, scale_factor=scale_factor)
     return result, (arg, scale_factor)
 
 
@@ -1252,7 +1264,15 @@ def _lie_to_tensor_vjp_bwd(
         arg, ct_result, scale_factor=scale_factor
     )
 
-    return (to_jax_cotangent(type(arg), ct_l2t_adjoint_deriv),)
+    ct_scale_factor = None
+    if scale_factor is not None:
+        unscaled_result = lie_to_tensor(arg)
+        ct_scale_factor = jnp.sum(ct_result.data * unscaled_result.data)
+
+    return (
+        to_jax_cotangent(type(arg), ct_l2t_adjoint_deriv),
+        ct_scale_factor,
+    )
 
 
 lie_to_tensor.defvjp(_lie_to_tensor_vjp_fwd, _lie_to_tensor_vjp_bwd)
@@ -1315,10 +1335,18 @@ def tensor_to_lie_adjoint_derivative(
     """
     # TODO: consider changing basis resolution logic
     lie_basis = to_lie_basis(arg.basis)
-    t2l = lie_basis.get_t2l_matrix(arg.dtype)
+    t2l_data, t2l_indices, t2l_indptr = _get_lie_sparse_matrices(
+        lie_basis, arg.dtype
+    )[1]
     t2l_size = arg.basis.size()
-    data = csr_matvec(t2l.data, t2l.indices, t2l.indptr, t2l_size, ct_result.data)
-    if scale_factor:
+    data = csr_matvec(
+        t2l_data,
+        t2l_indices,
+        t2l_indptr,
+        t2l_size,
+        ct_result.data,
+    )
+    if scale_factor is not None:
         data = data * scale_factor
 
     return DenseShuffleTensor(data, arg.basis)
@@ -1339,7 +1367,15 @@ def _tensor_to_lie_vjp_bwd(
         arg, ct_result, scale_factor
     )
 
-    return (to_jax_cotangent(type(arg), ct_t2l_adjoint_deriv), None)
+    ct_scale_factor = None
+    if scale_factor is not None:
+        unscaled_result = tensor_to_lie(arg)
+        ct_scale_factor = jnp.sum(ct_result.data * unscaled_result.data)
+
+    return (
+        to_jax_cotangent(type(arg), ct_t2l_adjoint_deriv),
+        ct_scale_factor,
+    )
 
 
 tensor_to_lie.defvjp(_tensor_to_lie_vjp_fwd, _tensor_to_lie_vjp_bwd)

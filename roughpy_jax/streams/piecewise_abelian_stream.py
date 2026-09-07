@@ -144,15 +144,19 @@ class PiecewiseAbelianStream(Stream[DenseLie, DenseFreeTensor]):
             The log-signature over ``interval`` in the stream's Lie basis.
         """
         inf, sup = jnp.broadcast_arrays(
-            jnp.asarray(interval.inf),
-            jnp.asarray(interval.sup),
+            jax.lax.stop_gradient(jnp.asarray(interval.inf)),
+            jax.lax.stop_gradient(jnp.asarray(interval.sup)),
         )
 
         P = len(self._partition)
         partition_intervals = self._partition.to_intervals()
         query_dims = (1,) * inf.ndim
-        partition_inf = partition_intervals.inf.reshape((P,) + query_dims)
-        partition_sup = partition_intervals.sup.reshape((P,) + query_dims)
+        partition_inf = jax.lax.stop_gradient(partition_intervals.inf).reshape(
+            (P,) + query_dims
+        )
+        partition_sup = jax.lax.stop_gradient(partition_intervals.sup).reshape(
+            (P,) + query_dims
+        )
 
         query_inf = inf[None, ...]
         query_sup = sup[None, ...]

@@ -824,13 +824,15 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
         if interval is None:
             interval = self._support
 
-        inf = jnp.asarray(interval.inf)
-        sup = jnp.asarray(interval.sup)
+        inf = jax.lax.stop_gradient(jnp.asarray(interval.inf))
+        sup = jax.lax.stop_gradient(jnp.asarray(interval.sup))
 
-        clipped_inf = jnp.clip(inf, self._support.inf, self._support.sup)
-        clipped_sup = jnp.clip(sup, self._support.inf, self._support.sup)
-        reparam_inf = (clipped_inf - self._support.inf) / (self._support.sup - self._support.inf)
-        reparam_sup = (clipped_sup - self._support.inf) / (self._support.sup - self._support.inf)
+        support_inf = jax.lax.stop_gradient(jnp.asarray(self._support.inf))
+        support_sup = jax.lax.stop_gradient(jnp.asarray(self._support.sup))
+        clipped_inf = jnp.clip(inf, support_inf, support_sup)
+        clipped_sup = jnp.clip(sup, support_inf, support_sup)
+        reparam_inf = (clipped_inf - support_inf) / (support_sup - support_inf)
+        reparam_sup = (clipped_sup - support_inf) / (support_sup - support_inf)
 
         context = _QueryContext(self._cache, self._lie_basis, self._lie_basis, self._group_basis)
 

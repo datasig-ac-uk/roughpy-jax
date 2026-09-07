@@ -105,6 +105,29 @@ class TestPiecewiseAbelianStream:
         assert selected.batch_dims == ()
         assert jnp.array_equal(selected._data, stream._data[:, 0, 1, :])
 
+    def test_log_signature_differentiates_data_but_not_query_interval(self):
+        stream = _batched_piecewise_abelian_stream((2,))
+        query = RealInterval(0.25, 1.5, IntervalType.ClOpen)
+
+        def objective(data, interval):
+            candidate = PiecewiseAbelianStream(
+                data,
+                stream._partition,
+                stream.lie_basis,
+                stream.group_basis,
+            )
+            result = candidate.log_signature(interval)
+            return jnp.sum(result.data ** 2)
+
+        data_gradient, interval_gradient = jax.jit(
+            jax.grad(objective, argnums=(0, 1))
+        )(stream._data, query)
+
+        assert jnp.all(jnp.isfinite(data_gradient))
+        assert jnp.any(data_gradient != 0.0)
+        assert interval_gradient.inf == 0.0
+        assert interval_gradient.sup == 0.0
+
     def test_construction(self, pas_data):
         """Test that the PiecewiseAbelianStream can be constructed without errors."""
         with pytest.raises(ValueError, match="Data length"):
