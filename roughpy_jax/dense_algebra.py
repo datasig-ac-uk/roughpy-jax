@@ -337,6 +337,15 @@ class DenseAlgebra(Generic[BasisT]):
         )
         return jnp.all(matches, axis=-1)
 
+    @classmethod
+    def _astype(
+            cls: type[AlgebraT],
+            algebra: AlgebraT,
+            dtype: jax.typing.DTypeLike,
+    ) -> AlgebraT:
+        """Convert dense coefficient storage to a new dtype."""
+        return cls(algebra.data.astype(dtype), algebra.basis)
+
     def __add__(self, other):
         if isinstance(other, type(self)):
             return _algebra_add(self, other, impl=jnp.add)

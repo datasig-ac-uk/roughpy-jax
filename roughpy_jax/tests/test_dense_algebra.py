@@ -335,6 +335,44 @@ def test_algebra_allclose_rejects_structural_mismatch():
     assert not rpj.algebra_allclose(left, right)
 
 
+@pytest.mark.parametrize(
+    ("algebra_cls", "basis"),
+    [
+        (rpj.DenseFreeTensor, rpj.TensorBasis(2, 2)),
+        (rpj.DenseShuffleTensor, rpj.TensorBasis(2, 2)),
+        (rpj.DenseLie, rpj.LieBasis(2, 2)),
+    ],
+)
+def test_astype_converts_coefficients_and_preserves_algebra_structure(
+    algebra_cls, basis
+):
+    data = jnp.arange(2 * basis.size(), dtype=jnp.int32).reshape(
+        2, basis.size()
+    )
+    algebra = algebra_cls(data, basis)
+
+    result = rpj.astype(algebra, jnp.float32)
+
+    assert type(result) is algebra_cls
+    assert result.basis == basis
+    assert result.batch_shape == algebra.batch_shape
+    assert result.dtype == jnp.float32
+    np.testing.assert_array_equal(result.data, data)
+
+
+def test_astype_is_jittable():
+    basis = rpj.LieBasis(2, 2)
+    data = jnp.arange(basis.size(), dtype=jnp.int32)
+    algebra = rpj.DenseLie(data, basis)
+
+    result = jax.jit(lambda value: rpj.astype(value, jnp.float32))(algebra)
+
+    assert isinstance(result, rpj.DenseLie)
+    assert result.basis == basis
+    assert result.dtype == jnp.float32
+    np.testing.assert_array_equal(result.data, data)
+
+
 def test_dense_algebra_zero_constructs_batched_zero():
     basis = rpj.TensorBasis(2, 2)
 

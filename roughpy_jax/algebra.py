@@ -231,6 +231,23 @@ def algebra_allclose(
     )
 
 
+def astype(
+    algebra: AlgebraT,
+    dtype: jax.typing.DTypeLike,
+) -> AlgebraT:
+    """Convert an algebra's coefficient data to a new dtype.
+
+    The concrete algebra type, basis, and batch shape are preserved. Only the
+    representation's coefficient storage is converted.
+
+    :param algebra: Algebra whose coefficients will be converted.
+    :param dtype: Target coefficient data type.
+    :return: An algebra of the same concrete type, basis, and batch shape with
+        coefficients converted to ``dtype``.
+    """
+    return type(algebra)._astype(algebra, dtype)
+
+
 def stack(algebras: Sequence[AlgebraT], axis: int=0, dtype: jax.typing.DTypeLike | None =None) -> AlgebraT:
     """
     Stack a sequence of algebras along a new batch axis.
