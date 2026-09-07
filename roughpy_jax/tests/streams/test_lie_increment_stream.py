@@ -1,3 +1,5 @@
+import math
+
 import jax
 import jax.numpy as jnp
 import pytest
@@ -7,6 +9,25 @@ from roughpy_jax.algebra import LieBasis, TensorBasis
 from roughpy_jax.intervals import IntervalType, Partition, RealInterval
 from roughpy_jax.streams import PiecewiseAbelianStream
 from roughpy_jax.streams.lie_increment_stream import LieIncrementStream
+
+
+def _batched_lie_increment_stream(batch_dims=(2, 3)):
+    resolution = 2
+    lie_basis = LieBasis(width=2, depth=2)
+    group_basis = rpj.to_tensor_basis(lie_basis)
+    support = RealInterval(2.0, 5.0, IntervalType.ClOpen)
+    cache_length = 1 << (resolution + 1)
+    size = cache_length * math.prod(batch_dims) * lie_basis.size()
+    cache = jnp.arange(size, dtype=jnp.float32).reshape(
+        cache_length, *batch_dims, lie_basis.size()
+    )
+    return LieIncrementStream(
+        cache,
+        lie_basis,
+        resolution,
+        support=support,
+        group_basis=group_basis,
+    )
 
 
 def test_constructor_rejects_opencl_cache():
@@ -20,6 +41,55 @@ def test_constructor_rejects_opencl_cache():
             resolution=1,
             interval_type=IntervalType.OpenCl,
         )
+
+
+def test_getitem_indexes_only_batch_dimensions():
+    stream = _batched_lie_increment_stream((2, 3))
+
+    selected = stream[0]
+
+    assert selected.batch_dims == (3,)
+    assert jnp.array_equal(selected._cache, stream._cache[:, 0, :, :])
+    assert selected.lie_basis == stream.lie_basis
+    assert selected.group_basis == stream.group_basis
+    assert selected.support == stream.support
+    assert selected.resolution == stream.resolution
+
+
+def test_getitem_supports_ellipsis():
+    stream = _batched_lie_increment_stream((2, 3))
+
+    selected = stream[..., 1]
+
+    assert selected.batch_dims == (2,)
+    assert jnp.array_equal(selected._cache, stream._cache[:, :, 1, :])
+
+
+def test_getitem_preserves_structural_axes_with_advanced_indices():
+    stream = _batched_lie_increment_stream((2, 3, 2))
+    index = (jnp.array([0, 1]), slice(None), jnp.array([1, 0]))
+
+    selected = stream[index]
+    expected = jax.vmap(lambda cache_entry: cache_entry[index])(stream._cache)
+
+    assert selected._cache.shape[0] == stream._cache.shape[0]
+    assert jnp.array_equal(selected._cache, expected)
+
+
+def test_getitem_rejects_empty_batch():
+    stream = _batched_lie_increment_stream((2, 3))
+
+    with pytest.raises(ValueError, match="empty stream"):
+        stream[0:0]
+
+
+def test_getitem_can_produce_unbatched_stream():
+    stream = _batched_lie_increment_stream((2, 3))
+
+    selected = stream[0, 1]
+
+    assert selected.batch_dims == ()
+    assert jnp.array_equal(selected._cache, stream._cache[:, 0, 1, :])
 
 
 def test_pytree_round_trip_preserves_stream_data_and_metadata():

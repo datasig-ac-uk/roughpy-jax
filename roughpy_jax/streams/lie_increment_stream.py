@@ -3,7 +3,7 @@ import inspect
 import math
 from collections.abc import Callable
 from functools import partial
-from typing import Any, TypeAlias, TypeVar
+from typing import Any, Self, TypeAlias, TypeVar
 
 import jax
 import jax.numpy as jnp
@@ -28,6 +28,7 @@ from roughpy_jax.intervals import (
 )
 
 from .concepts import Stream
+from .utils import _index_stream_batch
 
 T = TypeVar("T")
 
@@ -780,6 +781,18 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
     @property
     def batch_dims(self) -> tuple[int, ...]:
         return self._cache.shape[1:-1]
+
+    def __getitem__(self, index) -> Self:
+        """Select from the intrinsic batch dimensions of the stream."""
+        cache = _index_stream_batch(self._cache, index)
+        return type(self)(
+            cache,
+            self._lie_basis,
+            self._resolution,
+            support=self._support,
+            group_basis=self._group_basis,
+            interval_type=self._interval_type,
+        )
 
     @property
     def resolution(self) -> int:

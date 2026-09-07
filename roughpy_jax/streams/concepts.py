@@ -85,6 +85,25 @@ class Stream(Protocol[LieT, GroupT]):
         """
         ...
 
+    def __getitem__(self, index) -> Self:
+        """Select from the intrinsic batch dimensions of the stream.
+
+        Indexing applies only to the dimensions reported by
+        :attr:`batch_dims`. Structural dimensions owned by an implementation,
+        such as a piece or dyadic-cache dimension, and the trailing algebra
+        coefficient dimension are preserved. Apart from protecting those
+        dimensions, indexing follows JAX array semantics, including basic and
+        advanced indexing and the insertion of new axes.
+
+        An index may remove all batch dimensions and produce an unbatched
+        stream, but it may not produce a stream with an empty batch dimension.
+
+        :param index: A JAX-compatible index into the intrinsic batch dimensions.
+        :return: A stream of the same type containing the selected batch data.
+        :raises ValueError: If the selection has an empty batch dimension.
+        """
+        ...
+
     def log_signature(self, interval: Interval) -> LieT:
         """
         Query the stream for the log signature over an interval.

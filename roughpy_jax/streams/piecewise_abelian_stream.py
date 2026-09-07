@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from functools import partial
-from typing import Sequence
+from typing import Self, Sequence
 
 import jax
 import jax.numpy as jnp
@@ -18,6 +18,7 @@ from roughpy_jax.bases import Basis, LieBasis, TensorBasis, check_basis_compat, 
 from roughpy_jax.intervals import Interval, Partition, RealInterval
 
 from .concepts import Stream
+from .utils import _index_stream_batch
 
 
 @partial(
@@ -118,6 +119,16 @@ class PiecewiseAbelianStream(Stream[DenseLie, DenseFreeTensor]):
     def batch_dims(self) -> tuple[int, ...]:
         """Return the leading batch dimensions of the stream values."""
         return self._data.shape[1:-1]
+
+    def __getitem__(self, index) -> Self:
+        """Select from the intrinsic batch dimensions of the stream."""
+        data = _index_stream_batch(self._data, index)
+        return type(self)(
+            data,
+            self._partition,
+            self._lie_basis,
+            self._group_basis,
+        )
 
     @jax.jit
     def log_signature(self, interval: Interval) -> DenseLie:

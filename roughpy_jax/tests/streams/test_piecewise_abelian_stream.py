@@ -1,3 +1,5 @@
+import math
+
 import jax
 import jax.numpy as jnp
 import pytest
@@ -48,7 +50,61 @@ def pas_data(rpj_batch, rpj_dtype):
     return PASHelper(rpj_batch, rpj_dtype)
 
 
+def _batched_piecewise_abelian_stream(batch_dims=(2, 3)):
+    lie_basis = rpj.LieBasis(2, 2)
+    group_basis = rpj.to_tensor_basis(lie_basis)
+    partition = Partition([0.0, 1.0, 2.0], IntervalType.ClOpen)
+    data = jnp.arange(
+        len(partition) * math.prod(batch_dims) * lie_basis.size(),
+        dtype=jnp.float32,
+    ).reshape(len(partition), *batch_dims, lie_basis.size())
+    return PiecewiseAbelianStream(data, partition, lie_basis, group_basis)
+
+
 class TestPiecewiseAbelianStream:
+    def test_getitem_indexes_only_batch_dimensions(self):
+        stream = _batched_piecewise_abelian_stream((2, 3))
+
+        selected = stream[0]
+
+        assert selected.batch_dims == (3,)
+        assert jnp.array_equal(selected._data, stream._data[:, 0, :, :])
+        assert selected._partition == stream._partition
+        assert selected.lie_basis == stream.lie_basis
+        assert selected.group_basis == stream.group_basis
+
+    def test_getitem_supports_ellipsis(self):
+        stream = _batched_piecewise_abelian_stream((2, 3))
+
+        selected = stream[..., 1]
+
+        assert selected.batch_dims == (2,)
+        assert jnp.array_equal(selected._data, stream._data[:, :, 1, :])
+
+    def test_getitem_preserves_structural_axes_with_advanced_indices(self):
+        stream = _batched_piecewise_abelian_stream((2, 3, 2))
+        index = (jnp.array([0, 1]), slice(None), jnp.array([1, 0]))
+
+        selected = stream[index]
+        expected = jax.vmap(lambda piece: piece[index])(stream._data)
+
+        assert selected._data.shape[0] == stream._data.shape[0]
+        assert jnp.array_equal(selected._data, expected)
+
+    def test_getitem_rejects_empty_batch(self):
+        stream = _batched_piecewise_abelian_stream((2, 3))
+
+        with pytest.raises(ValueError, match="empty stream"):
+            stream[0:0]
+
+    def test_getitem_can_produce_unbatched_stream(self):
+        stream = _batched_piecewise_abelian_stream((2, 3))
+
+        selected = stream[0, 1]
+
+        assert selected.batch_dims == ()
+        assert jnp.array_equal(selected._data, stream._data[:, 0, 1, :])
+
     def test_construction(self, pas_data):
         """Test that the PiecewiseAbelianStream can be constructed without errors."""
         with pytest.raises(ValueError, match="Data length"):
