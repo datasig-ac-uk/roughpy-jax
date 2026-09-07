@@ -1,4 +1,4 @@
-from typing import Any, TypeAlias, TypeVar
+from typing import Any, Sequence, TypeAlias, TypeVar
 
 import jax
 import jax.numpy as jnp
@@ -153,6 +153,91 @@ def from_jax_cotangent(
         data = cotangent
 
     return cls(data, basis)
+
+def _check_all_same_type(algebras: Sequence[AlgebraT]):
+    typ = type(algebras[0])
+    if not all(type(algebra) is typ for algebra in algebras):
+        raise TypeError("all algebras must be of the same type")
+
+
+def stack(algebras: Sequence[AlgebraT], axis: int=0, dtype: jax.typing.DTypeLike | None =None) -> AlgebraT:
+    """
+    Stack a sequence of algebras along a new batch axis.
+
+    All operands must have the same concrete algebra type and the same batch
+    shape. Their bases may have different depths; the representation-specific
+    implementation promotes them to a common basis before stacking them.
+
+    The new axis is inserted among the batch dimensions, leaving the trailing
+    algebra-coordinate dimension unchanged. If ``dtype`` is omitted, JAX's
+    normal type-promotion rules determine the result data type.
+
+    :param algebras: Sequence of algebras to stack.
+    :param axis: Position among the result's batch axes at which to insert the
+        new dimension.
+    :param dtype: Optional data type of the resulting algebra.
+    :return: The stacked algebra.
+    :raises ValueError: If ``algebras`` is empty, their batch shapes differ, or
+        ``axis`` is outside the batch dimensions.
+    :raises TypeError: If the operands do not have the same concrete algebra
+        type.
+    """
+    if not algebras:
+        raise ValueError("cannot stack an empty sequence of algebras")
+
+    _check_all_same_type(algebras)
+    batch_dims = get_common_batch_shape(*algebras)
+
+    # We have to adjust the axis to preserve the algebra data
+    if axis < 0:
+        axis += len(batch_dims) + 1
+
+    if axis < 0 or axis > len(batch_dims):
+        raise ValueError(f"Axis {axis} is out of bounds for batch with {batch_dims} dimensions.")
+
+    typ = type(algebras[0])
+
+    return typ.stack(algebras, axis, dtype)
+
+
+def concatenate(
+    algebras: Sequence[AlgebraT],
+    axis: int = 0,
+    dtype: jax.typing.DTypeLike | None = None,
+) -> AlgebraT:
+    """
+    Concatenate a sequence of algebras along an existing batch axis.
+
+    All operands must have the same concrete algebra type and compatible batch
+    shapes. Their bases may have different depths; the representation-specific
+    implementation promotes them to a common basis before concatenating them.
+
+    :param algebras: Sequence of algebras to concatenate.
+    :param axis: Existing batch axis along which to concatenate.
+    :param dtype: Data type of the resulting algebra.
+    :return: The concatenated algebra.
+    """
+    if not algebras:
+        raise ValueError("cannot concatenate an empty sequence of algebras")
+
+    _check_all_same_type(algebras)
+
+    batch_shape = algebras[0].batch_shape
+    batch_ndim = len(batch_shape)
+    if batch_ndim == 0:
+        raise ValueError("cannot concatenate algebras without batch dimensions")
+
+    if axis < 0:
+        axis += batch_ndim
+
+    if axis < 0 or axis >= batch_ndim:
+        raise ValueError(
+            f"Axis {axis} is out of bounds for a batch with {batch_ndim} dimensions."
+        )
+
+    typ = type(algebras[0])
+    return typ.concatenate(algebras, axis, dtype)
+
 
 
 @jax.custom_vjp

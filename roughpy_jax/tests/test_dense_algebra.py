@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 import roughpy_jax as rpj
 
+from roughpy_jax.algebra import concatenate, stack
 from roughpy_jax.dense_algebra import (
     DenseAlgebra,
     DenseTensor,
@@ -176,6 +177,143 @@ def test_dense_algebra_addition_rejects_mismatched_width():
 
     with pytest.raises(ValueError, match="basis widths must match"):
         _ = lhs + rhs
+
+
+def test_stack_promotes_to_deeper_basis():
+    shallow_basis = rpj.TensorBasis(2, 1)
+    deep_basis = rpj.TensorBasis(2, 2)
+    shallow = rpj.DenseFreeTensor(
+        jnp.ones(shallow_basis.size(), dtype=jnp.float32), shallow_basis
+    )
+    deep = rpj.DenseFreeTensor(
+        2 * jnp.ones(deep_basis.size(), dtype=jnp.float32), deep_basis
+    )
+
+    result = stack((shallow, deep))
+
+    assert isinstance(result, rpj.DenseFreeTensor)
+    assert result.basis == deep_basis
+    assert result.batch_shape == (2,)
+    np.testing.assert_array_equal(
+        result.data[0, : shallow_basis.size()], shallow.data
+    )
+    np.testing.assert_array_equal(result.data[0, shallow_basis.size() :], 0)
+    np.testing.assert_array_equal(result.data[1], deep.data)
+
+
+def test_stack_accepts_negative_batch_axis_and_dtype():
+    basis = rpj.TensorBasis(2, 1)
+    first_data = jnp.arange(6 * basis.size(), dtype=jnp.int32).reshape(
+        2, 3, basis.size()
+    )
+    second_data = first_data + 100
+    first = rpj.DenseFreeTensor(first_data, basis)
+    second = rpj.DenseFreeTensor(second_data, basis)
+
+    result = stack((first, second), axis=-1, dtype=jnp.float32)
+
+    assert result.batch_shape == (2, 3, 2)
+    assert result.dtype == jnp.float32
+    np.testing.assert_array_equal(
+        result.data, jnp.stack((first_data, second_data), axis=2)
+    )
+
+
+def test_stack_rejects_incompatible_batch_shapes():
+    basis = rpj.TensorBasis(2, 1)
+    first = rpj.DenseFreeTensor(jnp.ones((2, basis.size())), basis)
+    second = rpj.DenseFreeTensor(jnp.ones((3, basis.size())), basis)
+
+    with pytest.raises(ValueError, match="incompatible batch shape"):
+        stack((first, second))
+
+
+def test_stack_rejects_empty_sequence():
+    with pytest.raises(ValueError, match="empty sequence"):
+        stack(())
+
+
+def test_stack_rejects_different_algebra_types():
+    basis = rpj.TensorBasis(2, 1)
+    free_tensor = rpj.DenseFreeTensor(jnp.ones(basis.size()), basis)
+    shuffle_tensor = rpj.DenseShuffleTensor(jnp.ones(basis.size()), basis)
+
+    with pytest.raises(TypeError, match="same type"):
+        stack((free_tensor, shuffle_tensor))
+
+
+@pytest.mark.parametrize("axis", [-3, 2])
+def test_stack_rejects_axis_outside_batch_dimensions(axis):
+    basis = rpj.TensorBasis(2, 1)
+    algebra = rpj.DenseFreeTensor(jnp.ones((3, basis.size())), basis)
+
+    with pytest.raises(ValueError, match="out of bounds"):
+        stack((algebra, algebra), axis=axis)
+
+
+def test_concatenate_promotes_to_deeper_basis():
+    shallow_basis = rpj.TensorBasis(2, 1)
+    deep_basis = rpj.TensorBasis(2, 2)
+    shallow = rpj.DenseFreeTensor(
+        jnp.ones((2, shallow_basis.size()), dtype=jnp.float32), shallow_basis
+    )
+    deep = rpj.DenseFreeTensor(
+        2 * jnp.ones((3, deep_basis.size()), dtype=jnp.float32), deep_basis
+    )
+
+    result = concatenate((shallow, deep))
+
+    assert isinstance(result, rpj.DenseFreeTensor)
+    assert result.basis == deep_basis
+    assert result.batch_shape == (5,)
+    np.testing.assert_array_equal(
+        result.data[:2, : shallow_basis.size()], shallow.data
+    )
+    np.testing.assert_array_equal(result.data[:2, shallow_basis.size() :], 0)
+    np.testing.assert_array_equal(result.data[2:], deep.data)
+
+
+def test_concatenate_accepts_negative_batch_axis_and_dtype():
+    basis = rpj.TensorBasis(2, 1)
+    first = rpj.DenseFreeTensor(
+        jnp.ones((2, 1, basis.size()), dtype=jnp.int32), basis
+    )
+    second = rpj.DenseFreeTensor(
+        2 * jnp.ones((2, 3, basis.size()), dtype=jnp.int32), basis
+    )
+
+    result = concatenate((first, second), axis=-1, dtype=jnp.float32)
+
+    assert result.batch_shape == (2, 4)
+    assert result.dtype == jnp.float32
+    np.testing.assert_array_equal(result.data[:, :1], first.data)
+    np.testing.assert_array_equal(result.data[:, 1:], second.data)
+
+
+def test_concatenate_rejects_incompatible_batch_shapes():
+    basis = rpj.TensorBasis(2, 1)
+    first = rpj.DenseFreeTensor(jnp.ones((2, 1, basis.size())), basis)
+    second = rpj.DenseFreeTensor(jnp.ones((3, 2, basis.size())), basis)
+
+    with pytest.raises(TypeError, match="Cannot concatenate arrays with shapes"):
+        concatenate((first, second), axis=0)
+
+
+def test_concatenate_rejects_unbatched_algebras():
+    basis = rpj.TensorBasis(2, 1)
+    algebra = rpj.DenseFreeTensor(jnp.ones(basis.size()), basis)
+
+    with pytest.raises(ValueError, match="without batch dimensions"):
+        concatenate((algebra, algebra))
+
+
+def test_concatenate_rejects_different_algebra_types():
+    basis = rpj.TensorBasis(2, 1)
+    free_tensor = rpj.DenseFreeTensor(jnp.ones((1, basis.size())), basis)
+    shuffle_tensor = rpj.DenseShuffleTensor(jnp.ones((1, basis.size())), basis)
+
+    with pytest.raises(TypeError, match="same type"):
+        concatenate((free_tensor, shuffle_tensor))
 
 
 def test_dense_algebra_scalar_multiplication_and_division_preserve_basis():
