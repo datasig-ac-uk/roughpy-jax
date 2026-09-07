@@ -78,6 +78,151 @@ def test_dense_algebra_exposes_basic_shape_properties():
     assert algebra.dimension == basis.size()
 
 
+@pytest.mark.parametrize(
+    ("algebra_cls", "basis"),
+    [
+        (rpj.DenseFreeTensor, rpj.TensorBasis(2, 2)),
+        (rpj.DenseShuffleTensor, rpj.TensorBasis(2, 2)),
+        (rpj.DenseLie, rpj.LieBasis(2, 2)),
+    ],
+)
+def test_dense_algebra_getitem_selects_batch_dimensions(algebra_cls, basis):
+    data = jnp.arange(2 * 3 * basis.size()).reshape(2, 3, basis.size())
+    algebra = algebra_cls(data, basis)
+
+    result = algebra[0, :]
+
+    assert type(result) is algebra_cls
+    assert result.basis == basis
+    assert result.batch_shape == (3,)
+    np.testing.assert_array_equal(result.data, data[0, :, :])
+
+
+def test_dense_algebra_getitem_preserves_omitted_batch_dimensions():
+    basis = rpj.LieBasis(2, 2)
+    data = jnp.arange(2 * 3 * basis.size()).reshape(2, 3, basis.size())
+    algebra = rpj.DenseLie(data, basis)
+
+    result = algebra[0]
+
+    assert result.batch_shape == (3,)
+    np.testing.assert_array_equal(result.data, data[0, :, :])
+
+
+def test_dense_algebra_getitem_integer_indices_can_produce_unbatched_algebra():
+    basis = rpj.LieBasis(2, 2)
+    data = jnp.arange(2 * 3 * basis.size()).reshape(2, 3, basis.size())
+    algebra = rpj.DenseLie(data, basis)
+
+    result = algebra[-1, 1]
+
+    assert isinstance(result, rpj.DenseLie)
+    assert result.batch_shape == ()
+    np.testing.assert_array_equal(result.data, data[-1, 1, :])
+
+
+def test_dense_algebra_getitem_ellipsis_only_expands_over_batch_dimensions():
+    basis = rpj.LieBasis(2, 2)
+    data = jnp.arange(2 * 3 * basis.size()).reshape(2, 3, basis.size())
+    algebra = rpj.DenseLie(data, basis)
+
+    result = algebra[..., 1]
+
+    assert result.batch_shape == (2,)
+    np.testing.assert_array_equal(result.data, data[:, 1, :])
+
+
+def test_dense_algebra_getitem_ellipsis_preserves_unbatched_algebra():
+    basis = rpj.LieBasis(2, 2)
+    data = jnp.arange(basis.size())
+    algebra = rpj.DenseLie(data, basis)
+
+    result = algebra[...]
+
+    assert result.batch_shape == ()
+    np.testing.assert_array_equal(result.data, data)
+
+
+@pytest.mark.parametrize("index", [0, slice(None)])
+def test_dense_algebra_getitem_cannot_index_unbatched_coefficients(index):
+    basis = rpj.LieBasis(2, 2)
+    algebra = rpj.DenseLie(jnp.arange(basis.size()), basis)
+
+    with pytest.raises(IndexError, match="Too many indices"):
+        _ = algebra[index]
+
+
+def test_dense_algebra_getitem_supports_nonempty_slices():
+    basis = rpj.LieBasis(2, 2)
+    data = jnp.arange(3 * 4 * basis.size()).reshape(3, 4, basis.size())
+    algebra = rpj.DenseLie(data, basis)
+
+    result = algebra[::-1, 1:]
+
+    assert result.batch_shape == (3, 3)
+    np.testing.assert_array_equal(result.data, data[::-1, 1:, :])
+
+
+def test_dense_algebra_getitem_is_jittable():
+    basis = rpj.LieBasis(2, 2)
+    data = jnp.arange(2 * 3 * basis.size()).reshape(2, 3, basis.size())
+    algebra = rpj.DenseLie(data, basis)
+
+    result = jax.jit(lambda value: value[0, :])(algebra)
+
+    assert result.batch_shape == (3,)
+    np.testing.assert_array_equal(result.data, data[0, :, :])
+
+
+@pytest.mark.parametrize("index", [slice(0, 0), slice(20, 30)])
+def test_dense_algebra_getitem_rejects_empty_batch(index):
+    basis = rpj.LieBasis(2, 2)
+    algebra = rpj.DenseLie(jnp.ones((3, basis.size())), basis)
+
+    with pytest.raises(ValueError, match="empty algebra"):
+        _ = algebra[index]
+
+
+@pytest.mark.parametrize("index", [3, -4])
+def test_dense_algebra_getitem_uses_jax_out_of_bounds_semantics(index):
+    basis = rpj.LieBasis(2, 2)
+    data = jnp.arange(3 * basis.size()).reshape(3, basis.size())
+    algebra = rpj.DenseLie(data, basis)
+
+    result = algebra[index]
+
+    np.testing.assert_array_equal(result.data, data[index, :])
+
+
+def test_dense_algebra_getitem_rejects_too_many_indices():
+    basis = rpj.LieBasis(2, 2)
+    algebra = rpj.DenseLie(jnp.ones((3, basis.size())), basis)
+
+    with pytest.raises(IndexError, match="Too many indices"):
+        _ = algebra[:, :]
+
+
+def test_dense_algebra_getitem_rejects_multiple_ellipses():
+    basis = rpj.LieBasis(2, 2)
+    algebra = rpj.DenseLie(jnp.ones((3, basis.size())), basis)
+
+    with pytest.raises(IndexError, match="single ellipsis"):
+        _ = algebra[..., ...]
+
+
+@pytest.mark.parametrize("index", [None, True, [0], jnp.array([0])])
+def test_dense_algebra_getitem_supports_jax_indices(index):
+    basis = rpj.LieBasis(2, 2)
+    data = jnp.arange(3 * basis.size()).reshape(3, basis.size())
+    algebra = rpj.DenseLie(data, basis)
+
+    result = algebra[index]
+
+    expected = data[(index, slice(None))]
+    assert result.batch_shape == expected.shape[:-1]
+    np.testing.assert_array_equal(result.data, expected)
+
+
 def test_dense_algebra_zero_constructs_batched_zero():
     basis = rpj.TensorBasis(2, 2)
 
