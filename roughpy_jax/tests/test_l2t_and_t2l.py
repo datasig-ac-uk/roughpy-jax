@@ -1,3 +1,4 @@
+import jax
 import jax.numpy as jnp
 import pytest
 import roughpy_jax as rpj
@@ -87,7 +88,7 @@ def test_l2t_adjoint_derivative(lt2_trials):
 
     assert_is_adjoint_derivative(
         rpj.lie_to_tensor,
-        rpj.lie_to_tensor_adjoint_derivative,
+        lambda arg, ct: rpj.lie_to_tensor_adjoint_derivative(arg, ct)[0],
         x,
         tangent,
         cotangent,
@@ -128,7 +129,7 @@ def test_t2l_adjoint_derivative(lt2_trials):
     cotangent = lt2_trials.uniform_lie()
     assert_linear_map_adjoint_derivative(
         rpj.tensor_to_lie,
-        rpj.tensor_to_lie_adjoint_derivative,
+        lambda arg, ct: rpj.tensor_to_lie_adjoint_derivative(arg, ct)[0],
         x,
         tangent,
         cotangent,
@@ -187,3 +188,128 @@ def test_t2l_scale_factor(rpj_batch, rpj_dtype, rpj_no_acceleration, scale_facto
     l_postscaled = rpj.tensor_to_lie(x, scale_factor=scale_factor)
 
     assert jnp.allclose(l_prescaled.data, l_postscaled.data, atol=1e-6)
+
+
+@pytest.mark.parametrize("scale_factor", [0.0, 0.5])
+def test_l2t_registered_vjp_supports_dynamic_scale_factor(
+        rpj_no_acceleration, scale_factor
+):
+    lie_basis = rpj.LieBasis(2, 2)
+    tensor_basis = rpj.to_tensor_basis(lie_basis)
+    data = jnp.arange(lie_basis.size(), dtype=jnp.float32) + 1.0
+    weights = jnp.arange(tensor_basis.size(), dtype=jnp.float32) - 2.0
+
+    def objective(arg_data, scale):
+        result = rpj.lie_to_tensor(
+            rpj.Lie(arg_data, lie_basis), scale_factor=scale
+        )
+        return jnp.sum(result.data * weights)
+
+    grad_data, grad_scale = jax.jit(
+        jax.grad(objective, argnums=(0, 1))
+    )(data, jnp.asarray(scale_factor))
+
+    images = jax.vmap(
+        lambda direction: rpj.lie_to_tensor(
+            rpj.Lie(direction, lie_basis)
+        ).data
+    )(jnp.eye(lie_basis.size(), dtype=data.dtype))
+    unscaled_result = rpj.lie_to_tensor(rpj.Lie(data, lie_basis)).data
+
+    assert jnp.allclose(grad_data, scale_factor * (images @ weights))
+    assert jnp.allclose(grad_scale, jnp.sum(unscaled_result * weights))
+
+
+@pytest.mark.parametrize("scale_factor", [0.0, 0.5])
+def test_t2l_registered_vjp_supports_dynamic_scale_factor(
+        rpj_no_acceleration, scale_factor
+):
+    tensor_basis = rpj.TensorBasis(2, 2)
+    lie_basis = rpj.to_lie_basis(tensor_basis)
+    data = jnp.arange(tensor_basis.size(), dtype=jnp.float32) + 1.0
+    weights = jnp.arange(lie_basis.size(), dtype=jnp.float32) - 1.0
+
+    def objective(arg_data, scale):
+        result = rpj.tensor_to_lie(
+            rpj.FreeTensor(arg_data, tensor_basis), scale_factor=scale
+        )
+        return jnp.sum(result.data * weights)
+
+    grad_data, grad_scale = jax.jit(
+        jax.grad(objective, argnums=(0, 1))
+    )(data, jnp.asarray(scale_factor))
+
+    images = jax.vmap(
+        lambda direction: rpj.tensor_to_lie(
+            rpj.FreeTensor(direction, tensor_basis)
+        ).data
+    )(jnp.eye(tensor_basis.size(), dtype=data.dtype))
+    unscaled_result = rpj.tensor_to_lie(
+        rpj.FreeTensor(data, tensor_basis)
+    ).data
+
+    assert jnp.allclose(grad_data, scale_factor * (images @ weights))
+    assert jnp.allclose(grad_scale, jnp.sum(unscaled_result * weights))
+
+
+@pytest.mark.parametrize(
+    (
+        "operation",
+        "derivative",
+        "adjoint_derivative",
+        "make_arg",
+        "make_cotangent",
+        "pairing",
+    ),
+    [
+        (
+            rpj.lie_to_tensor,
+            rpj.lie_to_tensor_derivative,
+            rpj.lie_to_tensor_adjoint_derivative,
+            lambda trials: trials.uniform_lie(),
+            lambda trials: trials.uniform_shuffle_tensor(),
+            rpj.tensor_pairing,
+        ),
+        (
+            rpj.tensor_to_lie,
+            rpj.tensor_to_lie_derivative,
+            rpj.tensor_to_lie_adjoint_derivative,
+            lambda trials: trials.uniform_free_tensor(),
+            lambda trials: trials.uniform_lie(),
+            rpj.lie_pairing,
+        ),
+    ],
+)
+def test_conversion_derivative_helpers_include_scale_factor(
+    lt2_trials,
+    operation,
+    derivative,
+    adjoint_derivative,
+    make_arg,
+    make_cotangent,
+    pairing,
+):
+    arg = make_arg(lt2_trials)
+    t_arg = make_arg(lt2_trials)
+    ct_result = make_cotangent(lt2_trials)
+    scale_factor = jnp.asarray(0.5, dtype=arg.dtype)
+    t_scale_factor = jnp.asarray(-0.25, dtype=arg.dtype)
+
+    expected = operation(t_arg, scale_factor) + operation(arg, t_scale_factor)
+    actual = derivative(
+        arg,
+        t_arg,
+        scale_factor=scale_factor,
+        t_scale_factor=t_scale_factor,
+    )
+    assert jnp.allclose(actual.data, expected.data)
+
+    ct_arg, ct_scale_factor = adjoint_derivative(
+        arg, ct_result, scale_factor=scale_factor
+    )
+    unscaled_ct_arg, no_scale_cotangent = adjoint_derivative(arg, ct_result)
+    assert jnp.allclose(ct_arg.data, scale_factor * unscaled_ct_arg.data)
+
+    expected_ct_scale = jnp.sum(pairing(ct_result, operation(arg)))
+    assert jnp.allclose(ct_scale_factor, expected_ct_scale)
+    assert no_scale_cotangent is None

@@ -19,7 +19,7 @@ from roughpy_jax.dense_algebra import (
     broadcast_to_batch_shape,
     get_common_batch_shape,
 )
-from roughpy_jax.ops import Operation
+from roughpy_jax.ops import Operation, _get_lie_sparse_matrices
 
 AlgebraT = TypeVar("AlgebraT", bound=DenseAlgebra)
 TensorT = TypeVar("TensorT", bound=DenseTensor)
@@ -1000,6 +1000,10 @@ def ft_log_adjoint_derivative(
         ct_x = ct_x + ft_adjoint_right_mul(u_d, ct_r_d)
         ct_r_d = ft_adjoint_left_mul(x, ct_r_d)
 
+    # ``ft_log`` ignores the unit coordinate of its input, so its derivative
+    # and adjoint derivative must both annihilate that coordinate.
+    ct_x = _remove_unit_term(ct_x)
+
     return (ct_x,)
 
 
@@ -1211,32 +1215,87 @@ def lie_to_tensor_derivative(
     arg: DenseLie,
     t_arg: DenseLie,
     scale_factor=None,
+    t_scale_factor=None,
 ) -> DenseFreeTensor:
     """
-    Lie to tensor derivative of free tensor perturbation `t_arg` at `arg`
+    Compute the derivative of :func:`lie_to_tensor` in a tangent direction.
+
+    Writing the Lie-to-tensor embedding as ``L2T``, the scaled operation is
+    ``F(x, s) = s * L2T(x)``. Its derivative is
+
+    ``DF(x, s)[t_x, t_s] = s * L2T(t_x) + t_s * L2T(x)``.
+
+    If ``scale_factor`` is omitted, the operation is treated as the unscaled
+    one-argument map and ``t_scale_factor`` must also be omitted. If a scale is
+    supplied but ``t_scale_factor`` is omitted, the scale is held fixed.
+
+    :param arg: Lie element at which to evaluate the derivative.
+    :param t_arg: Tangent perturbation of ``arg``.
+    :param scale_factor: Optional differentiable scale at which to evaluate the
+        derivative.
+    :param t_scale_factor: Optional tangent perturbation of ``scale_factor``.
+    :return: Derivative in the direction ``(t_arg, t_scale_factor)``.
+    :raises ValueError: If ``t_scale_factor`` is supplied without
+        ``scale_factor``.
     """
-    return lie_to_tensor(t_arg, scale_factor)
+    if scale_factor is None and t_scale_factor is not None:
+        raise ValueError("t_scale_factor requires scale_factor")
+
+    result = lie_to_tensor(t_arg, scale_factor)
+    if t_scale_factor is not None:
+        result = result + lie_to_tensor(arg, t_scale_factor)
+    return result
 
 
 def lie_to_tensor_adjoint_derivative(
     arg: DenseLie,
     ct_result: DenseFreeTensor,
     scale_factor=None,
-) -> DenseLie:
+) -> tuple[DenseLie, jax.Array | None]:
     """
-    Lie to tensor derivative of free tensor `ct_result` at `arg`
+    Compute the adjoint derivative of :func:`lie_to_tensor`.
+
+    Writing the Lie-to-tensor embedding as ``L2T`` and the output cotangent as
+    ``ct``, the adjoint derivative of ``F(x, s) = s * L2T(x)`` is
+
+    ``DF(x, s)^*(ct) = (s * L2T^*(ct), <ct, L2T(x)>)``.
+
+    The first tuple element is the cotangent of ``arg``. If ``scale_factor``
+    is omitted, the operation is treated as the unscaled one-argument map and
+    the second tuple element is ``None``.
+
+    :param arg: Lie element at which to evaluate the adjoint derivative.
+    :param ct_result: Cotangent at the output.
+    :param scale_factor: Optional differentiable scale at which to evaluate the
+        adjoint derivative.
+    :return: A pair containing the cotangent of ``arg`` and the cotangent of
+        ``scale_factor``, respectively. The latter is ``None`` for the
+        unscaled operation.
     """
-    l2t = arg.basis.get_l2t_matrix(arg.dtype)
+    l2t_data, l2t_indices, l2t_indptr = _get_lie_sparse_matrices(
+        arg.basis, arg.dtype
+    )[0]
     l2t_size = arg.basis.size()
-    data = csr_matvec(l2t.data, l2t.indices, l2t.indptr, l2t_size, ct_result.data)
-    if scale_factor:
+    data = csr_matvec(
+        l2t_data,
+        l2t_indices,
+        l2t_indptr,
+        l2t_size,
+        ct_result.data,
+    )
+    if scale_factor is not None:
         data = data * scale_factor
 
-    return DenseLie(data, arg.basis)
+    ct_scale_factor = None
+    if scale_factor is not None:
+        unscaled_result = lie_to_tensor(arg)
+        ct_scale_factor = jnp.sum(ct_result.data * unscaled_result.data)
+
+    return DenseLie(data, arg.basis), ct_scale_factor
 
 
 def _lie_to_tensor_vjp_fwd(arg: DenseLie, scale_factor=None):
-    result = lie_to_tensor(arg, scale_factors=scale_factor)
+    result = lie_to_tensor(arg, scale_factor=scale_factor)
     return result, (arg, scale_factor)
 
 
@@ -1248,11 +1307,14 @@ def _lie_to_tensor_vjp_bwd(
     ct_result = from_jax_cotangent(
         DenseFreeTensor, ct_result_data, to_tensor_basis(arg.basis)
     )
-    ct_l2t_adjoint_deriv = lie_to_tensor_adjoint_derivative(
+    ct_arg, ct_scale_factor = lie_to_tensor_adjoint_derivative(
         arg, ct_result, scale_factor=scale_factor
     )
 
-    return (to_jax_cotangent(type(arg), ct_l2t_adjoint_deriv),)
+    return (
+        to_jax_cotangent(type(arg), ct_arg),
+        ct_scale_factor,
+    )
 
 
 lie_to_tensor.defvjp(_lie_to_tensor_vjp_fwd, _lie_to_tensor_vjp_bwd)
@@ -1290,38 +1352,89 @@ def tensor_to_lie_derivative(
     arg: DenseFreeTensor,
     t_arg: DenseFreeTensor,
     scale_factor=None,
+    t_scale_factor=None,
 ) -> DenseLie:
     """
-    Tensor to Lie derivative of Lie perturbation `t_arg` at `arg`
+    Compute the derivative of :func:`tensor_to_lie` in a tangent direction.
 
-    Since tensor_to_lie is a linear map T2L, its derivative is
-    independent of the position and is simply T2L applied to the
-    tangent direction.
+    Writing the tensor-to-Lie projection as ``T2L``, the scaled operation is
+    ``F(x, s) = s * T2L(x)``. Its derivative is
+
+    ``DF(x, s)[t_x, t_s] = s * T2L(t_x) + t_s * T2L(x)``.
+
+    Thus, when the scale is held fixed, the derivative is independent of
+    ``arg`` because ``T2L`` is linear. If ``scale_factor`` is omitted, the
+    operation is treated as the unscaled one-argument map and
+    ``t_scale_factor`` must also be omitted. If a scale is supplied but
+    ``t_scale_factor`` is omitted, the scale is held fixed.
+
+    :param arg: Free tensor at which to evaluate the derivative.
+    :param t_arg: Tangent perturbation of ``arg``.
+    :param scale_factor: Optional differentiable scale at which to evaluate the
+        derivative.
+    :param t_scale_factor: Optional tangent perturbation of ``scale_factor``.
+    :return: Derivative in the direction ``(t_arg, t_scale_factor)``.
+    :raises ValueError: If ``t_scale_factor`` is supplied without
+        ``scale_factor``.
     """
-    return tensor_to_lie(t_arg, scale_factor)
+    if scale_factor is None and t_scale_factor is not None:
+        raise ValueError("t_scale_factor requires scale_factor")
+
+    result = tensor_to_lie(t_arg, scale_factor)
+    if t_scale_factor is not None:
+        result = result + tensor_to_lie(arg, t_scale_factor)
+    return result
 
 
 def tensor_to_lie_adjoint_derivative(
     arg: DenseFreeTensor,
     ct_result: DenseLie,
     scale_factor=None,
-) -> DenseShuffleTensor:
+) -> tuple[DenseShuffleTensor, jax.Array | None]:
     """
-    Tensor to Lie adjoint derivative of Lie cotangent `ct_result` at `arg`
+    Compute the adjoint derivative of :func:`tensor_to_lie`.
 
-    Computes T2L^T applied to the cotangent. The transpose is obtained
-    by feeding the CSC-stored t2l matrix data into csr_matvec, which
-    implicitly transposes the matrix.
+    Writing the tensor-to-Lie projection as ``T2L`` and the output cotangent
+    as ``ct``, the adjoint derivative of ``F(x, s) = s * T2L(x)`` is
+
+    ``DF(x, s)^*(ct) = (s * T2L^*(ct), <ct, T2L(x)>)``.
+
+    ``T2L^*`` is evaluated by applying ``csr_matvec`` to the CSC-stored T2L
+    matrix, which implicitly transposes it. The first tuple element is the
+    cotangent of ``arg``. If ``scale_factor`` is omitted, the operation is
+    treated as the unscaled one-argument map and the second tuple element is
+    ``None``.
+
+    :param arg: Free tensor at which to evaluate the adjoint derivative.
+    :param ct_result: Cotangent at the output.
+    :param scale_factor: Optional differentiable scale at which to evaluate the
+        adjoint derivative.
+    :return: A pair containing the cotangent of ``arg`` and the cotangent of
+        ``scale_factor``, respectively. The latter is ``None`` for the
+        unscaled operation.
     """
     # TODO: consider changing basis resolution logic
     lie_basis = to_lie_basis(arg.basis)
-    t2l = lie_basis.get_t2l_matrix(arg.dtype)
+    t2l_data, t2l_indices, t2l_indptr = _get_lie_sparse_matrices(
+        lie_basis, arg.dtype
+    )[1]
     t2l_size = arg.basis.size()
-    data = csr_matvec(t2l.data, t2l.indices, t2l.indptr, t2l_size, ct_result.data)
-    if scale_factor:
+    data = csr_matvec(
+        t2l_data,
+        t2l_indices,
+        t2l_indptr,
+        t2l_size,
+        ct_result.data,
+    )
+    if scale_factor is not None:
         data = data * scale_factor
 
-    return DenseShuffleTensor(data, arg.basis)
+    ct_scale_factor = None
+    if scale_factor is not None:
+        unscaled_result = tensor_to_lie(arg)
+        ct_scale_factor = jnp.sum(ct_result.data * unscaled_result.data)
+
+    return DenseShuffleTensor(data, arg.basis), ct_scale_factor
 
 
 def _tensor_to_lie_vjp_fwd(arg: DenseFreeTensor, scale_factor=None):
@@ -1335,11 +1448,14 @@ def _tensor_to_lie_vjp_bwd(
     arg, scale_factor = residuals
 
     ct_result = from_jax_cotangent(DenseLie, ct_result_data, to_lie_basis(arg.basis))
-    ct_t2l_adjoint_deriv = tensor_to_lie_adjoint_derivative(
+    ct_arg, ct_scale_factor = tensor_to_lie_adjoint_derivative(
         arg, ct_result, scale_factor
     )
 
-    return (to_jax_cotangent(type(arg), ct_t2l_adjoint_deriv), None)
+    return (
+        to_jax_cotangent(type(arg), ct_arg),
+        ct_scale_factor,
+    )
 
 
 tensor_to_lie.defvjp(_tensor_to_lie_vjp_fwd, _tensor_to_lie_vjp_bwd)

@@ -73,7 +73,7 @@ def _tree_where(mask: jax.Array, candidate, current):
     """Select query-batched pytree leaves while preserving their trailing axes."""
 
     def select(candidate_leaf, current_leaf):
-        mask_shape = (*mask.shape, *((1,) * (candidate_leaf.ndim - mask.ndim)))
+        mask_shape = mask.shape + (1,) * (candidate_leaf.ndim - mask.ndim)
         return jnp.where(mask.reshape(mask_shape), candidate_leaf, current_leaf)
 
     return jax.tree.map(select, candidate, current)
@@ -218,15 +218,24 @@ def _dyadic_tree_index(cache: jax.Array, k: jax.Array, n: jax.Array) -> jax.Arra
 
 
 def _dyadic_tree_get_lie(context: _QueryContext, k: jax.Array, n: jax.Array, digit: jax.Array) -> Lie:
-    zero_index = context.cache.shape[0] - 1
-    index = jnp.where(digit != 0, _dyadic_tree_index(context.cache, k, n), zero_index)
-    return Lie(context.cache[index], context.cache_basis)
+    active = digit != 0
+    # The query construction keeps this index in bounds even when inactive;
+    # mask the gathered value rather than routing the index through a sentinel.
+    index = _dyadic_tree_index(context.cache, k, n)
+    data = context.cache[index]
+    mask_shape = active.shape + (1,) * (data.ndim - active.ndim)
+    data = jnp.where(active.reshape(mask_shape), data, jnp.zeros_like(data))
+    return Lie(data, context.cache_basis)
 
 
 def _dyadic_query_init_lie(context: _QueryContext, k1: jax.Array, k2: jax.Array, n: jax.Array) -> Lie:
-    zero_index = context.cache.shape[0] - 1
-    index = jnp.where(k1 == k2, zero_index, _dyadic_tree_index(context.cache, k1, n))
-    result = Lie(context.cache[index], context.cache_basis)
+    nonempty = k1 != k2
+    # Empty queries still provide an in-bounds index, whose value is discarded.
+    index = _dyadic_tree_index(context.cache, k1, n)
+    data = context.cache[index]
+    mask_shape = nonempty.shape + (1,) * (data.ndim - nonempty.ndim)
+    data = jnp.where(nonempty.reshape(mask_shape), data, jnp.zeros_like(data))
+    result = Lie(data, context.cache_basis)
 
     if context.query_basis is not context.cache_basis:
         result = result.change_depth(context.query_basis.depth)
@@ -525,7 +534,6 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
         self._support = support or RealInterval(0.0, 1.0, IntervalType.ClOpen)
         self._resolution = int(resolution)
         self._interval_type = interval_type
-        self._zero_index = cache_length - 1
 
     def tree_flatten(self):
         children = (self._cache, self._support)
@@ -620,9 +628,9 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
     ) -> T:
 
         if isinstance(timestamps, list):
-            time_arrays = [jnp.asarray(ts) for ts in timestamps]
+            time_arrays = [jax.lax.stop_gradient(jnp.asarray(ts)) for ts in timestamps]
         else:
-            time_arrays = [jnp.asarray(timestamps)]
+            time_arrays = [jax.lax.stop_gradient(jnp.asarray(timestamps))]
 
         if isinstance(data, list):
             data_arrays = [jnp.asarray(ds) for ds in data]
@@ -713,8 +721,8 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
         support = RealInterval(inf, sup, interval_type)
 
         # Adjust the timestamps so they lie in the unit interval
-        sf = time_dtype.type(sup - inf)
-        shift = time_dtype.type(inf)
+        sf = (sup - inf).astype(time_dtype)
+        shift = inf.astype(time_dtype)
         time_arrays = [(ts.astype(time_dtype) - shift) / sf for ts in time_arrays]
 
         if resolution is None:
@@ -799,7 +807,7 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
         return self._resolution
 
     def _zero_log_signature(self) -> Lie:
-        return Lie(self._cache[-1, ...], self._lie_basis)
+        return Lie(jnp.zeros_like(self._cache[-1, ...]), self._lie_basis)
 
     def _query_dyadic(self, k: int, n: int) -> Lie:
         level_start = (1 << (self._resolution + 1)) - (1 << (n + 1))
@@ -824,13 +832,15 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
         if interval is None:
             interval = self._support
 
-        inf = jnp.asarray(interval.inf)
-        sup = jnp.asarray(interval.sup)
+        inf = jax.lax.stop_gradient(jnp.asarray(interval.inf))
+        sup = jax.lax.stop_gradient(jnp.asarray(interval.sup))
 
-        clipped_inf = jnp.clip(inf, self._support.inf, self._support.sup)
-        clipped_sup = jnp.clip(sup, self._support.inf, self._support.sup)
-        reparam_inf = (clipped_inf - self._support.inf) / (self._support.sup - self._support.inf)
-        reparam_sup = (clipped_sup - self._support.inf) / (self._support.sup - self._support.inf)
+        support_inf = jax.lax.stop_gradient(jnp.asarray(self._support.inf))
+        support_sup = jax.lax.stop_gradient(jnp.asarray(self._support.sup))
+        clipped_inf = jnp.clip(inf, support_inf, support_sup)
+        clipped_sup = jnp.clip(sup, support_inf, support_sup)
+        reparam_inf = (clipped_inf - support_inf) / (support_sup - support_inf)
+        reparam_sup = (clipped_sup - support_inf) / (support_sup - support_inf)
 
         context = _QueryContext(self._cache, self._lie_basis, self._lie_basis, self._group_basis)
 

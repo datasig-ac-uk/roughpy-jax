@@ -123,7 +123,8 @@ class Stream(Protocol[LieT, GroupT]):
 
         The endpoints may represent a batch of query intervals. If they broadcast
         to shape ``Q`` and the stream has batch shape ``D``, the returned Lie
-        element has batch shape ``Q + D``.
+        element has batch shape ``Q + D``. Interval endpoints are treated as
+        non-differentiable query parameters.
 
         :param interval: Scalar or batched query interval.
         :return: A Lie element describing the stream over the interval.
@@ -147,7 +148,8 @@ class Stream(Protocol[LieT, GroupT]):
 
         The endpoints may represent a batch of query intervals. If they broadcast
         to shape ``Q`` and the stream has batch shape ``D``, the returned group
-        element has batch shape ``Q + D``.
+        element has batch shape ``Q + D``. Interval endpoints are treated as
+        non-differentiable query parameters.
 
         :param interval: Scalar or batched query interval.
         :return: A group element describing the stream over the interval.

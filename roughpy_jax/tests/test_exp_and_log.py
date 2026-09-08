@@ -438,3 +438,18 @@ def test_ft_log_adjoint_derivative_satisfies_derivative_condition(exp_trials):
         abs_tol=exp_trials.cond_dtype(5.0e-2, 5.0e-2),
         rel_tol=exp_trials.cond_dtype(5.0e-2, 5.0e-2),
     )
+
+
+def test_ft_log_registered_vjp_ignores_unit_coordinate(rpj_no_acceleration):
+    basis = rpj.TensorBasis(2, 2)
+    data = jnp.linspace(0.1, 0.7, basis.size(), dtype=jnp.float32)
+
+    gradient = jax.jit(
+        jax.grad(
+            lambda arg_data: jnp.sum(
+                rpj.ft_log(rpj.FreeTensor(arg_data, basis)).data
+            )
+        )
+    )(data)
+
+    assert gradient[0] == 0.0
