@@ -620,9 +620,9 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
     ) -> T:
 
         if isinstance(timestamps, list):
-            time_arrays = [jnp.asarray(ts) for ts in timestamps]
+            time_arrays = [jax.lax.stop_gradient(jnp.asarray(ts)) for ts in timestamps]
         else:
-            time_arrays = [jnp.asarray(timestamps)]
+            time_arrays = [jax.lax.stop_gradient(jnp.asarray(timestamps))]
 
         if isinstance(data, list):
             data_arrays = [jnp.asarray(ds) for ds in data]
