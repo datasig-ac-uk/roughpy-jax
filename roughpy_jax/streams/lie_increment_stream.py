@@ -713,8 +713,8 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
         support = RealInterval(inf, sup, interval_type)
 
         # Adjust the timestamps so they lie in the unit interval
-        sf = time_dtype.type(sup - inf)
-        shift = time_dtype.type(inf)
+        sf = (sup - inf).astype(time_dtype)
+        shift = inf.astype(time_dtype)
         time_arrays = [(ts.astype(time_dtype) - shift) / sf for ts in time_arrays]
 
         if resolution is None:
