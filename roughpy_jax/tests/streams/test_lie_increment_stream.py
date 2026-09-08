@@ -489,6 +489,32 @@ def test_log_signature_of_short_interval_uses_contained_endpoint(
     assert jnp.allclose(result.data, jnp.asarray([expected], dtype=jnp.float32))
 
 
+@pytest.mark.parametrize(
+    ("query", "expect_cache_gradient"),
+    [
+        (RealInterval(0.5, 0.5, IntervalType.ClOpen), False),
+        (RealInterval(0.125, 0.875, IntervalType.ClOpen), True),
+    ],
+)
+def test_zero_cache_sentinel_does_not_receive_cotangents(
+        query, expect_cache_gradient
+):
+    lie_basis = LieBasis(width=1, depth=1)
+    cache = jnp.asarray(
+        [[1.0], [2.0], [3.0], [4.0], [3.0], [7.0], [10.0], [0.0]],
+        dtype=jnp.float32,
+    )
+
+    def objective(cache_data):
+        stream = LieIncrementStream(cache_data, lie_basis, resolution=2)
+        return jnp.sum(stream.log_signature(query).data)
+
+    gradient = jax.jit(jax.grad(objective))(cache)
+
+    assert jnp.all(gradient[-1] == 0.0)
+    assert bool(jnp.any(gradient[:-1] != 0.0)) is expect_cache_gradient
+
+
 def test_opencl_query_excludes_aligned_clopen_cache_endpoint():
     lie_basis = LieBasis(width=1, depth=1)
     cache = jnp.zeros((16, lie_basis.size()), dtype=jnp.float32)
@@ -676,6 +702,47 @@ def test_from_increments_is_invariant_to_timestamp_rescaling():
         stream = _build_l_shape_stream(t0, t1, [[1.0, 0.0], [0.0, 1.0]])
         data = stream.log_signature(stream.support).data
         assert jnp.allclose(data, ref_data, atol=1e-6)
+
+
+def test_from_increments_accepts_traced_data():
+    timestamps = jnp.asarray([0.1, 0.3, 0.6], dtype=jnp.float32)
+    data = jnp.asarray([[0.2], [0.3], [0.4]], dtype=jnp.float32)
+    lie_basis = LieBasis(width=1, depth=1)
+
+    @jax.jit
+    def build_cache(data_arg):
+        stream = LieIncrementStream.from_increments(
+            timestamps,
+            data_arg,
+            resolution=2,
+            input_data_basis=lie_basis,
+            lie_basis=lie_basis,
+        )
+        return stream._cache
+
+    cache = build_cache(data)
+
+    assert cache.shape == (8, lie_basis.size())
+
+
+def test_from_increments_timestamps_are_not_differentiable():
+    timestamps = jnp.asarray([0.1, 0.3, 0.6], dtype=jnp.float32)
+    data = jnp.asarray([[0.2], [0.3], [0.4]], dtype=jnp.float32)
+    lie_basis = LieBasis(width=1, depth=1)
+
+    def objective(timestamp_arg):
+        stream = LieIncrementStream.from_increments(
+            timestamp_arg,
+            data,
+            resolution=2,
+            input_data_basis=lie_basis,
+            lie_basis=lie_basis,
+        )
+        return jnp.sum(stream._cache)
+
+    gradient = jax.jit(jax.grad(objective))(timestamps)
+
+    assert jnp.all(gradient == 0.0)
 
 
 def test_from_increments_supports_multiple_batched_input_streams():
