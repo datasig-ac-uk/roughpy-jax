@@ -8,7 +8,63 @@ import roughpy_jax as rpj
 from roughpy_jax.algebra import LieBasis, TensorBasis
 from roughpy_jax.intervals import IntervalType, Partition, RealInterval
 from roughpy_jax.streams import PiecewiseAbelianStream
-from roughpy_jax.streams.lie_increment_stream import LieIncrementStream
+from roughpy_jax.streams.lie_increment_stream import (
+    LieIncrementStream,
+    compute_separating_resolution,
+)
+
+
+@pytest.mark.parametrize(
+    ("timestamps", "expected"),
+    [
+        (jnp.array([0.0, 0.25, 0.5, 0.75, 1.0]), 3),
+        (jnp.array([0.0, 0.2, 0.5, 1.0]), 3),
+        (jnp.array([1.0, 0.25, 0.0, 0.25, 0.5]), 3),
+        (jnp.array([5.0, 5.5, 6.0, 6.5, 7.0]), 3),
+    ],
+)
+def test_compute_separating_resolution(timestamps, expected):
+    assert compute_separating_resolution([timestamps]) == expected
+
+
+def test_compute_separating_resolution_uses_all_timestamp_arrays():
+    timestamps = [
+        jnp.array([0.0, 0.5, 1.0]),
+        jnp.array([0.0, 0.125, 1.0]),
+    ]
+
+    assert compute_separating_resolution(timestamps) == 4
+
+
+def test_compute_separating_resolution_accepts_precomputed_extents():
+    timestamps = [jnp.array([2.0, 3.0])]
+
+    assert compute_separating_resolution(
+        timestamps,
+        min_ts=0.0,
+        max_ts=4.0,
+        sorted_arrays=True,
+    ) == 3
+
+
+@pytest.mark.parametrize(
+    "timestamps",
+    [
+        [jnp.array([0.0])],
+        [jnp.array([0.0, 0.0, 0.0])],
+        [jnp.array([0.0]), jnp.array([1.0])],
+    ],
+)
+def test_compute_separating_resolution_is_zero_without_distinct_pairs(timestamps):
+    assert compute_separating_resolution(timestamps) == 0
+
+
+def test_compute_separating_resolution_rejects_empty_input():
+    with pytest.raises(ValueError, match="timestamps must not be empty"):
+        compute_separating_resolution([])
+
+    with pytest.raises(ValueError, match="timestamp arrays must not be empty"):
+        compute_separating_resolution([jnp.array([])])
 
 
 def _batched_lie_increment_stream(batch_dims=(2, 3)):
@@ -601,7 +657,7 @@ def _build_l_shape_stream(t0, t1, increments):
     )
 
 
-def test_from_increments_automatic_resolution_preserves_finest_level_data():
+def test_from_increments_automatic_resolution_preserves_increment_total():
     lie_basis = LieBasis(width=1, depth=1)
     timestamps = jnp.array([1.0, 0.0, 0.75, 0.25, 0.5], dtype=jnp.float32)
     data = jnp.array([[5.0], [1.0], [4.0], [2.0], [3.0]], dtype=jnp.float32)
@@ -614,17 +670,12 @@ def test_from_increments_automatic_resolution_preserves_finest_level_data():
         lie_basis=lie_basis,
     )
 
-    normalised_timestamps = (
-        timestamps.astype(jnp.float32) - stream.support.inf
-    ) / (stream.support.sup - stream.support.inf)
-    buckets = jnp.floor(
-        jnp.ldexp(normalised_timestamps, stream.resolution)
-    ).astype(jnp.int32)
-    finest = stream._cache[: 1 << stream.resolution, :]
-
     assert stream.batch_dims == ()
-    assert jnp.unique(buckets).size == timestamps.size
-    assert jnp.allclose(finest[buckets], data)
+    assert stream.resolution == compute_separating_resolution([timestamps])
+    assert jnp.allclose(
+        stream.log_signature(stream.support).data,
+        jnp.sum(data, axis=0),
+    )
 
 
 def test_from_increments_recovers_analytic_levy_area_on_nonunit_support():

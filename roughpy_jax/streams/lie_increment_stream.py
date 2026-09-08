@@ -33,7 +33,8 @@ from .utils import _index_stream_batch
 T = TypeVar("T")
 
 
-def _zero_lie(basis: LieBasis, batch_dims: tuple[int, ...], dtype: jnp.dtype) -> Lie:
+def _zero_lie(basis: LieBasis, batch_dims: tuple[int, ...],
+              dtype: jnp.dtype) -> Lie:
     data = jnp.zeros((*batch_dims, basis.size()), dtype=dtype)
     return Lie(data, basis)
 
@@ -43,8 +44,10 @@ RightT = TypeVar("RightT")
 AccT = TypeVar("AccT")
 
 DQInitT: TypeAlias = Callable[[Any, jax.Array, jax.Array, jax.Array], AccT]
-DQLeftGetterT: TypeAlias = Callable[[Any, jax.Array, jax.Array, jax.Array], LeftT]
-DQRightGetterT: TypeAlias = Callable[[Any, jax.Array, jax.Array, jax.Array], RightT]
+DQLeftGetterT: TypeAlias = Callable[
+    [Any, jax.Array, jax.Array, jax.Array], LeftT]
+DQRightGetterT: TypeAlias = Callable[
+    [Any, jax.Array, jax.Array, jax.Array], RightT]
 DQCombineT: TypeAlias = Callable[[Any, LeftT, AccT, RightT], AccT]
 
 
@@ -88,18 +91,20 @@ class _QueryContext:
     query_basis: Basis
     group_basis: Basis
 
+
 def _is_clopen(itype: IntervalType) -> bool:
     return itype == IntervalType.ClOpen
 
+
 @partial(jax.jit,
          static_argnames=(
-             "resolution",
-             "query_interval_type",
-             "cache_interval_type",
-             "init",
-             "get_left",
-             "get_right",
-             "combine",
+                 "resolution",
+                 "query_interval_type",
+                 "cache_interval_type",
+                 "init",
+                 "get_left",
+                 "get_right",
+                 "combine",
          ))
 def _query_dyadic_cache(
         infs: jax.Array,
@@ -123,7 +128,8 @@ def _query_dyadic_cache(
     if not _is_clopen(query_interval_type) and _is_clopen(cache_interval_type):
         inf_is_aligned = inf_scaled == jnp.ceil(inf_scaled)
         inf_scaled = jnp.where(inf_is_aligned, inf_scaled + 1, inf_scaled)
-    elif _is_clopen(query_interval_type) and not _is_clopen(cache_interval_type):
+    elif _is_clopen(query_interval_type) and not _is_clopen(
+            cache_interval_type):
         sup_is_aligned = sup_scaled == jnp.floor(sup_scaled)
         sup_scaled = jnp.where(sup_is_aligned, sup_scaled - 1, sup_scaled)
 
@@ -133,7 +139,8 @@ def _query_dyadic_cache(
     empty = (sups <= infs) | (sup_integer <= inf_integer)
 
     scaled_length = jnp.ldexp(sup_scaled - inf_scaled, -resolution)
-    scaled_length = jnp.where(empty, jnp.ones_like(scaled_length), scaled_length)
+    scaled_length = jnp.where(empty, jnp.ones_like(scaled_length),
+                              scaled_length)
     _, exponent = jnp.frexp(scaled_length)
     coarse_resolution = 1 - exponent
 
@@ -212,12 +219,14 @@ def _query_dyadic_cache(
     return accumulator
 
 
-def _dyadic_tree_index(cache: jax.Array, k: jax.Array, n: jax.Array) -> jax.Array:
+def _dyadic_tree_index(cache: jax.Array, k: jax.Array,
+                       n: jax.Array) -> jax.Array:
     level_start = cache.shape[0] - jnp.left_shift(1, n + 1)
     return level_start + k
 
 
-def _dyadic_tree_get_lie(context: _QueryContext, k: jax.Array, n: jax.Array, digit: jax.Array) -> Lie:
+def _dyadic_tree_get_lie(context: _QueryContext, k: jax.Array, n: jax.Array,
+                         digit: jax.Array) -> Lie:
     active = digit != 0
     # The query construction keeps this index in bounds even when inactive;
     # mask the gathered value rather than routing the index through a sentinel.
@@ -228,7 +237,8 @@ def _dyadic_tree_get_lie(context: _QueryContext, k: jax.Array, n: jax.Array, dig
     return Lie(data, context.cache_basis)
 
 
-def _dyadic_query_init_lie(context: _QueryContext, k1: jax.Array, k2: jax.Array, n: jax.Array) -> Lie:
+def _dyadic_query_init_lie(context: _QueryContext, k1: jax.Array, k2: jax.Array,
+                           n: jax.Array) -> Lie:
     nonempty = k1 != k2
     # Empty queries still provide an in-bounds index, whose value is discarded.
     index = _dyadic_tree_index(context.cache, k1, n)
@@ -243,11 +253,14 @@ def _dyadic_query_init_lie(context: _QueryContext, k1: jax.Array, k2: jax.Array,
     return result
 
 
-def _tree_lie_combine(context: _QueryContext, left: Lie, accumulator: Lie, right: Lie) -> Lie:
+def _tree_lie_combine(context: _QueryContext, left: Lie, accumulator: Lie,
+                      right: Lie) -> Lie:
     tensor_basis = context.group_basis
-    result = FreeTensor.identity(tensor_basis, dtype=accumulator.data.dtype, batch_dims=accumulator.data.shape[:-1])
+    result = FreeTensor.identity(tensor_basis, dtype=accumulator.data.dtype,
+                                 batch_dims=accumulator.data.shape[:-1])
     result = ft_fmexp(result, lie_to_tensor(left), out_basis=tensor_basis)
-    result = ft_fmexp(result, lie_to_tensor(accumulator), out_basis=tensor_basis)
+    result = ft_fmexp(result, lie_to_tensor(accumulator),
+                      out_basis=tensor_basis)
     result = ft_fmexp(result, lie_to_tensor(right), out_basis=tensor_basis)
     return to_log_signature(result, context.query_basis)
 
@@ -292,7 +305,8 @@ def _dyadic_query_legacy(
     # This should be the case if the rounded inf and sup are different, in which case it is just a matter of
     # selecting the one that lies inside the interval. Which endpoint this is depends on the direction of rounding.
     if coarse_resolution > resolution:
-        k1, k2 = _resolve_short_case(inf, sup, inf_scaled, sup_scaled, is_clopen)
+        k1, k2 = _resolve_short_case(inf, sup, inf_scaled, sup_scaled,
+                                     is_clopen)
         return init(k1, k2, resolution)
 
     steps = resolution - coarse_resolution
@@ -381,14 +395,16 @@ def dyadic_query(
     )
 
 
-def _make_finest_increment_body(state, current, *, input_lie_basis, cache_lie_basis, tensor_basis):
+def _make_finest_increment_body(state, current, *, input_lie_basis,
+                                cache_lie_basis, tensor_basis):
     current_bucket, current_acc, current_out = state
     bucket, data = current
 
     current_tensor = lie_to_tensor(Lie(data, input_lie_basis))
 
     def same_bucket():
-        return ft_fmexp(current_acc, current_tensor, out_basis=tensor_basis), current_out
+        return ft_fmexp(current_acc, current_tensor,
+                        out_basis=tensor_basis), current_out
 
     def next_bucket():
         next_acc = ft_exp(
@@ -406,9 +422,12 @@ def _make_finest_increment_body(state, current, *, input_lie_basis, cache_lie_ba
     return (bucket, acc, out), None
 
 
-@partial(jax.jit, static_argnames=("resolution", "cache_lie_basis", "input_lie_basis"))
-def _make_finest_increment_level(buckets: jax.Array, data: jax.Array, *, resolution: int,
-                                 cache_lie_basis: LieBasis, input_lie_basis: LieBasis) -> jax.Array:
+@partial(jax.jit,
+         static_argnames=("resolution", "cache_lie_basis", "input_lie_basis"))
+def _make_finest_increment_level(buckets: jax.Array, data: jax.Array, *,
+                                 resolution: int,
+                                 cache_lie_basis: LieBasis,
+                                 input_lie_basis: LieBasis) -> jax.Array:
     num_buckets = 1 << resolution
     tensor_basis = to_tensor_basis(cache_lie_basis)
 
@@ -425,7 +444,8 @@ def _make_finest_increment_level(buckets: jax.Array, data: jax.Array, *, resolut
         (num_buckets, *batch_dims, lie_dim),
         dtype=data.dtype,
     )
-    accumulator = FreeTensor.identity(tensor_basis, dtype=data.dtype, batch_dims=tuple(batch_dims))
+    accumulator = FreeTensor.identity(tensor_basis, dtype=data.dtype,
+                                      batch_dims=tuple(batch_dims))
     first_bucket = buckets[0]
 
     body_fn = partial(
@@ -479,6 +499,71 @@ def _extend_from_finest_level(
     return jnp.concatenate(levels, axis=0)
 
 
+def compute_separating_resolution(
+        timestamps: list[jax.Array],
+        min_ts: float | None = None,
+        max_ts: float | None = None,
+        sorted_arrays: bool = False,
+) -> int:
+    """Compute a resolution that separates distinct adjacent timestamps.
+
+    This is a host-side shape-planning operation: its integer result is intended
+    to be passed as the static ``resolution`` used to construct a dyadic cache.
+
+    :param timestamps: Timestamp arrays whose adjacent distinct values should be
+        separated.
+    :param min_ts: Optional precomputed lower extent of all timestamp arrays.
+    :param max_ts: Optional precomputed upper extent of all timestamp arrays.
+    :param sorted_arrays: Whether every timestamp array is already sorted.
+    :return: The nonnegative dyadic resolution required for separation, or zero
+        when there are no distinct timestamp pairs.
+    :raises ValueError: If no timestamp arrays are supplied or any array is empty.
+    """
+    if not timestamps:
+        raise ValueError("timestamps must not be empty")
+
+    if any(arr.size == 0 for arr in timestamps):
+        raise ValueError("timestamp arrays must not be empty")
+
+    if not sorted_arrays:
+        timestamps = [jnp.sort(arr) for arr in timestamps]
+
+    if min_ts is None:
+        min_ts = min(jnp.min(arr) for arr in timestamps)
+
+    if max_ts is None:
+        max_ts = max(jnp.max(arr) for arr in timestamps)
+
+    extent = max_ts - min_ts
+    if extent < 0:
+        raise ValueError("max_ts must not be less than min_ts")
+    if extent == 0:
+        return 0
+
+    def min_diff(arr):
+        diffs = jnp.diff(arr)
+        return jnp.min(
+            jnp.where(diffs > 0, diffs, jnp.inf),
+            initial=jnp.inf,
+        )
+
+    min_diff = min(min_diff(arr) for arr in timestamps)
+    if not jnp.isfinite(min_diff):
+        return 0
+
+    significand, exp = jnp.frexp(min_diff / extent)
+    resolution = max(0, 1 - int(exp))
+
+    # The support must extend strictly beyond the maximum timestamp. When the
+    # minimum relative separation is exactly a power of two, a finest interval
+    # of the same width therefore ceases to separate the points after that
+    # extension. Use one additional level in this boundary case.
+    if significand == 0.5:
+        resolution += 1
+
+    return resolution
+
+
 @jax.tree_util.register_pytree_node_class
 class LieIncrementStream(Stream[Lie, FreeTensor]):
     """
@@ -512,7 +597,8 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
             )
 
         if cache.ndim < 2:
-            raise ValueError("cache must have shape (cache_length, ..., lie_dim)")
+            raise ValueError(
+                "cache must have shape (cache_length, ..., lie_dim)")
 
         lie_dim = int(lie_basis.size())
         if cache.shape[-1] != lie_dim:
@@ -549,7 +635,8 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
     def tree_unflatten(cls, aux_data, children):
         cache, support = children
         lie_basis, group_basis, resolution, interval_type = aux_data
-        return cls(cache, lie_basis, resolution, support, group_basis, interval_type)
+        return cls(cache, lie_basis, resolution, support, group_basis,
+                   interval_type)
 
     @staticmethod
     def _stream_to_cache(
@@ -586,7 +673,8 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
         )
 
     @classmethod
-    def from_stream(cls: type[T], stream: Stream[Lie, FreeTensor], resolution: int) -> T:
+    def from_stream(cls: type[T], stream: Stream[Lie, FreeTensor],
+                    resolution: int) -> T:
         lie_basis = stream.lie_basis
         group_basis = stream.group_basis
         support = stream.support
@@ -597,7 +685,8 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
         if (fun := getattr(stream, "__dyadic_cache__", None)) is not None:
             cache = jnp.asarray(fun(resolution))
         else:
-            cache = cls._stream_to_cache(stream, resolution)  # ty: ignore[unresolved-attribute]
+            cache = cls._stream_to_cache(stream,
+                                         resolution)  # ty: ignore[unresolved-attribute]
 
         new_stream = cls(
             cache=cache,
@@ -628,7 +717,8 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
     ) -> T:
 
         if isinstance(timestamps, list):
-            time_arrays = [jax.lax.stop_gradient(jnp.asarray(ts)) for ts in timestamps]
+            time_arrays = [jax.lax.stop_gradient(jnp.asarray(ts)) for ts in
+                           timestamps]
         else:
             time_arrays = [jax.lax.stop_gradient(jnp.asarray(timestamps))]
 
@@ -664,7 +754,7 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
                 f"Time dimension mismatch at index 0: expected {time_lens[0]}, got {dt_dim}"
             )
 
-        #TODO: Currently this check requires that all data arrays have the same batch dimensions
+        # TODO: Currently this check requires that all data arrays have the same batch dimensions
         # but this is perhaps not quite the behaviour we want. It makes sense to concatenate
         # along the initial batching dimension if all the trailing entries match.
         dtypes = [ds.dtype]
@@ -711,9 +801,18 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
             lie_basis = LieBasis(width=input_data_basis.width, depth=2)
 
         # Now sort out the support and scale the data
+        max_timestamp = max(maxs)
+        min_timestamp = min(mins)
+
+        if resolution is None:
+            resolution = compute_separating_resolution(time_arrays,
+                                                       min_timestamp,
+                                                       max_timestamp)
+
         if interval_type == IntervalType.ClOpen:
-            sup = jnp.nextafter(max(maxs), jnp.inf)
-            inf = min(mins)
+            inf = min_timestamp
+            k = jnp.floor(jnp.ldexp(max_timestamp, resolution))
+            sup = jnp.ldexp(k + 1, -resolution)
         else:  # interval_type == IntervalType.OpenCl:
             sup = max(maxs)
             inf = jnp.nextafter(min(mins), -jnp.inf)
@@ -723,24 +822,8 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
         # Adjust the timestamps so they lie in the unit interval
         sf = (sup - inf).astype(time_dtype)
         shift = inf.astype(time_dtype)
-        time_arrays = [(ts.astype(time_dtype) - shift) / sf for ts in time_arrays]
-
-        if resolution is None:
-            min_diffs = []
-            for ts in time_arrays:
-                diffs = jnp.diff(jnp.sort(ts))
-                positive_diffs = diffs[diffs > 0]
-                if positive_diffs.size:
-                    min_diffs.append(jnp.min(positive_diffs))
-
-            if min_diffs:
-                min_diff = min(min_diffs)
-                _, exp = jnp.frexp(min_diff)
-                resolution = max(0, int(1 - exp))
-            else:
-                # A singleton input, or repeated indistinguishable timestamps,
-                # needs only one finest-level bucket.
-                resolution = 0
+        time_arrays = [(ts.astype(time_dtype) - shift) / sf for ts in
+                       time_arrays]
 
         tensor_basis = to_tensor_basis(lie_basis)
 
@@ -758,7 +841,8 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
             for ks, ds in zip(k_arrays, data_arrays, strict=True)
         ], axis=1)
 
-        cache = _extend_from_finest_level(base, resolution=resolution, cache_lie_basis=lie_basis)
+        cache = _extend_from_finest_level(base, resolution=resolution,
+                                          cache_lie_basis=lie_basis)
 
         return cls(
             cache,
@@ -842,7 +926,8 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
         reparam_inf = (clipped_inf - support_inf) / (support_sup - support_inf)
         reparam_sup = (clipped_sup - support_inf) / (support_sup - support_inf)
 
-        context = _QueryContext(self._cache, self._lie_basis, self._lie_basis, self._group_basis)
+        context = _QueryContext(self._cache, self._lie_basis, self._lie_basis,
+                                self._group_basis)
 
         result = dyadic_query(
             RealInterval(reparam_inf, reparam_sup, interval.interval_type),
