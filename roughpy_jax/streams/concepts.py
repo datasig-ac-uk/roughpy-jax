@@ -1,13 +1,14 @@
 import typing
-from collections.abc import Callable
 from typing import Protocol, Self, TypeVar
+
+from jax.typing import ArrayLike
 
 from roughpy_jax.bases import Basis
 from roughpy_jax.intervals import Interval
 
-LieT = TypeVar("LieT")
-GroupT = TypeVar("GroupT")
-StreamValueT = TypeVar("StreamValueT")
+LieT = TypeVar("LieT", covariant=True)
+GroupT = TypeVar("GroupT", covariant=True)
+StreamValueT = TypeVar("StreamValueT", covariant=True)
 
 
 @typing.runtime_checkable
@@ -166,7 +167,8 @@ class ValueStream(Protocol[LieT, GroupT, StreamValueT]):
     at any given parameter t is obtained by propagating the base value using the
     signature over from t_0 up to t.
 
-    A very basic version of a ValueStream is a tensor-valued stream, where the value type is a free tensor and the propagation operation is left multiplication
+    A very basic version of a ValueStream is a tensor-valued stream, where the value
+    type is a free tensor and the propagation operation is left multiplication
     by the signature. More generally, this might involve the action of a linear
     projection of the signature.
 
@@ -177,25 +179,16 @@ class ValueStream(Protocol[LieT, GroupT, StreamValueT]):
     of the query interval. (There is an equivalent formulation that uses terminal
     values and signature from the end of the query interval.)
 
-    The other functions are there to get the stream, base value, and propagation
-    function from the value stream. These are useful for inspecting the stream
-    at the end of a pipeline.
+    The propagation operation is an implementation detail. The public interface
+    exposes :meth:`value_at`, which applies that operation internally, together
+    with access to the underlying stream and base value for inspection at the end
+    of a pipeline.
 
-    :ivar value_propagate_func: Callable that propagates the base value according
-          to the signature.
-    :type value_propagate_func: Callable[[GroupT, StreamValueT], StreamValueT]
     :ivar stream: The underlying increment stream.
     :type stream: Stream[LieT, GroupT]
     :ivar base_value: The value at the beginning (or end) of the stream.
     :type base_value: StreamValueT
     """
-
-    @property
-    def value_propagate_func(self) -> Callable[[GroupT, StreamValueT], StreamValueT]:
-        """
-        The function that propagates the base value according to the signature.
-        """
-        ...
 
     @property
     def stream(self) -> Stream[LieT, GroupT]:
@@ -208,6 +201,18 @@ class ValueStream(Protocol[LieT, GroupT, StreamValueT]):
     def base_value(self) -> StreamValueT:
         """
         The value at the beginning (or end) of the stream.
+        """
+        ...
+
+    def value_at(self, parameter: ArrayLike) -> StreamValueT:
+        """
+        Compute the stream value at a parameter value.
+
+        The implementation propagates :attr:`base_value` to ``parameter`` using
+        the signature of the underlying increment stream.
+
+        :param parameter: Parameter value at which to evaluate the stream.
+        :return: The propagated stream value at ``parameter``.
         """
         ...
 
