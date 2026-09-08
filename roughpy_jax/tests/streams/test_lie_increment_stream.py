@@ -7,9 +7,9 @@ import pytest
 import roughpy_jax as rpj
 from roughpy_jax.algebra import LieBasis, TensorBasis
 from roughpy_jax.intervals import IntervalType, Partition, RealInterval
-from roughpy_jax.streams import PiecewiseAbelianStream
-from roughpy_jax.streams.lie_increment_stream import (
+from roughpy_jax.streams import (
     LieIncrementStream,
+    PiecewiseAbelianStream,
     compute_separating_resolution,
 )
 
@@ -662,13 +662,14 @@ def test_from_increments_automatic_resolution_preserves_increment_total():
     timestamps = jnp.array([1.0, 0.0, 0.75, 0.25, 0.5], dtype=jnp.float32)
     data = jnp.array([[5.0], [1.0], [4.0], [2.0], [3.0]], dtype=jnp.float32)
 
-    stream = LieIncrementStream.from_increments(
-        timestamps=timestamps,
-        data=data,
-        resolution=None,
-        input_data_basis=None,
-        lie_basis=lie_basis,
-    )
+    with pytest.warns(DeprecationWarning, match="Automatic resolution selection"):
+        stream = LieIncrementStream.from_increments(
+            timestamps=timestamps,
+            data=data,
+            resolution=None,
+            input_data_basis=None,
+            lie_basis=lie_basis,
+        )
 
     assert stream.batch_dims == ()
     assert stream.resolution == compute_separating_resolution([timestamps])

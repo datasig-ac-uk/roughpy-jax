@@ -1,6 +1,7 @@
 import dataclasses
 import inspect
 import math
+import warnings
 from collections.abc import Callable
 from functools import partial
 from typing import Any, Self, TypeAlias, TypeVar
@@ -505,19 +506,37 @@ def compute_separating_resolution(
         max_ts: float | None = None,
         sorted_arrays: bool = False,
 ) -> int:
-    """Compute a resolution that separates distinct adjacent timestamps.
+    """Estimate a dyadic resolution that separates adjacent timestamps.
 
-    This is a host-side shape-planning operation: its integer result is intended
-    to be passed as the static ``resolution`` used to construct a dyadic cache.
+    The returned resolution is suitable as an initial choice for
+    :meth:`LieIncrementStream.from_increments`. Callers may select a larger or
+    smaller resolution according to the temporal scale at which the resulting
+    stream will be queried.
 
-    :param timestamps: Timestamp arrays whose adjacent distinct values should be
-        separated.
-    :param min_ts: Optional precomputed lower extent of all timestamp arrays.
-    :param max_ts: Optional precomputed upper extent of all timestamp arrays.
-    :param sorted_arrays: Whether every timestamp array is already sorted.
-    :return: The nonnegative dyadic resolution required for separation, or zero
-        when there are no distinct timestamp pairs.
+    Repeated timestamps do not impose a separation requirement because their
+    increments are combined in input order within one finest-level bucket. If
+    ``sorted_arrays`` is false, each array is sorted before its positive adjacent
+    differences are inspected. The smallest such difference is compared with the
+    complete extent from ``min_ts`` to ``max_ts``. One additional level is used
+    when the relative separation is exactly a power of two, since the stream
+    support must extend strictly beyond its largest timestamp.
+
+    This is a host-side shape-planning operation and is not intended for use
+    inside :func:`jax.jit`: the returned integer determines the shape of the
+    dyadic cache. Compute it before tracing and pass the selected resolution
+    explicitly to :meth:`LieIncrementStream.from_increments`.
+
+    :param timestamps: Nonempty one-dimensional timestamp arrays. Differences
+        are considered within each array, not between separate arrays.
+    :param min_ts: Optional precomputed lower extent across all timestamp arrays.
+        If omitted, it is computed from ``timestamps``.
+    :param max_ts: Optional precomputed upper extent across all timestamp arrays.
+        If omitted, it is computed from ``timestamps``.
+    :param sorted_arrays: If true, assume every timestamp array is already sorted.
+    :return: A nonnegative candidate dyadic resolution, or zero when the arrays
+        contain no distinct adjacent timestamp pairs.
     :raises ValueError: If no timestamp arrays are supplied or any array is empty.
+    :raises ValueError: If ``max_ts`` is less than ``min_ts``.
     """
     if not timestamps:
         raise ValueError("timestamps must not be empty")
@@ -715,6 +734,59 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
             dyadic_integer_type: jnp.dtype = jnp.int32.dtype,
             **kwargs,
     ) -> T:
+        """Construct a dyadic stream from timestamped Lie increments.
+
+        Each data array has shape ``(T, *batch_dims, L)``. Its leading dimension
+        corresponds to the associated one-dimensional timestamp array and its
+        trailing dimension contains coefficients in ``input_data_basis``. A list
+        of timestamp/data pairs constructs an additional stream batch dimension;
+        all data arrays in the list must have the same intrinsic batch shape.
+
+        Increments are sorted by timestamp and combined in their original order
+        when multiple timestamps occupy the same finest-level dyadic bucket.
+        Timestamp arrays and the resulting support are treated as
+        nondifferentiable; gradients may flow through the increment data.
+
+        ``resolution`` determines the cache shape and must be static during JIT
+        compilation. Automatic resolution selection by passing ``None`` is
+        deprecated because it depends on concrete timestamp values and therefore
+        cannot be performed inside a general JIT trace. Use
+        :func:`compute_separating_resolution` outside the compiled function,
+        choose the desired resolution, and pass that integer explicitly.
+
+        :param timestamps: A one-dimensional timestamp array, or a list of such
+            arrays corresponding to ``data``.
+        :param data: An increment array with shape ``(T, *batch_dims, L)``, or a
+            list of arrays corresponding to ``timestamps``.
+        :param resolution: Static dyadic cache resolution. Passing ``None``
+            currently selects a resolution automatically but is deprecated.
+        :param input_data_basis: Basis describing the trailing dimension of the
+            input data. If omitted, a depth-one Lie basis is inferred from that
+            dimension.
+        :param lie_basis: Basis used for the cached log-signatures. If omitted, a
+            depth-two basis with the input width is used.
+        :param interval_type: Endpoint convention for timestamps and queries.
+            Currently only :attr:`IntervalType.ClOpen` caches are supported.
+        :param data_dtype: Optional dtype for the increment data and cache. If
+            omitted, it is inferred from all data arrays.
+        :param time_dtype: Floating dtype used to normalize timestamp values.
+        :param dyadic_integer_type: Integer dtype used for dyadic bucket indices.
+        :param kwargs: Additional keyword arguments forwarded to the constructor.
+        :return: A stream containing the timestamped increments in a dyadic cache.
+        :raises ValueError: If timestamp and data lists are empty or have different
+            lengths, if their shapes are incompatible, or if their basis dimensions
+            are invalid.
+        :warns DeprecationWarning: If ``resolution`` is ``None``.
+        """
+        if resolution is None:
+            warnings.warn(
+                "Automatic resolution selection in "
+                "LieIncrementStream.from_increments is deprecated; call "
+                "compute_separating_resolution(timestamps) explicitly and pass "
+                "the selected resolution instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
 
         if isinstance(timestamps, list):
             time_arrays = [jax.lax.stop_gradient(jnp.asarray(ts)) for ts in

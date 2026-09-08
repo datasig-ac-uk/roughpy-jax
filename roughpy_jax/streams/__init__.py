@@ -4,7 +4,11 @@ from roughpy_jax.intervals import Interval, Partition
 from roughpy_jax.algebra import DenseFreeTensor, DenseLie
 
 from .concepts import Stream, ValueStream, LieT, GroupT
-from .lie_increment_stream import LieIncrementStream, dyadic_query
+from .lie_increment_stream import (
+    LieIncrementStream,
+    compute_separating_resolution,
+    dyadic_query,
+)
 from .piecewise_abelian_stream import (
     PiecewiseAbelianStream,
     piecewise_abelian_stream_from_data,
@@ -16,6 +20,7 @@ __all__ = [
     "PiecewiseAbelianStream",
     "Stream",
     "ValueStream",
+    "compute_separating_resolution",
     "dyadic_query",
     "log_signature",
     "piecewise_abelian_stream_from_data",
