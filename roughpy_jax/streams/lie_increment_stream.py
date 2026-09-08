@@ -429,12 +429,9 @@ def _make_finest_increment_level(buckets: jax.Array, data: jax.Array, *,
                                  resolution: int,
                                  cache_lie_basis: LieBasis,
                                  input_lie_basis: LieBasis) -> jax.Array:
+    """Construct a finest cache level from chronologically ordered increments."""
     num_buckets = 1 << resolution
     tensor_basis = to_tensor_basis(cache_lie_basis)
-
-    order = jnp.argsort(buckets, stable=True)
-    buckets = buckets[order]
-    data = data[order, ...]
 
     time_dim, *batch_dims, _ = data.shape
 
@@ -864,10 +861,15 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
         input_data_basis = input_data_basis or LieBasis(width=lie_dim, depth=1)
         basis_size = input_data_basis.size()
 
-        for i in range(len(data_arrays)):
-            *shape, l_dim = data_arrays[i].shape
+        for i in range(len(time_arrays)):
+            ts = time_arrays[i]
+            ds = data_arrays[i]
+            order = jnp.argsort(ts, stable=True)
+            time_arrays[i] = ts[order]
+
+            *shape, l_dim = ds.shape
             padding = [(0, 0)] * len(shape) + [(0, basis_size - l_dim)]
-            data_arrays[i] = jnp.pad(data_arrays[i].astype(dtype), padding)
+            data_arrays[i] = jnp.pad(ds[order, ...].astype(dtype), padding)
 
         if lie_basis is None:
             lie_basis = LieBasis(width=input_data_basis.width, depth=2)
@@ -879,7 +881,8 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
         if resolution is None:
             resolution = compute_separating_resolution(time_arrays,
                                                        min_timestamp,
-                                                       max_timestamp)
+                                                       max_timestamp,
+                                                       sorted_arrays=True)
 
         if interval_type == IntervalType.ClOpen:
             inf = min_timestamp

@@ -873,26 +873,29 @@ def test_from_increments_preserves_leading_unit_data_batch_dimension():
 
 def test_from_increments_sorts_each_input_by_timestamp():
     basis = LieBasis(width=2, depth=2)
-    ordered_timestamps = jnp.array([0.0, 0.5, 1.0], dtype=jnp.float32)
+    # The first two timestamps deliberately occupy the same finest-level
+    # bucket. A stable sort by bucket alone would preserve the shuffled input
+    # order and reverse these noncommuting increments.
+    ordered_timestamps = jnp.array([0.0, 0.1, 1.0], dtype=jnp.float32)
     ordered_data = jnp.array(
         [[1.0, 0.0], [0.0, 1.0], [0.0, 0.0]], dtype=jnp.float32
     )
-    shuffled_timestamps = jnp.array([1.0, 0.0, 0.5], dtype=jnp.float32)
+    shuffled_timestamps = jnp.array([0.1, 0.0, 1.0], dtype=jnp.float32)
     shuffled_data = jnp.array(
-        [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]], dtype=jnp.float32
+        [[0.0, 1.0], [1.0, 0.0], [0.0, 0.0]], dtype=jnp.float32
     )
 
     ordered = LieIncrementStream.from_increments(
         timestamps=ordered_timestamps,
         data=ordered_data,
-        resolution=3,
+        resolution=1,
         input_data_basis=None,
         lie_basis=basis,
     )
     shuffled = LieIncrementStream.from_increments(
         timestamps=shuffled_timestamps,
         data=shuffled_data,
-        resolution=3,
+        resolution=1,
         input_data_basis=None,
         lie_basis=basis,
     )
