@@ -452,8 +452,8 @@ def ft_mul(a: DenseFreeTensor, b: DenseFreeTensor) -> DenseFreeTensor:
         (a.basis, b.basis),
         dtype,
         batch_dims,
-        lhs_max_deg=np.int32(min(a.basis.depth, a.basis.depth)),
-        rhs_max_deg=np.int32(min(a.basis.depth, b.basis.depth)),
+        lhs_max_deg=np.int32(a.basis.depth),
+        rhs_max_deg=np.int32(b.basis.depth),
         lhs_min_deg=np.int32(0),
         rhs_min_deg=np.int32(0),
     )
