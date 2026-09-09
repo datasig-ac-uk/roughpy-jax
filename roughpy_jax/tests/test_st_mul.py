@@ -67,6 +67,68 @@ def test_shuffle_product_unit(rpj_dtype, rpj_batch, rpj_device, rpj_no_accelerat
     assert jnp.allclose(result2.data, lhs.data)
 
 
+@pytest.mark.parametrize(("lhs_depth", "rhs_depth"), [(1, 2), (2, 1)])
+def test_st_mul_mixed_depth(lhs_depth, rhs_depth):
+    lhs_basis = rpj.TensorBasis(2, lhs_depth)
+    rhs_basis = rpj.TensorBasis(2, rhs_depth)
+    out_depth = max(lhs_depth, rhs_depth)
+
+    lhs = rpj.ShuffleTensor(
+        jnp.arange(1, lhs_basis.size() + 1, dtype=jnp.float32), lhs_basis
+    )
+    rhs = rpj.ShuffleTensor(
+        jnp.arange(1, rhs_basis.size() + 1, dtype=jnp.float32), rhs_basis
+    )
+
+    result = rpj.st_mul(lhs, rhs)
+    expected = rpj.st_mul(
+        lhs.change_depth(out_depth), rhs.change_depth(out_depth)
+    )
+
+    assert result.basis == expected.basis
+    assert jnp.allclose(result.data, expected.data)
+
+
+@pytest.mark.parametrize(("lhs_depth", "rhs_depth"), [(1, 2), (2, 1)])
+def test_st_mul_mixed_depth_adjoint(lhs_depth, rhs_depth):
+    lhs_basis = rpj.TensorBasis(2, lhs_depth)
+    rhs_basis = rpj.TensorBasis(2, rhs_depth)
+    out_basis = rpj.TensorBasis(2, max(lhs_depth, rhs_depth))
+
+    lhs = rpj.ShuffleTensor(
+        jnp.arange(1, lhs_basis.size() + 1, dtype=jnp.float32), lhs_basis
+    )
+    rhs = rpj.ShuffleTensor(
+        jnp.arange(1, rhs_basis.size() + 1, dtype=jnp.float32), rhs_basis
+    )
+    ct_result = rpj.FreeTensor(
+        jnp.arange(1, out_basis.size() + 1, dtype=jnp.float32), out_basis
+    )
+
+    ct_lhs, ct_rhs = st_mul_adjoint_derivative(lhs, rhs, ct_result)
+
+    assert ct_lhs.basis == lhs_basis
+    assert ct_rhs.basis == rhs_basis
+    assert jnp.allclose(
+        jnp.vdot(rpj.st_mul(lhs, rhs).data, ct_result.data),
+        jnp.vdot(lhs.data, ct_lhs.data),
+    )
+    assert jnp.allclose(
+        jnp.vdot(rpj.st_mul(lhs, rhs).data, ct_result.data),
+        jnp.vdot(rhs.data, ct_rhs.data),
+    )
+
+    _, pullback = jax.vjp(rpj.st_mul, lhs, rhs)
+    jax_ct_lhs, jax_ct_rhs = pullback(
+        rpj.ShuffleTensor(ct_result.data, ct_result.basis)
+    )
+
+    assert jax_ct_lhs.basis == lhs_basis
+    assert jax_ct_rhs.basis == rhs_basis
+    assert jnp.allclose(jax_ct_lhs.data, ct_lhs.data)
+    assert jnp.allclose(jax_ct_rhs.data, ct_rhs.data)
+
+
 def test_shuffle_product_two_letters(rpj_dtype, rpj_batch, rpj_device):
     basis = rpj.TensorBasis(4, 3)
     to_idx = _word_to_idx_fn(4)

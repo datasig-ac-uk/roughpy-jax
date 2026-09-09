@@ -46,7 +46,9 @@ def test_st_fma_mixed_depth(a_depth, b_depth, c_depth):
     c = make_shuffle(c_depth, 3)
 
     result = rpj.st_fma(a, b, c)
-    expected = a + rpj.st_mul(b, c).change_depth(a_depth)
+    expected = a + rpj.st_mul(
+        b.change_depth(a_depth), c.change_depth(a_depth)
+    )
 
     assert result.basis == a.basis
     assert jnp.allclose(result.data, expected.data)
