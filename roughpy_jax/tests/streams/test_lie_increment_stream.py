@@ -7,8 +7,110 @@ import pytest
 import roughpy_jax as rpj
 from roughpy_jax.algebra import LieBasis, TensorBasis
 from roughpy_jax.intervals import IntervalType, Partition, RealInterval
-from roughpy_jax.streams import PiecewiseAbelianStream
-from roughpy_jax.streams.lie_increment_stream import LieIncrementStream
+from roughpy_jax.streams import (
+    LieIncrementStream,
+    PiecewiseAbelianStream,
+    compute_separating_resolution,
+)
+from roughpy_jax.streams.lie_increment_stream import (
+    _compute_increment_stream_support,
+)
+
+
+@pytest.mark.parametrize(
+    ("min_timestamp", "max_timestamp", "interval_type", "expected_inf", "expected_sup"),
+    [
+        (0.1, 1.0, IntervalType.ClOpen, 0.1, 1.25),
+        (0.1, 0.9, IntervalType.ClOpen, 0.1, 1.0),
+        (0.0, 0.0, IntervalType.ClOpen, 0.0, 0.25),
+        (-1.0, -0.1, IntervalType.ClOpen, -1.0, 0.0),
+        (0.0, 1.0, IntervalType.OpenCl, -0.25, 1.0),
+        (0.1, 0.9, IntervalType.OpenCl, 0.0, 0.9),
+        (-0.9, -0.1, IntervalType.OpenCl, -1.0, -0.1),
+    ],
+)
+@pytest.mark.parametrize("time_dtype", [jnp.float32, jnp.float64])
+def test_compute_increment_stream_support(
+    min_timestamp,
+    max_timestamp,
+    interval_type,
+    expected_inf,
+    expected_sup,
+    time_dtype,
+):
+    support = _compute_increment_stream_support(
+        min_timestamp,
+        max_timestamp,
+        resolution=2,
+        interval_type=interval_type,
+        time_dtype=jnp.dtype(time_dtype),
+    )
+
+    assert support.interval_type == interval_type
+    assert support.inf.dtype == time_dtype
+    assert support.sup.dtype == time_dtype
+    assert jnp.allclose(support.inf, expected_inf)
+    assert jnp.allclose(support.sup, expected_sup)
+
+    if interval_type == IntervalType.ClOpen:
+        assert support.inf == jnp.asarray(min_timestamp, dtype=time_dtype)
+        assert support.sup > jnp.asarray(max_timestamp, dtype=time_dtype)
+    else:
+        assert support.inf < jnp.asarray(min_timestamp, dtype=time_dtype)
+        assert support.sup == jnp.asarray(max_timestamp, dtype=time_dtype)
+
+
+@pytest.mark.parametrize(
+    ("timestamps", "expected"),
+    [
+        (jnp.array([0.0, 0.25, 0.5, 0.75, 1.0]), 3),
+        (jnp.array([0.0, 0.2, 0.5, 1.0]), 3),
+        (jnp.array([1.0, 0.25, 0.0, 0.25, 0.5]), 3),
+        (jnp.array([5.0, 5.5, 6.0, 6.5, 7.0]), 3),
+    ],
+)
+def test_compute_separating_resolution(timestamps, expected):
+    assert compute_separating_resolution([timestamps]) == expected
+
+
+def test_compute_separating_resolution_uses_all_timestamp_arrays():
+    timestamps = [
+        jnp.array([0.0, 0.5, 1.0]),
+        jnp.array([0.0, 0.125, 1.0]),
+    ]
+
+    assert compute_separating_resolution(timestamps) == 4
+
+
+def test_compute_separating_resolution_accepts_precomputed_extents():
+    timestamps = [jnp.array([2.0, 3.0])]
+
+    assert compute_separating_resolution(
+        timestamps,
+        min_ts=0.0,
+        max_ts=4.0,
+        sorted_arrays=True,
+    ) == 3
+
+
+@pytest.mark.parametrize(
+    "timestamps",
+    [
+        [jnp.array([0.0])],
+        [jnp.array([0.0, 0.0, 0.0])],
+        [jnp.array([0.0]), jnp.array([1.0])],
+    ],
+)
+def test_compute_separating_resolution_is_zero_without_distinct_pairs(timestamps):
+    assert compute_separating_resolution(timestamps) == 0
+
+
+def test_compute_separating_resolution_rejects_empty_input():
+    with pytest.raises(ValueError, match="timestamps must not be empty"):
+        compute_separating_resolution([])
+
+    with pytest.raises(ValueError, match="timestamp arrays must not be empty"):
+        compute_separating_resolution([jnp.array([])])
 
 
 def _batched_lie_increment_stream(batch_dims=(2, 3)):
@@ -601,30 +703,26 @@ def _build_l_shape_stream(t0, t1, increments):
     )
 
 
-def test_from_increments_automatic_resolution_preserves_finest_level_data():
+def test_from_increments_automatic_resolution_preserves_increment_total():
     lie_basis = LieBasis(width=1, depth=1)
     timestamps = jnp.array([1.0, 0.0, 0.75, 0.25, 0.5], dtype=jnp.float32)
     data = jnp.array([[5.0], [1.0], [4.0], [2.0], [3.0]], dtype=jnp.float32)
 
-    stream = LieIncrementStream.from_increments(
-        timestamps=timestamps,
-        data=data,
-        resolution=None,
-        input_data_basis=None,
-        lie_basis=lie_basis,
-    )
-
-    normalised_timestamps = (
-        timestamps.astype(jnp.float32) - stream.support.inf
-    ) / (stream.support.sup - stream.support.inf)
-    buckets = jnp.floor(
-        jnp.ldexp(normalised_timestamps, stream.resolution)
-    ).astype(jnp.int32)
-    finest = stream._cache[: 1 << stream.resolution, :]
+    with pytest.warns(DeprecationWarning, match="Automatic resolution selection"):
+        stream = LieIncrementStream.from_increments(
+            timestamps=timestamps,
+            data=data,
+            resolution=None,
+            input_data_basis=None,
+            lie_basis=lie_basis,
+        )
 
     assert stream.batch_dims == ()
-    assert jnp.unique(buckets).size == timestamps.size
-    assert jnp.allclose(finest[buckets], data)
+    assert stream.resolution == compute_separating_resolution([timestamps])
+    assert jnp.allclose(
+        stream.log_signature(stream.support).data,
+        jnp.sum(data, axis=0),
+    )
 
 
 def test_from_increments_recovers_analytic_levy_area_on_nonunit_support():
@@ -821,26 +919,29 @@ def test_from_increments_preserves_leading_unit_data_batch_dimension():
 
 def test_from_increments_sorts_each_input_by_timestamp():
     basis = LieBasis(width=2, depth=2)
-    ordered_timestamps = jnp.array([0.0, 0.5, 1.0], dtype=jnp.float32)
+    # The first two timestamps deliberately occupy the same finest-level
+    # bucket. A stable sort by bucket alone would preserve the shuffled input
+    # order and reverse these noncommuting increments.
+    ordered_timestamps = jnp.array([0.0, 0.1, 1.0], dtype=jnp.float32)
     ordered_data = jnp.array(
         [[1.0, 0.0], [0.0, 1.0], [0.0, 0.0]], dtype=jnp.float32
     )
-    shuffled_timestamps = jnp.array([1.0, 0.0, 0.5], dtype=jnp.float32)
+    shuffled_timestamps = jnp.array([0.1, 0.0, 1.0], dtype=jnp.float32)
     shuffled_data = jnp.array(
-        [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]], dtype=jnp.float32
+        [[0.0, 1.0], [1.0, 0.0], [0.0, 0.0]], dtype=jnp.float32
     )
 
     ordered = LieIncrementStream.from_increments(
         timestamps=ordered_timestamps,
         data=ordered_data,
-        resolution=3,
+        resolution=1,
         input_data_basis=None,
         lie_basis=basis,
     )
     shuffled = LieIncrementStream.from_increments(
         timestamps=shuffled_timestamps,
         data=shuffled_data,
-        resolution=3,
+        resolution=1,
         input_data_basis=None,
         lie_basis=basis,
     )
