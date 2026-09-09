@@ -836,7 +836,7 @@ def ft_exp_derivative(
         r_d = r_dm1
         t_r_d = t_r_dm1
 
-    return t_r_d
+    return t_r_d.change_depth(basis.depth)
 
 
 def ft_exp_adjoint_derivative(
@@ -878,7 +878,7 @@ def ft_exp_adjoint_derivative(
     # so the adjoint derivative needs to apply this to the resulting cotangent.
     ct_x = _remove_unit_term(ct_x)
 
-    return (ct_x,)
+    return (ct_x.change_depth(x.basis.depth),)
 
 
 def _ft_exp_vjp_fwd(
@@ -1009,7 +1009,7 @@ def ft_log_adjoint_derivative(
     # and adjoint derivative must both annihilate that coordinate.
     ct_x = _remove_unit_term(ct_x)
 
-    return (ct_x,)
+    return (ct_x.change_depth(x.basis.depth),)
 
 
 def _ft_log_vjp_fwd(
@@ -1022,9 +1022,11 @@ def _ft_log_vjp_fwd(
 def _ft_log_vjp_bwd(
     residuals: tuple[Any, ...], ct_result_data: Any
 ) -> tuple[Any, ...]:
-    x, _ = residuals
+    x, result = residuals
 
-    ct_result = from_jax_cotangent(DenseShuffleTensor, ct_result_data, x.basis)
+    ct_result = from_jax_cotangent(
+        DenseShuffleTensor, ct_result_data, result.basis
+    )
     (ct_x,) = ft_log_adjoint_derivative(x, ct_result)
     return (to_jax_cotangent(type(x), ct_x), None)
 
@@ -1104,7 +1106,7 @@ def ft_fmexp_derivative(
         r_d = r_dm1
         t_r_d = t_r_dm1
 
-    return t_r_d
+    return t_r_d.change_depth(multiplier.basis.depth)
 
 
 def ft_fmexp_adjoint_derivative(
@@ -1155,7 +1157,10 @@ def ft_fmexp_adjoint_derivative(
 
     ct_exponent = _remove_unit_term(ct_exponent)
 
-    return ct_multiplier, ct_exponent
+    return (
+        ct_multiplier.change_depth(multiplier.basis.depth),
+        ct_exponent.change_depth(exponent.basis.depth),
+    )
 
 
 def _ft_fmexp_vjp_fwd(
@@ -1170,10 +1175,10 @@ def _ft_fmexp_vjp_fwd(
 def _ft_fmexp_vjp_bwd(
     residuals, ct_result_data: jax.Array
 ) -> tuple[Any, ...]:
-    multiplier, exponent, _ = residuals
+    multiplier, exponent, result = residuals
 
     ct_result = from_jax_cotangent(
-        DenseShuffleTensor, ct_result_data, multiplier.basis
+        DenseShuffleTensor, ct_result_data, result.basis
     )
     ct_multiplier, ct_exponent = ft_fmexp_adjoint_derivative(
         multiplier, exponent, ct_result
