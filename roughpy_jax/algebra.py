@@ -1718,8 +1718,12 @@ def tensor_pairing_adjoint_derivative(
 
     ext_ct = broadcast_to_batch_shape(ct_result, batch_dims)
 
-    ct_functional = DenseFreeTensor(ext_ct * argument.data, functional.basis)
-    ct_argument = DenseShuffleTensor(ext_ct * functional.data, argument.basis)
+    ct_functional = DenseFreeTensor(
+        ext_ct * argument.data, argument.basis
+    ).change_depth(functional.basis.depth)
+    ct_argument = DenseShuffleTensor(
+        ext_ct * functional.data, functional.basis
+    ).change_depth(argument.basis.depth)
 
     return ct_functional, ct_argument
 
