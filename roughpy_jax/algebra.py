@@ -622,7 +622,7 @@ def st_fma(
         batch_dims,
         a_max_deg=np.int32(a.basis.depth),
         b_max_deg=np.int32(min(a.basis.depth, b.basis.depth)),
-        c_max_deg=np.int32(min(b.basis.depth, c.basis.depth)),
+        c_max_deg=np.int32(min(a.basis.depth, c.basis.depth)),
         b_min_deg=np.int32(0),
         c_min_deg=np.int32(0),
     )
