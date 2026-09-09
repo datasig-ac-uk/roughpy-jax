@@ -744,8 +744,8 @@ def st_mul_adjoint_derivative(
     check_basis_compat(lhs.basis, rhs.basis, ct_result.basis)
     get_common_batch_shape(lhs, rhs, ct_result)
 
-    ct_lhs = st_adjoint_mul(rhs, ct_result)
-    ct_rhs = st_adjoint_mul(lhs, ct_result)
+    ct_lhs = st_adjoint_mul(rhs, ct_result).change_depth(lhs.basis.depth)
+    ct_rhs = st_adjoint_mul(lhs, ct_result).change_depth(rhs.basis.depth)
 
     return ct_lhs, ct_rhs
 
@@ -757,7 +757,8 @@ def _st_mul_vjp_fwd(lhs, rhs):
 
 def _st_mul_vjp_bwd(residuals, ct_result):
     lhs, rhs = residuals
-    ct_result_math = from_jax_cotangent(DenseFreeTensor, ct_result, lhs.basis)
+    out_basis = result_basis(lhs.basis, rhs.basis)
+    ct_result_math = from_jax_cotangent(DenseFreeTensor, ct_result, out_basis)
     ct_lhs, ct_rhs = st_mul_adjoint_derivative(lhs, rhs, ct_result_math)
     return (
         to_jax_cotangent(type(lhs), ct_lhs),
