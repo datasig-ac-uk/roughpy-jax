@@ -126,6 +126,31 @@ def test_dense_ft_fmexp(rpj_dtype, rpj_batch, rpj_no_acceleration):
     assert jnp.allclose(b.data, expected.data)
 
 
+@pytest.mark.parametrize(
+    ("multiplier_depth", "exponent_depth"), [(1, 2), (2, 1)]
+)
+def test_ft_fmexp_mixed_depth(multiplier_depth, exponent_depth):
+    multiplier_basis = rpj.TensorBasis(2, multiplier_depth)
+    exponent_basis = rpj.TensorBasis(2, exponent_depth)
+
+    multiplier = rpj.FreeTensor(
+        jnp.arange(1, multiplier_basis.size() + 1, dtype=jnp.float32),
+        multiplier_basis,
+    )
+    exponent_data = jnp.arange(
+        exponent_basis.size(), dtype=jnp.float32
+    ).at[0].set(0)
+    exponent = rpj.FreeTensor(exponent_data, exponent_basis)
+
+    result = rpj.ft_fmexp(multiplier, exponent)
+    expected = rpj.ft_mul(
+        multiplier, rpj.ft_exp(exponent.change_depth(multiplier_depth))
+    )
+
+    assert result.basis == multiplier_basis
+    assert jnp.allclose(result.data, expected.data)
+
+
 def _ft_exp_adjoint_derivative(x, ct_result):
     return rpj.ft_exp_adjoint_derivative(x, ct_result)[0]
 
