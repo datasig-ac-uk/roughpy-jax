@@ -1285,12 +1285,12 @@ def lie_to_tensor_adjoint_derivative(
     l2t_data, l2t_indices, l2t_indptr = _get_lie_sparse_matrices(
         arg.basis, arg.dtype
     )[0]
-    l2t_size = arg.basis.size()
+    l2t_n_cols = ct_result.basis.size()
     data = csr_matvec(
         l2t_data,
         l2t_indices,
         l2t_indptr,
-        l2t_size,
+        l2t_n_cols,
         ct_result.data,
     )
     if scale_factor is not None:
@@ -1428,12 +1428,12 @@ def tensor_to_lie_adjoint_derivative(
     t2l_data, t2l_indices, t2l_indptr = _get_lie_sparse_matrices(
         lie_basis, arg.dtype
     )[1]
-    t2l_size = arg.basis.size()
+    t2l_n_cols = ct_result.basis.size()
     data = csr_matvec(
         t2l_data,
         t2l_indices,
         t2l_indptr,
-        t2l_size,
+        t2l_n_cols,
         ct_result.data,
     )
     if scale_factor is not None:
