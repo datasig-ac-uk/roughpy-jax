@@ -12,6 +12,52 @@ from roughpy_jax.streams import (
     PiecewiseAbelianStream,
     compute_separating_resolution,
 )
+from roughpy_jax.streams.lie_increment_stream import (
+    _compute_increment_stream_support,
+)
+
+
+@pytest.mark.parametrize(
+    ("min_timestamp", "max_timestamp", "interval_type", "expected_inf", "expected_sup"),
+    [
+        (0.1, 1.0, IntervalType.ClOpen, 0.1, 1.25),
+        (0.1, 0.9, IntervalType.ClOpen, 0.1, 1.0),
+        (0.0, 0.0, IntervalType.ClOpen, 0.0, 0.25),
+        (-1.0, -0.1, IntervalType.ClOpen, -1.0, 0.0),
+        (0.0, 1.0, IntervalType.OpenCl, -0.25, 1.0),
+        (0.1, 0.9, IntervalType.OpenCl, 0.0, 0.9),
+        (-0.9, -0.1, IntervalType.OpenCl, -1.0, -0.1),
+    ],
+)
+@pytest.mark.parametrize("time_dtype", [jnp.float32, jnp.float64])
+def test_compute_increment_stream_support(
+    min_timestamp,
+    max_timestamp,
+    interval_type,
+    expected_inf,
+    expected_sup,
+    time_dtype,
+):
+    support = _compute_increment_stream_support(
+        min_timestamp,
+        max_timestamp,
+        resolution=2,
+        interval_type=interval_type,
+        time_dtype=jnp.dtype(time_dtype),
+    )
+
+    assert support.interval_type == interval_type
+    assert support.inf.dtype == time_dtype
+    assert support.sup.dtype == time_dtype
+    assert jnp.allclose(support.inf, expected_inf)
+    assert jnp.allclose(support.sup, expected_sup)
+
+    if interval_type == IntervalType.ClOpen:
+        assert support.inf == jnp.asarray(min_timestamp, dtype=time_dtype)
+        assert support.sup > jnp.asarray(max_timestamp, dtype=time_dtype)
+    else:
+        assert support.inf < jnp.asarray(min_timestamp, dtype=time_dtype)
+        assert support.sup == jnp.asarray(max_timestamp, dtype=time_dtype)
 
 
 @pytest.mark.parametrize(
