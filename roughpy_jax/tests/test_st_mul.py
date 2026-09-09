@@ -67,6 +67,43 @@ def test_shuffle_product_unit(rpj_dtype, rpj_batch, rpj_device, rpj_no_accelerat
     assert jnp.allclose(result2.data, lhs.data)
 
 
+def test_shuffle_product_evaluates_multiplicatively_on_signatures(
+    rpj_dtype, rpj_batch, rpj_no_acceleration
+):
+    tensor_basis = rpj.TensorBasis(2, 3)
+    lie_basis = rpj.LieBasis(2, 3)
+
+    lhs_data = rpj_batch.rng_uniform(
+        -1.0, 1.0, tensor_basis.size(), rpj_dtype
+    )
+    rhs_data = rpj_batch.rng_uniform(
+        -1.0, 1.0, tensor_basis.size(), rpj_dtype
+    )
+
+    # Keep all products within the truncation depth: lhs has degree at most
+    # one and rhs has degree at most two.
+    lhs_data = lhs_data.at[..., tensor_basis.degree_begin[2] :].set(0)
+    rhs_data = rhs_data.at[..., tensor_basis.degree_begin[3] :].set(0)
+    lhs = rpj.ShuffleTensor(lhs_data, tensor_basis)
+    rhs = rpj.ShuffleTensor(rhs_data, tensor_basis)
+
+    log_signature = rpj.Lie(
+        rpj_batch.rng_uniform(
+            -0.2, 0.2, lie_basis.size(), rpj_dtype
+        ),
+        lie_basis,
+    )
+    signature = rpj.to_signature(log_signature)
+
+    paired_product = rpj.tensor_pairing(rpj.st_mul(lhs, rhs), signature)
+    product_of_pairings = rpj.tensor_pairing(
+        lhs, signature
+    ) * rpj.tensor_pairing(rhs, signature)
+
+    atol = 1e-5 if rpj_dtype == jnp.float32 else 1e-10
+    assert jnp.allclose(paired_product, product_of_pairings, atol=atol)
+
+
 @pytest.mark.parametrize(("lhs_depth", "rhs_depth"), [(1, 2), (2, 1)])
 def test_st_mul_mixed_depth(lhs_depth, rhs_depth):
     lhs_basis = rpj.TensorBasis(2, lhs_depth)
