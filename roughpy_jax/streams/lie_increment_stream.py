@@ -580,6 +580,41 @@ def compute_separating_resolution(
     return resolution
 
 
+def _compute_increment_stream_support(
+        min_timestamp: ArrayLike,
+        max_timestamp: ArrayLike,
+        resolution: int,
+        interval_type: IntervalType,
+        time_dtype: jnp.dtype,
+) -> RealInterval:
+    """Compute a resolution-aligned support containing all timestamps.
+
+    The endpoint excluded by ``interval_type`` is moved to the outer boundary
+    of the dyadic interval containing the corresponding extreme timestamp. The
+    included endpoint remains equal to the other extreme timestamp.
+
+    :param min_timestamp: Smallest timestamp in the input data.
+    :param max_timestamp: Largest timestamp in the input data.
+    :param resolution: Resolution of the finest dyadic cache level.
+    :param interval_type: Endpoint convention of the resulting support.
+    :param time_dtype: Dtype used to represent the support endpoints.
+    :return: A real interval containing both timestamp extrema.
+    """
+    min_timestamp = jnp.asarray(min_timestamp, dtype=time_dtype)
+    max_timestamp = jnp.asarray(max_timestamp, dtype=time_dtype)
+
+    if interval_type == IntervalType.ClOpen:
+        inf = min_timestamp
+        k = jnp.floor(jnp.ldexp(max_timestamp, resolution))
+        sup = jnp.ldexp(k + 1, -resolution).astype(time_dtype)
+    else:  # interval_type == IntervalType.OpenCl
+        sup = max_timestamp
+        k = jnp.ceil(jnp.ldexp(min_timestamp, resolution))
+        inf = jnp.ldexp(k - 1, -resolution).astype(time_dtype)
+
+    return RealInterval(inf, sup, interval_type)
+
+
 @jax.tree_util.register_pytree_node_class
 class LieIncrementStream(Stream[Lie, FreeTensor]):
     """
@@ -884,19 +919,17 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
                                                        max_timestamp,
                                                        sorted_arrays=True)
 
-        if interval_type == IntervalType.ClOpen:
-            inf = min_timestamp
-            k = jnp.floor(jnp.ldexp(max_timestamp, resolution))
-            sup = jnp.ldexp(k + 1, -resolution)
-        else:  # interval_type == IntervalType.OpenCl:
-            sup = max(maxs)
-            inf = jnp.nextafter(min(mins), -jnp.inf)
-
-        support = RealInterval(inf, sup, interval_type)
+        support = _compute_increment_stream_support(
+            min_timestamp,
+            max_timestamp,
+            resolution,
+            interval_type,
+            time_dtype,
+        )
 
         # Adjust the timestamps so they lie in the unit interval
-        sf = (sup - inf).astype(time_dtype)
-        shift = inf.astype(time_dtype)
+        sf = (support.sup - support.inf).astype(time_dtype)
+        shift = support.inf.astype(time_dtype)
         time_arrays = [(ts.astype(time_dtype) - shift) / sf for ts in
                        time_arrays]
 
