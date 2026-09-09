@@ -54,6 +54,32 @@ def test_st_fma_mixed_depth(a_depth, b_depth, c_depth):
     assert jnp.allclose(result.data, expected.data)
 
 
+@pytest.mark.parametrize(
+    ("a_depth", "b_depth", "c_depth"),
+    [(2, 1, 2), (2, 2, 1), (1, 2, 2)],
+)
+def test_st_fma_derivative_mixed_depth(a_depth, b_depth, c_depth):
+    def make_shuffle(depth, offset):
+        basis = rpj.TensorBasis(2, depth)
+        data = jnp.arange(offset, offset + basis.size(), dtype=jnp.float32)
+        return rpj.ShuffleTensor(data, basis)
+
+    a = make_shuffle(a_depth, 1)
+    b = make_shuffle(b_depth, 2)
+    c = make_shuffle(c_depth, 3)
+    t_a = make_shuffle(a_depth, 4)
+    t_b = make_shuffle(b_depth, 5)
+    t_c = make_shuffle(c_depth, 6)
+
+    result = st_fma_derivative(a, b, c, t_a, t_b, t_c)
+    expected = t_a + rpj.st_mul_derivative(b, c, t_b, t_c).change_depth(
+        a_depth
+    )
+
+    assert result.basis == a.basis
+    assert jnp.allclose(result.data, expected.data)
+
+
 def test_st_fma_check_vjp(rpj_batch):
     rpj_dtype = jnp.dtype("float32")
     basis = rpj.TensorBasis(4, 3)
