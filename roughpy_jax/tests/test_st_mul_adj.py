@@ -244,3 +244,31 @@ def test_st_adjoint_mul_adjoint_derivative_wrt_arg(shuffle_deriv_trials):
         abs_tol=shuffle_deriv_trials.cond_dtype(5e-2, 1e-5),
         rel_tol=shuffle_deriv_trials.cond_dtype(5e-2, 1e-5),
     )
+
+
+@pytest.mark.parametrize(("op_depth", "arg_depth"), [(1, 2), (2, 1)])
+def test_st_adjoint_mul_mixed_depth_vjp(op_depth, arg_depth):
+    op_basis = rpj.TensorBasis(2, op_depth)
+    arg_basis = rpj.TensorBasis(2, arg_depth)
+    op = rpj.ShuffleTensor(
+        jnp.arange(1, op_basis.size() + 1, dtype=jnp.float32), op_basis
+    )
+    arg = rpj.FreeTensor(
+        jnp.arange(1, arg_basis.size() + 1, dtype=jnp.float32), arg_basis
+    )
+
+    result, pullback = jax.vjp(st_adjoint_mul, op, arg)
+    ct_result = rpj.ShuffleTensor(jnp.ones_like(result.data), result.basis)
+    expected_op, expected_arg = st_adjoint_mul_adjoint_derivative(
+        op, arg, ct_result
+    )
+    ct_op, ct_arg = pullback(
+        rpj.FreeTensor(ct_result.data, ct_result.basis)
+    )
+
+    assert expected_op.basis == op_basis
+    assert expected_arg.basis == arg_basis
+    assert ct_op.basis == op_basis
+    assert ct_arg.basis == arg_basis
+    assert jnp.allclose(ct_op.data, expected_op.data)
+    assert jnp.allclose(ct_arg.data, expected_arg.data)
