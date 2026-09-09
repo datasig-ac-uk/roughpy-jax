@@ -90,3 +90,43 @@ def test_sparse_csr_matvec_roundtrip(sample_matrix, fmt):
     xb = jnp.stack([x, x * 0.1])
     yb = matvec_fn(*matvec_args, xb)
     assert jnp.allclose(yb, xb @ sample_matrix.dense.T)
+
+
+@pytest.mark.parametrize(
+    "dense",
+    [
+        jnp.array([[1.0, 0.0, 2.0], [0.0, 3.0, 4.0]]),
+        jnp.array([[1.0, 2.0], [0.0, 3.0], [4.0, 0.0]]),
+    ],
+)
+@pytest.mark.parametrize("fmt", ["csr", "csc"])
+def test_sparse_matvec_rectangular(dense, fmt):
+    rows, cols = jnp.nonzero(dense)
+    outer = rows if fmt == "csr" else cols
+    inner = cols if fmt == "csr" else rows
+    order = jnp.argsort(outer, stable=True)
+
+    data = dense[rows, cols][order]
+    indices = inner[order]
+    indptr = _indptr_from_outer_indices(outer[order])
+    explicit_dim = dense.shape[1] if fmt == "csr" else dense.shape[0]
+    matvec_fn = csr_matvec if fmt == "csr" else csc_matvec
+
+    x = jnp.arange(1, dense.shape[1] + 1, dtype=dense.dtype)
+    result = matvec_fn(data, indices, indptr, explicit_dim, x)
+    assert jnp.allclose(result, dense @ x)
+
+    batched_x = jnp.stack([x, 2 * x])
+    batched_result = matvec_fn(
+        data, indices, indptr, explicit_dim, batched_x
+    )
+    assert jnp.allclose(batched_result, batched_x @ dense.T)
+
+
+@pytest.mark.parametrize("fmt", ["csr", "csc"])
+def test_sparse_matvec_rejects_wrong_vector_length(sample_matrix, fmt):
+    matvec_args = sample_matrix.matvec_args(fmt)
+    matvec_fn = csr_matvec if fmt == "csr" else csc_matvec
+
+    with pytest.raises(ValueError, match="expected an input with 3 columns"):
+        matvec_fn(*matvec_args, jnp.ones(2))
