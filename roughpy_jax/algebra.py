@@ -497,8 +497,8 @@ def ft_mul_adjoint_derivative(
     :param ct_result: cotangent from the output
     :return: (cotangent for lhs, cotangent for rhs)
     """
-    ct_lhs = ft_adjoint_right_mul(rhs, ct_result)
-    ct_rhs = ft_adjoint_left_mul(lhs, ct_result)
+    ct_lhs = ft_adjoint_right_mul(rhs, ct_result).change_depth(lhs.basis.depth)
+    ct_rhs = ft_adjoint_left_mul(lhs, ct_result).change_depth(rhs.basis.depth)
     return ct_lhs, ct_rhs
 
 
@@ -509,7 +509,8 @@ def _ft_mul_vjp_fwd(lhs: DenseFreeTensor, rhs: DenseFreeTensor):
 
 def _ft_mul_vjp_bwd(residuals, ct_result_data) -> tuple[Any, ...]:
     lhs, rhs = residuals
-    ct_result = from_jax_cotangent(DenseShuffleTensor, ct_result_data, lhs.basis)
+    out_basis = result_basis(lhs.basis, rhs.basis)
+    ct_result = from_jax_cotangent(DenseShuffleTensor, ct_result_data, out_basis)
     ct_lhs, ct_rhs = ft_mul_adjoint_derivative(lhs, rhs, ct_result)
     return (to_jax_cotangent(type(lhs), ct_lhs), to_jax_cotangent(type(rhs), ct_rhs))
 
@@ -1482,7 +1483,7 @@ def ft_adjoint_left_mul(
 
     op_cls = Operation.get_operation("ft_adj_lmul", "dense")
     op_call = op_cls(
-        (op.basis,),
+        (op.basis, arg.basis),
         dtype,
         batch_dims,
         op_max_deg=np.int32(op.basis.depth),
@@ -1490,7 +1491,7 @@ def ft_adjoint_left_mul(
     )
 
     out_data = op_call(op.data, arg.data)
-    out_basis = op.basis
+    out_basis = op_call.basis
 
     return DenseShuffleTensor(out_data[0], out_basis)
 
@@ -1563,7 +1564,7 @@ def ft_adjoint_right_mul(
 
     op_cls = Operation.get_operation("ft_adj_rmul", "dense")
     op_call = op_cls(
-        (op.basis,),
+        (op.basis, arg.basis),
         dtype,
         batch_dims,
         op_max_deg=np.int32(op.basis.depth),
@@ -1571,7 +1572,7 @@ def ft_adjoint_right_mul(
     )
 
     out_data = op_call(op.data, arg.data)
-    out_basis = op.basis
+    out_basis = op_call.basis
 
     return DenseShuffleTensor(out_data[0], out_basis)
 
