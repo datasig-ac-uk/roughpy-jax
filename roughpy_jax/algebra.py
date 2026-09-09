@@ -385,8 +385,9 @@ def ft_fma_derivative(
     :param t_c: tangent perturbation at c
     :return: derivative in tangent direction (s_a, s_b, s_c)
     """
-    _ = a
-    return t_a + ft_mul_derivative(b, c, t_b, t_c)
+    return (
+        t_a + ft_mul_derivative(b, c, t_b, t_c)
+    ).change_depth(a.basis.depth)
 
 
 def ft_fma_adjoint_derivative(
