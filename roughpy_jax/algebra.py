@@ -645,7 +645,9 @@ def st_fma_derivative(
     check_basis_compat(a.basis, b.basis, c.basis, t_a.basis, t_b.basis, t_c.basis)
     get_common_batch_shape(a, b, c, t_a, t_b, t_c)
 
-    return t_a + st_mul_derivative(b, c, t_b, t_c)
+    return (
+        t_a + st_mul_derivative(b, c, t_b, t_c)
+    ).change_depth(a.basis.depth)
 
 
 def st_fma_adjoint_derivative(
