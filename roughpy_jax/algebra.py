@@ -1884,7 +1884,10 @@ def st_adjoint_mul_adjoint_derivative(
     ct_op = st_adjoint_mul(ct_result, arg)
     ct_arg = st_mul(op, ct_result)
 
-    return ct_op, ct_arg
+    return (
+        ct_op.change_depth(op.basis.depth),
+        ct_arg.change_depth(arg.basis.depth),
+    )
 
 
 def _st_adjoint_mul_vjp_fwd(op, arg):
@@ -1894,7 +1897,8 @@ def _st_adjoint_mul_vjp_fwd(op, arg):
 
 def _st_adjoint_mul_vjp_bwd(residuals, ct_result):
     op, arg = residuals
-    ct_result_math = from_jax_cotangent(DenseShuffleTensor, ct_result, arg.basis)
+    out_basis = result_basis(op.basis, arg.basis)
+    ct_result_math = from_jax_cotangent(DenseShuffleTensor, ct_result, out_basis)
     ct_op, ct_arg = st_adjoint_mul_adjoint_derivative(op, arg, ct_result_math)
     return (
         to_jax_cotangent(type(op), ct_op),
