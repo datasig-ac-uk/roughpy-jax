@@ -19,6 +19,7 @@ from .bases import (
     to_tensor_basis,
 )
 from .compressed import csc_matvec
+from .dense_algebra import _redepth_data
 
 # Cache for l2t and t2l sparse matrices keyed by (width, depth, dtype_str).
 # Potentially useful to have cached versions to the l2t and t2l matrices as JAX
@@ -902,6 +903,25 @@ class DenseSTFma(Operation, DenseOperation):
             return result_basis(preferred_basis, *bases, strategy="first")
         return result_basis(*bases, strategy="first")
 
+    def make_static_args(self, kwargs) -> cabc.Mapping[str, Any]:
+        # The current C++ shuffle kernel assumes that both multiplicands extend
+        # through the result depth. Remove this normalization when the kernel
+        # handles independently truncated operand views.
+        static_args = dict(super().make_static_args(kwargs))
+        operand_max_degree = np.int32(self.basis.depth)
+        static_args["b_max_deg"] = operand_max_degree
+        static_args["c_max_deg"] = operand_max_degree
+        return self.StaticArgs(**static_args)
+
+    def convert_args_dtypes(self, *data_args: Array) -> tuple[Array, ...]:
+        a_data, b_data, c_data = super().convert_args_dtypes(*data_args)
+        basis_size = self.basis.size()
+        return (
+            a_data,
+            _redepth_data(b_data, basis_size),
+            _redepth_data(c_data, basis_size),
+        )
+
     @staticmethod
     def fallback(
             a_data: Array,
@@ -929,6 +949,21 @@ class DenseSTMul(Operation, DenseOperation):
         rhs_max_deg: np.int32
         lhs_min_deg: np.int32  # not required
         rhs_min_deg: np.int32  # not required
+
+    def make_static_args(self, kwargs) -> cabc.Mapping[str, Any]:
+        # The current C++ shuffle kernel assumes that both operands extend
+        # through the result depth. Remove this normalization when the kernel
+        # handles independently truncated operand views.
+        static_args = dict(super().make_static_args(kwargs))
+        operand_max_degree = np.int32(self.basis.depth)
+        static_args["lhs_max_deg"] = operand_max_degree
+        static_args["rhs_max_deg"] = operand_max_degree
+        return self.StaticArgs(**static_args)
+
+    def convert_args_dtypes(self, *data_args: Array) -> tuple[Array, ...]:
+        converted_args = super().convert_args_dtypes(*data_args)
+        basis_size = self.basis.size()
+        return tuple(_redepth_data(arg, basis_size) for arg in converted_args)
 
 
 class DenseFTAdjLeftMul(Operation, DenseOperation):
@@ -1329,6 +1364,21 @@ class DenseSTAdjMul(Operation, DenseOperation):
         arg_max_deg: np.int32
         op_min_deg: np.int32
         arg_min_deg: np.int32
+
+    def make_static_args(self, kwargs) -> cabc.Mapping[str, Any]:
+        # The current C++ shuffle-adjoint kernel assumes that both operands
+        # extend through the result depth. Remove this normalization when the
+        # kernel handles independently truncated operand views.
+        static_args = dict(super().make_static_args(kwargs))
+        operand_max_degree = np.int32(self.basis.depth)
+        static_args["op_max_deg"] = operand_max_degree
+        static_args["arg_max_deg"] = operand_max_degree
+        return self.StaticArgs(**static_args)
+
+    def convert_args_dtypes(self, *data_args: Array) -> tuple[Array, ...]:
+        converted_args = super().convert_args_dtypes(*data_args)
+        basis_size = self.basis.size()
+        return tuple(_redepth_data(arg, basis_size) for arg in converted_args)
 
 
 cpu_functions: Any

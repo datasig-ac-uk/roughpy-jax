@@ -86,6 +86,55 @@ def test_dense_ft_fma_construction(rpj_dtype, rpj_batch, rpj_device, rpj_no_acce
         assert jnp.allclose(d, expected)
 
 
+@pytest.mark.parametrize(
+    ("a_depth", "b_depth", "c_depth"),
+    [(2, 1, 2), (2, 2, 1), (1, 2, 2)],
+)
+def test_ft_fma_mixed_depth(a_depth, b_depth, c_depth):
+    def make_free_tensor(depth, offset):
+        basis = rpj.TensorBasis(2, depth)
+        data = jnp.arange(offset, offset + basis.size(), dtype=jnp.float32)
+        return rpj.FreeTensor(data, basis)
+
+    a = make_free_tensor(a_depth, 1)
+    b = make_free_tensor(b_depth, 2)
+    c = make_free_tensor(c_depth, 3)
+
+    result = rpj.ft_fma(a, b, c)
+    expected = a + rpj.ft_mul(
+        b.change_depth(a_depth), c.change_depth(a_depth)
+    )
+
+    assert result.basis == a.basis
+    assert jnp.allclose(result.data, expected.data)
+
+
+@pytest.mark.parametrize(
+    ("a_depth", "b_depth", "c_depth"),
+    [(2, 1, 2), (2, 2, 1), (1, 2, 2)],
+)
+def test_ft_fma_derivative_mixed_depth(a_depth, b_depth, c_depth):
+    def make_free_tensor(depth, offset):
+        basis = rpj.TensorBasis(2, depth)
+        data = jnp.arange(offset, offset + basis.size(), dtype=jnp.float32)
+        return rpj.FreeTensor(data, basis)
+
+    a = make_free_tensor(a_depth, 1)
+    b = make_free_tensor(b_depth, 2)
+    c = make_free_tensor(c_depth, 3)
+    t_a = make_free_tensor(a_depth, 4)
+    t_b = make_free_tensor(b_depth, 5)
+    t_c = make_free_tensor(c_depth, 6)
+
+    result = rpj.ft_fma_derivative(a, b, c, t_a, t_b, t_c)
+    expected = t_a + rpj.ft_mul_derivative(b, c, t_b, t_c).change_depth(
+        a_depth
+    )
+
+    assert result.basis == a.basis
+    assert jnp.allclose(result.data, expected.data)
+
+
 class TestFtFmaDerivative:
     @pytest.fixture(params=[jnp.float32, jnp.float64])
     def ft_fma_trials(self, request, rpj_device):

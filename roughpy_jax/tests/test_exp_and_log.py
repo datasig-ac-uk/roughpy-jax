@@ -126,6 +126,73 @@ def test_dense_ft_fmexp(rpj_dtype, rpj_batch, rpj_no_acceleration):
     assert jnp.allclose(b.data, expected.data)
 
 
+@pytest.mark.parametrize(
+    ("multiplier_depth", "exponent_depth"), [(1, 2), (2, 1)]
+)
+def test_ft_fmexp_mixed_depth(multiplier_depth, exponent_depth):
+    multiplier_basis = rpj.TensorBasis(2, multiplier_depth)
+    exponent_basis = rpj.TensorBasis(2, exponent_depth)
+
+    multiplier = rpj.FreeTensor(
+        jnp.arange(1, multiplier_basis.size() + 1, dtype=jnp.float32),
+        multiplier_basis,
+    )
+    exponent_data = jnp.arange(
+        exponent_basis.size(), dtype=jnp.float32
+    ).at[0].set(0)
+    exponent = rpj.FreeTensor(exponent_data, exponent_basis)
+
+    result = rpj.ft_fmexp(multiplier, exponent)
+    expected = rpj.ft_mul(
+        multiplier, rpj.ft_exp(exponent.change_depth(multiplier_depth))
+    )
+
+    assert result.basis == multiplier_basis
+    assert jnp.allclose(result.data, expected.data)
+
+    derivative = rpj.ft_fmexp_derivative(
+        multiplier, exponent, multiplier, exponent
+    )
+    assert derivative.basis == multiplier_basis
+
+    ct_result = rpj.ShuffleTensor(jnp.ones_like(result.data), result.basis)
+    ct_multiplier, ct_exponent = rpj.ft_fmexp_adjoint_derivative(
+        multiplier, exponent, ct_result
+    )
+    assert ct_multiplier.basis == multiplier_basis
+    assert ct_exponent.basis == exponent_basis
+
+    _, pullback = jax.vjp(rpj.ft_fmexp, multiplier, exponent)
+    jax_ct_multiplier, jax_ct_exponent = pullback(
+        rpj.FreeTensor(ct_result.data, ct_result.basis)
+    )
+    assert jax_ct_multiplier.basis == multiplier_basis
+    assert jax_ct_exponent.basis == exponent_basis
+
+
+@pytest.mark.parametrize(("input_depth", "output_depth"), [(1, 2), (2, 1)])
+@pytest.mark.parametrize(("fn", "unit_value"), [(rpj.ft_exp, 0), (rpj.ft_log, 1)])
+def test_ft_exp_log_vjp_with_different_output_depth(
+    fn, unit_value, input_depth, output_depth
+):
+    input_basis = rpj.TensorBasis(2, input_depth)
+    output_basis = rpj.TensorBasis(2, output_depth)
+    data = jnp.arange(input_basis.size(), dtype=jnp.float32).at[0].set(
+        unit_value
+    )
+    argument = rpj.FreeTensor(data, input_basis)
+
+    result, pullback = jax.vjp(
+        lambda arg: fn(arg, out_basis=output_basis), argument
+    )
+    (ct_argument,) = pullback(
+        rpj.FreeTensor(jnp.ones_like(result.data), result.basis)
+    )
+
+    assert result.basis == output_basis
+    assert ct_argument.basis == input_basis
+
+
 def _ft_exp_adjoint_derivative(x, ct_result):
     return rpj.ft_exp_adjoint_derivative(x, ct_result)[0]
 

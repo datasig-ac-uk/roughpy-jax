@@ -1,3 +1,4 @@
+import jax
 import jax.numpy as jnp
 import pytest
 import roughpy_jax as rpj
@@ -28,6 +29,24 @@ def test_dense_st_ft_pairing(rpj_batch):
 
     expected = jnp.einsum("...i,...i -> ...", functional.data, argument.data)
     assert jnp.allclose(result, expected)
+
+
+@pytest.mark.parametrize(("functional_depth", "argument_depth"), [(1, 2), (2, 1)])
+def test_tensor_pairing_mixed_depth_vjp(functional_depth, argument_depth):
+    functional_basis = rpj.TensorBasis(2, functional_depth)
+    argument_basis = rpj.TensorBasis(2, argument_depth)
+    functional = rpj.ShuffleTensor(
+        jnp.arange(functional_basis.size(), dtype=jnp.float32), functional_basis
+    )
+    argument = rpj.FreeTensor(
+        jnp.arange(argument_basis.size(), dtype=jnp.float32), argument_basis
+    )
+
+    result, pullback = jax.vjp(rpj.tensor_pairing, functional, argument)
+    ct_functional, ct_argument = pullback(jnp.ones_like(result))
+
+    assert ct_functional.basis == functional_basis
+    assert ct_argument.basis == argument_basis
 
 
 def _pairing_domain(lhs, rhs):

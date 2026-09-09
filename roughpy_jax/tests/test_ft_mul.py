@@ -29,6 +29,68 @@ def test_ft_mul(rpj_dtype, rpj_batch, rpj_device, rpj_no_acceleration):
     assert jnp.allclose(result.data, expected.data)
 
 
+@pytest.mark.parametrize(("lhs_depth", "rhs_depth"), [(1, 2), (2, 1)])
+def test_ft_mul_mixed_depth(lhs_depth, rhs_depth):
+    lhs_basis = rpj.TensorBasis(2, lhs_depth)
+    rhs_basis = rpj.TensorBasis(2, rhs_depth)
+    out_depth = max(lhs_depth, rhs_depth)
+
+    lhs = rpj.FreeTensor(
+        jnp.arange(1, lhs_basis.size() + 1, dtype=jnp.float32), lhs_basis
+    )
+    rhs = rpj.FreeTensor(
+        jnp.arange(1, rhs_basis.size() + 1, dtype=jnp.float32), rhs_basis
+    )
+
+    result = rpj.ft_mul(lhs, rhs)
+    expected = rpj.ft_mul(
+        lhs.change_depth(out_depth), rhs.change_depth(out_depth)
+    )
+
+    assert result.basis == expected.basis
+    assert jnp.allclose(result.data, expected.data)
+
+
+@pytest.mark.parametrize(("lhs_depth", "rhs_depth"), [(1, 2), (2, 1)])
+def test_ft_mul_mixed_depth_adjoint(lhs_depth, rhs_depth):
+    lhs_basis = rpj.TensorBasis(2, lhs_depth)
+    rhs_basis = rpj.TensorBasis(2, rhs_depth)
+    out_basis = rpj.TensorBasis(2, max(lhs_depth, rhs_depth))
+
+    lhs = rpj.FreeTensor(
+        jnp.arange(1, lhs_basis.size() + 1, dtype=jnp.float32), lhs_basis
+    )
+    rhs = rpj.FreeTensor(
+        jnp.arange(1, rhs_basis.size() + 1, dtype=jnp.float32), rhs_basis
+    )
+    ct_result = rpj.ShuffleTensor(
+        jnp.arange(1, out_basis.size() + 1, dtype=jnp.float32), out_basis
+    )
+
+    ct_lhs, ct_rhs = rpj.ft_mul_adjoint_derivative(lhs, rhs, ct_result)
+
+    assert ct_lhs.basis == lhs_basis
+    assert ct_rhs.basis == rhs_basis
+    assert jnp.allclose(
+        jnp.vdot(rpj.ft_mul(lhs, rhs).data, ct_result.data),
+        jnp.vdot(lhs.data, ct_lhs.data),
+    )
+    assert jnp.allclose(
+        jnp.vdot(rpj.ft_mul(lhs, rhs).data, ct_result.data),
+        jnp.vdot(rhs.data, ct_rhs.data),
+    )
+
+    _, pullback = jax.vjp(rpj.ft_mul, lhs, rhs)
+    jax_ct_lhs, jax_ct_rhs = pullback(
+        rpj.FreeTensor(ct_result.data, ct_result.basis)
+    )
+
+    assert jax_ct_lhs.basis == lhs_basis
+    assert jax_ct_rhs.basis == rhs_basis
+    assert jnp.allclose(jax_ct_lhs.data, ct_lhs.data)
+    assert jnp.allclose(jax_ct_rhs.data, ct_rhs.data)
+
+
 @pytest.fixture(params=[jnp.float32, jnp.float64])
 def ft_mul_trials(request, rpj_device):
     yield DerivativeTrialsHelper(request.param, width=3, depth=3, device=rpj_device)

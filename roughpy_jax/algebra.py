@@ -385,8 +385,9 @@ def ft_fma_derivative(
     :param t_c: tangent perturbation at c
     :return: derivative in tangent direction (s_a, s_b, s_c)
     """
-    _ = a
-    return t_a + ft_mul_derivative(b, c, t_b, t_c)
+    return (
+        t_a + ft_mul_derivative(b, c, t_b, t_c)
+    ).change_depth(a.basis.depth)
 
 
 def ft_fma_adjoint_derivative(
@@ -452,8 +453,8 @@ def ft_mul(a: DenseFreeTensor, b: DenseFreeTensor) -> DenseFreeTensor:
         (a.basis, b.basis),
         dtype,
         batch_dims,
-        lhs_max_deg=np.int32(min(a.basis.depth, a.basis.depth)),
-        rhs_max_deg=np.int32(min(a.basis.depth, b.basis.depth)),
+        lhs_max_deg=np.int32(a.basis.depth),
+        rhs_max_deg=np.int32(b.basis.depth),
         lhs_min_deg=np.int32(0),
         rhs_min_deg=np.int32(0),
     )
@@ -497,8 +498,8 @@ def ft_mul_adjoint_derivative(
     :param ct_result: cotangent from the output
     :return: (cotangent for lhs, cotangent for rhs)
     """
-    ct_lhs = ft_adjoint_right_mul(rhs, ct_result)
-    ct_rhs = ft_adjoint_left_mul(lhs, ct_result)
+    ct_lhs = ft_adjoint_right_mul(rhs, ct_result).change_depth(lhs.basis.depth)
+    ct_rhs = ft_adjoint_left_mul(lhs, ct_result).change_depth(rhs.basis.depth)
     return ct_lhs, ct_rhs
 
 
@@ -509,7 +510,8 @@ def _ft_mul_vjp_fwd(lhs: DenseFreeTensor, rhs: DenseFreeTensor):
 
 def _ft_mul_vjp_bwd(residuals, ct_result_data) -> tuple[Any, ...]:
     lhs, rhs = residuals
-    ct_result = from_jax_cotangent(DenseShuffleTensor, ct_result_data, lhs.basis)
+    out_basis = result_basis(lhs.basis, rhs.basis)
+    ct_result = from_jax_cotangent(DenseShuffleTensor, ct_result_data, out_basis)
     ct_lhs, ct_rhs = ft_mul_adjoint_derivative(lhs, rhs, ct_result)
     return (to_jax_cotangent(type(lhs), ct_lhs), to_jax_cotangent(type(rhs), ct_rhs))
 
@@ -622,7 +624,7 @@ def st_fma(
         batch_dims,
         a_max_deg=np.int32(a.basis.depth),
         b_max_deg=np.int32(min(a.basis.depth, b.basis.depth)),
-        c_max_deg=np.int32(min(b.basis.depth, c.basis.depth)),
+        c_max_deg=np.int32(min(a.basis.depth, c.basis.depth)),
         b_min_deg=np.int32(0),
         c_min_deg=np.int32(0),
     )
@@ -643,7 +645,9 @@ def st_fma_derivative(
     check_basis_compat(a.basis, b.basis, c.basis, t_a.basis, t_b.basis, t_c.basis)
     get_common_batch_shape(a, b, c, t_a, t_b, t_c)
 
-    return t_a + st_mul_derivative(b, c, t_b, t_c)
+    return (
+        t_a + st_mul_derivative(b, c, t_b, t_c)
+    ).change_depth(a.basis.depth)
 
 
 def st_fma_adjoint_derivative(
@@ -743,8 +747,8 @@ def st_mul_adjoint_derivative(
     check_basis_compat(lhs.basis, rhs.basis, ct_result.basis)
     get_common_batch_shape(lhs, rhs, ct_result)
 
-    ct_lhs = st_adjoint_mul(rhs, ct_result)
-    ct_rhs = st_adjoint_mul(lhs, ct_result)
+    ct_lhs = st_adjoint_mul(rhs, ct_result).change_depth(lhs.basis.depth)
+    ct_rhs = st_adjoint_mul(lhs, ct_result).change_depth(rhs.basis.depth)
 
     return ct_lhs, ct_rhs
 
@@ -756,7 +760,8 @@ def _st_mul_vjp_fwd(lhs, rhs):
 
 def _st_mul_vjp_bwd(residuals, ct_result):
     lhs, rhs = residuals
-    ct_result_math = from_jax_cotangent(DenseFreeTensor, ct_result, lhs.basis)
+    out_basis = result_basis(lhs.basis, rhs.basis)
+    ct_result_math = from_jax_cotangent(DenseFreeTensor, ct_result, out_basis)
     ct_lhs, ct_rhs = st_mul_adjoint_derivative(lhs, rhs, ct_result_math)
     return (
         to_jax_cotangent(type(lhs), ct_lhs),
@@ -831,7 +836,7 @@ def ft_exp_derivative(
         r_d = r_dm1
         t_r_d = t_r_dm1
 
-    return t_r_d
+    return t_r_d.change_depth(basis.depth)
 
 
 def ft_exp_adjoint_derivative(
@@ -873,7 +878,7 @@ def ft_exp_adjoint_derivative(
     # so the adjoint derivative needs to apply this to the resulting cotangent.
     ct_x = _remove_unit_term(ct_x)
 
-    return (ct_x,)
+    return (ct_x.change_depth(x.basis.depth),)
 
 
 def _ft_exp_vjp_fwd(
@@ -1004,7 +1009,7 @@ def ft_log_adjoint_derivative(
     # and adjoint derivative must both annihilate that coordinate.
     ct_x = _remove_unit_term(ct_x)
 
-    return (ct_x,)
+    return (ct_x.change_depth(x.basis.depth),)
 
 
 def _ft_log_vjp_fwd(
@@ -1017,9 +1022,11 @@ def _ft_log_vjp_fwd(
 def _ft_log_vjp_bwd(
     residuals: tuple[Any, ...], ct_result_data: Any
 ) -> tuple[Any, ...]:
-    x, _ = residuals
+    x, result = residuals
 
-    ct_result = from_jax_cotangent(DenseShuffleTensor, ct_result_data, x.basis)
+    ct_result = from_jax_cotangent(
+        DenseShuffleTensor, ct_result_data, result.basis
+    )
     (ct_x,) = ft_log_adjoint_derivative(x, ct_result)
     return (to_jax_cotangent(type(x), ct_x), None)
 
@@ -1099,7 +1106,7 @@ def ft_fmexp_derivative(
         r_d = r_dm1
         t_r_d = t_r_dm1
 
-    return t_r_d
+    return t_r_d.change_depth(multiplier.basis.depth)
 
 
 def ft_fmexp_adjoint_derivative(
@@ -1150,7 +1157,10 @@ def ft_fmexp_adjoint_derivative(
 
     ct_exponent = _remove_unit_term(ct_exponent)
 
-    return ct_multiplier, ct_exponent
+    return (
+        ct_multiplier.change_depth(multiplier.basis.depth),
+        ct_exponent.change_depth(exponent.basis.depth),
+    )
 
 
 def _ft_fmexp_vjp_fwd(
@@ -1165,10 +1175,10 @@ def _ft_fmexp_vjp_fwd(
 def _ft_fmexp_vjp_bwd(
     residuals, ct_result_data: jax.Array
 ) -> tuple[Any, ...]:
-    multiplier, exponent, _ = residuals
+    multiplier, exponent, result = residuals
 
     ct_result = from_jax_cotangent(
-        DenseShuffleTensor, ct_result_data, multiplier.basis
+        DenseShuffleTensor, ct_result_data, result.basis
     )
     ct_multiplier, ct_exponent = ft_fmexp_adjoint_derivative(
         multiplier, exponent, ct_result
@@ -1482,7 +1492,7 @@ def ft_adjoint_left_mul(
 
     op_cls = Operation.get_operation("ft_adj_lmul", "dense")
     op_call = op_cls(
-        (op.basis,),
+        (op.basis, arg.basis),
         dtype,
         batch_dims,
         op_max_deg=np.int32(op.basis.depth),
@@ -1490,7 +1500,7 @@ def ft_adjoint_left_mul(
     )
 
     out_data = op_call(op.data, arg.data)
-    out_basis = op.basis
+    out_basis = op_call.basis
 
     return DenseShuffleTensor(out_data[0], out_basis)
 
@@ -1520,7 +1530,10 @@ def ft_adjoint_left_mul_adjoint_derivative(
     ct_op = ft_adjoint_right_mul(ct_result, arg)
     ct_arg = ft_mul(op, ct_result)
 
-    return ct_op, ct_arg
+    return (
+        ct_op.change_depth(op.basis.depth),
+        ct_arg.change_depth(arg.basis.depth),
+    )
 
 
 def _ft_adjoint_left_mul_vjp_fwd(op: DenseFreeTensor, arg: DenseShuffleTensor):
@@ -1531,7 +1544,8 @@ def _ft_adjoint_left_mul_vjp_fwd(op: DenseFreeTensor, arg: DenseShuffleTensor):
 def _ft_adjoint_left_mul_vjp_bwd(residuals, ct_result):
     op, arg = residuals
 
-    ct_result_math = from_jax_cotangent(DenseFreeTensor, ct_result, op.basis)
+    out_basis = result_basis(op.basis, arg.basis)
+    ct_result_math = from_jax_cotangent(DenseFreeTensor, ct_result, out_basis)
     ct_op, ct_arg = ft_adjoint_left_mul_adjoint_derivative(op, arg, ct_result_math)
     return (
         to_jax_cotangent(type(op), ct_op),
@@ -1563,7 +1577,7 @@ def ft_adjoint_right_mul(
 
     op_cls = Operation.get_operation("ft_adj_rmul", "dense")
     op_call = op_cls(
-        (op.basis,),
+        (op.basis, arg.basis),
         dtype,
         batch_dims,
         op_max_deg=np.int32(op.basis.depth),
@@ -1571,7 +1585,7 @@ def ft_adjoint_right_mul(
     )
 
     out_data = op_call(op.data, arg.data)
-    out_basis = op.basis
+    out_basis = op_call.basis
 
     return DenseShuffleTensor(out_data[0], out_basis)
 
@@ -1600,7 +1614,10 @@ def ft_adjoint_right_mul_adjoint_derivative(
     ct_op = ft_adjoint_left_mul(ct_result, arg)
     ct_arg = ft_mul(ct_result, op)
 
-    return ct_op, ct_arg
+    return (
+        ct_op.change_depth(op.basis.depth),
+        ct_arg.change_depth(arg.basis.depth),
+    )
 
 
 def _ft_adjoint_right_mul_vjp_fwd(op, arg):
@@ -1610,7 +1627,8 @@ def _ft_adjoint_right_mul_vjp_fwd(op, arg):
 
 def _ft_adjoint_right_mul_vjp_bwd(residuals, ct_result):
     op, arg = residuals
-    ct_result_math = from_jax_cotangent(DenseFreeTensor, ct_result, op.basis)
+    out_basis = result_basis(op.basis, arg.basis)
+    ct_result_math = from_jax_cotangent(DenseFreeTensor, ct_result, out_basis)
     ct_op, ct_arg = ft_adjoint_right_mul_adjoint_derivative(op, arg, ct_result_math)
     return (
         to_jax_cotangent(type(op), ct_op),
@@ -1700,8 +1718,12 @@ def tensor_pairing_adjoint_derivative(
 
     ext_ct = broadcast_to_batch_shape(ct_result, batch_dims)
 
-    ct_functional = DenseFreeTensor(ext_ct * argument.data, functional.basis)
-    ct_argument = DenseShuffleTensor(ext_ct * functional.data, argument.basis)
+    ct_functional = DenseFreeTensor(
+        ext_ct * argument.data, argument.basis
+    ).change_depth(functional.basis.depth)
+    ct_argument = DenseShuffleTensor(
+        ext_ct * functional.data, functional.basis
+    ).change_depth(argument.basis.depth)
 
     return ct_functional, ct_argument
 
@@ -1781,8 +1803,12 @@ def lie_pairing_adjoint_derivative(
 
     ext_ct = broadcast_to_batch_shape(ct_result, batch_dims)
 
-    ct_functional = DenseLie(ext_ct * argument.data, functional.basis)
-    ct_argument = DenseLie(ext_ct * functional.data, argument.basis)
+    ct_functional = DenseLie(
+        ext_ct * argument.data, argument.basis
+    ).change_depth(functional.basis.depth)
+    ct_argument = DenseLie(
+        ext_ct * functional.data, functional.basis
+    ).change_depth(argument.basis.depth)
 
     return ct_functional, ct_argument
 
@@ -1858,7 +1884,10 @@ def st_adjoint_mul_adjoint_derivative(
     ct_op = st_adjoint_mul(ct_result, arg)
     ct_arg = st_mul(op, ct_result)
 
-    return ct_op, ct_arg
+    return (
+        ct_op.change_depth(op.basis.depth),
+        ct_arg.change_depth(arg.basis.depth),
+    )
 
 
 def _st_adjoint_mul_vjp_fwd(op, arg):
@@ -1868,7 +1897,8 @@ def _st_adjoint_mul_vjp_fwd(op, arg):
 
 def _st_adjoint_mul_vjp_bwd(residuals, ct_result):
     op, arg = residuals
-    ct_result_math = from_jax_cotangent(DenseShuffleTensor, ct_result, arg.basis)
+    out_basis = result_basis(op.basis, arg.basis)
+    ct_result_math = from_jax_cotangent(DenseShuffleTensor, ct_result, out_basis)
     ct_op, ct_arg = st_adjoint_mul_adjoint_derivative(op, arg, ct_result_math)
     return (
         to_jax_cotangent(type(op), ct_op),

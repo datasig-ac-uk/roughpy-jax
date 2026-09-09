@@ -34,6 +34,25 @@ def test_dense_lie_pairing(rpj_batch):
     assert jnp.allclose(result, expected)
 
 
+@pytest.mark.parametrize(("functional_depth", "argument_depth"), [(1, 2), (2, 1)])
+def test_lie_pairing_mixed_depth_adjoint(functional_depth, argument_depth):
+    functional_basis = rpj.LieBasis(2, functional_depth)
+    argument_basis = rpj.LieBasis(2, argument_depth)
+    functional = rpj.Lie(
+        jnp.arange(functional_basis.size(), dtype=jnp.float32), functional_basis
+    )
+    argument = rpj.Lie(
+        jnp.arange(argument_basis.size(), dtype=jnp.float32), argument_basis
+    )
+
+    ct_functional, ct_argument = rpj.lie_pairing_adjoint_derivative(
+        functional, argument, jnp.asarray(1, dtype=jnp.float32)
+    )
+
+    assert ct_functional.basis == functional_basis
+    assert ct_argument.basis == argument_basis
+
+
 def _pairing_domain(lhs, rhs):
     return jnp.sum(lhs.data * rhs.data)
 
