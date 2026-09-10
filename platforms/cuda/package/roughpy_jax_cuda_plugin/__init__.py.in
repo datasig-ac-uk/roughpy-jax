@@ -7,6 +7,7 @@ from roughpy_jax.ops import Operation
 from .@RPJ_CUDA_MODULE_NAME@ import cuda_functions
 
 PLUGIN_VARIANT = "@RPJ_CUDA_VARIANT@"
+PLUGIN_VERSION = "@RPJ_CUDA_PLUGIN_VERSION@"
 _registered = False
 
 
