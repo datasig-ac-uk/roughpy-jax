@@ -26,6 +26,12 @@ def csc_matvec(data, indices, indptr, n_rows, x):
     x:       (*batch_dims, n_cols) dense vector(s) for the right-hand side
     returns: (*batch_dims, n_rows) result of A @ x
     """
+    n_cols = indptr.shape[0] - 1
+    if x.shape[-1] != n_cols:
+        raise ValueError(
+            f"expected an input with {n_cols} columns, got {x.shape[-1]}"
+        )
+
     # Generate a compact array of which non-zero cells to update
     cols = expand_indptr(indptr)
 
@@ -58,6 +64,11 @@ def csr_matvec(data, indices, indptr, n_cols, x):
     x:       (*batch_dims, n_cols) dense vector(s) for the right-hand side
     returns: (*batch_dims, n_rows) result of A @ x
     """
+    if x.shape[-1] != n_cols:
+        raise ValueError(
+            f"expected an input with {n_cols} columns, got {x.shape[-1]}"
+        )
+
     # Compact array of cells to update
     rows = expand_indptr(indptr)
 
@@ -67,9 +78,11 @@ def csr_matvec(data, indices, indptr, n_cols, x):
     # Updates are all the sparse additions at every location in all tensors
     updates = data * x_by_col  # broadcasting over batch dims
 
-    # Output array to receive stattered updated (*batch_dims, n_rows)
+    # Output array to receive scattered updates (*batch_dims, n_rows).
+    # In CSR format the number of rows is encoded by indptr.
     batched_shape = x_by_col.shape[:-1]
-    y = jnp.zeros((*batched_shape, n_cols), dtype=updates.dtype)
+    n_rows = indptr.shape[0] - 1
+    y = jnp.zeros((*batched_shape, n_rows), dtype=updates.dtype)
 
     # Scatter-add to accumulate into rows: y[..., rows[i]] += updates[..., i]
     y = y.at[..., rows].add(updates)

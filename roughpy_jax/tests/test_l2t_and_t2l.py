@@ -86,6 +86,10 @@ def test_l2t_adjoint_derivative(lt2_trials):
     tangent = lt2_trials.uniform_lie() * lt2_trials.cond_dtype(1e-3, 1e0)
     cotangent = lt2_trials.uniform_shuffle_tensor()
 
+    ct_x, _ = rpj.lie_to_tensor_adjoint_derivative(x, cotangent)
+    assert ct_x.basis == x.basis
+    assert ct_x.data.shape == x.data.shape
+
     assert_is_adjoint_derivative(
         rpj.lie_to_tensor,
         lambda arg, ct: rpj.lie_to_tensor_adjoint_derivative(arg, ct)[0],
@@ -127,6 +131,11 @@ def test_t2l_adjoint_derivative(lt2_trials):
     x = lt2_trials.uniform_free_tensor()
     tangent = lt2_trials.uniform_free_tensor() * lt2_trials.cond_dtype(1e-3, 1e0)
     cotangent = lt2_trials.uniform_lie()
+
+    ct_x, _ = rpj.tensor_to_lie_adjoint_derivative(x, cotangent)
+    assert ct_x.basis == x.basis
+    assert ct_x.data.shape == x.data.shape
+
     assert_linear_map_adjoint_derivative(
         rpj.tensor_to_lie,
         lambda arg, ct: rpj.tensor_to_lie_adjoint_derivative(arg, ct)[0],
