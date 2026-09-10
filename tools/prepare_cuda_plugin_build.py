@@ -83,10 +83,8 @@ def plugin_distribution_name(root_pyproject: dict, family: str) -> str:
     )
 
 
-def plugin_runtime_dependencies(root_pyproject: dict, family: str) -> list[str]:
-    version = root_pyproject["project"]["version"]
+def plugin_runtime_dependencies(family: str) -> list[str]:
     return [
-        f'    "roughpy-jax=={version}",',
         f'    "jax[{family}]>=0.4.0; platform_system == \'Linux\'",',
     ]
 
@@ -135,7 +133,7 @@ def render_pyproject(
     py_api = wheel_python_api(root_pyproject)
     project_name = plugin_distribution_name(root_pyproject, family)
     package_module = f"roughpy_jax_{family}_plugin"
-    runtime_dependencies = plugin_runtime_dependencies(root_pyproject, family)
+    runtime_dependencies = plugin_runtime_dependencies(family)
     cuda_architectures = supported_cuda_architectures(major)
     authors_block = format_inline_toml_list(authors)
     classifiers_block = format_toml_list(classifiers)
@@ -179,6 +177,7 @@ def render_pyproject(
             "[tool.scikit-build.cmake.define]",
             f'RPJ_CUDA_TOOLKIT_MAJOR = "{major}"',
             f'RPJ_CUDA_PACKAGE_DIR = "{package_module}"',
+            f'RPJ_CUDA_PLUGIN_VERSION = "{version}"',
             f'RPJ_CUDA_VARIANT = "{family}"',
             f'CMAKE_CUDA_ARCHITECTURES = "{cuda_architectures}"',
             "",

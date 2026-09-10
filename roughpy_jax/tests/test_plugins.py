@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import platform
+from types import SimpleNamespace
 
 import pytest
 
@@ -11,6 +12,49 @@ LINUX_ONLY = pytest.mark.skipif(
     platform.system() != "Linux",
     reason="plugin loading is only supported on Linux",
 )
+
+
+def test_plugin_version_matches_host(monkeypatch):
+    monkeypatch.setattr(_plugins, "version", lambda distribution: "1.1.1")
+
+    _plugins._check_plugin_version(
+        SimpleNamespace(__name__="roughpy_jax_cuda12_plugin", PLUGIN_VERSION="1.1.1")
+    )
+
+
+def test_plugin_version_mismatch_is_rejected(monkeypatch):
+    monkeypatch.setattr(_plugins, "version", lambda distribution: "1.1.1")
+
+    with pytest.raises(ImportError, match="has version 1.1.0.*has version 1.1.1"):
+        _plugins._check_plugin_version(
+            SimpleNamespace(
+                __name__="roughpy_jax_cuda12_plugin", PLUGIN_VERSION="1.1.0"
+            )
+        )
+
+
+def test_legacy_plugin_uses_distribution_version(monkeypatch):
+    versions = {
+        "roughpy-jax-cuda12-plugin": "1.1.0",
+        "roughpy-jax": "1.1.1",
+    }
+    monkeypatch.setattr(_plugins, "version", versions.__getitem__)
+
+    with pytest.raises(ImportError, match="has version 1.1.0.*has version 1.1.1"):
+        _plugins._check_plugin_version(
+            SimpleNamespace(__name__="roughpy_jax_cuda12_plugin")
+        )
+
+
+def test_source_plugin_without_distribution_metadata_is_accepted(monkeypatch):
+    def missing_distribution(distribution):
+        raise _plugins.PackageNotFoundError(distribution)
+
+    monkeypatch.setattr(_plugins, "version", missing_distribution)
+
+    _plugins._check_plugin_version(
+        SimpleNamespace(__name__="roughpy_jax_cuda12_plugin")
+    )
 
 
 @LINUX_ONLY
