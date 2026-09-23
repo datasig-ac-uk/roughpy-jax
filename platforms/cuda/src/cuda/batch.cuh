@@ -1,6 +1,7 @@
 #ifndef PLATFORMS_CUDA_SRC_CUDA_BATCH_CUH
 #define PLATFORMS_CUDA_SRC_CUDA_BATCH_CUH
 
+#include <limits>
 
 #include <rpp/gpu/architecture.hpp>
 #include <rpp/views/batch.hpp>
@@ -46,6 +47,21 @@ template<typename T, typename Arch=rpp::gpu::arch::DefaultArchitecture>
 using ScalarBatch = rpp::Batch<ScalarView<T, Arch>,
     rpp::layouts::NoStrideLayout
 >;
+
+// Batch counts are computed with 64-bit host integers, but the GPU operation
+// launch narrows them to the architecture's index type.
+template<typename Arch=rpp::gpu::arch::DefaultArchitecture, typename Size>
+ffi::Error check_batch_size(Size batch_size) noexcept {
+    using Index = typename Arch::Index;
+
+    constexpr auto max_batch_size = std::numeric_limits<Index>::max();
+    if (batch_size > max_batch_size) {
+        return ffi::Error::InvalidArgument(
+            "batch size exceeds the CUDA kernel index range");
+    }
+
+    return ffi::Error::Success();
+}
 
 template<typename T, typename Arch=rpp::gpu::arch::DefaultArchitecture>
 auto make_tensor_batch(

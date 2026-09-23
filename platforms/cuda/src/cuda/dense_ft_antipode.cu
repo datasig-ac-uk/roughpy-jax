@@ -44,6 +44,7 @@ struct DenseFTAntipodeFunctor {
                                 out_shape.end() - 1,
                                 1LL,
                                 std::multiplies<>{});
+        RPY_XLA_SUCCESS_OR_RETURN(check_batch_size(n_tensors));
 
         return select_strategy<Accum>(tensor_size, [&](auto strategy) {
             using LaunchCfg = typename decltype(strategy)::LaunchConfig;
@@ -89,7 +90,6 @@ ffi::Error cuda_dense_ft_antipode_impl(cudaStream_t stream,
 
     RPY_XLA_SUCCESS_OR_RETURN(check_data_degree(out, static_args.basis, depth));
     RPY_XLA_SUCCESS_OR_RETURN(check_data_degree(arg, static_args.basis, max_degree));
-
     if (!all_buffers_match_type(out->element_type(), arg)) {
         return ffi::Error::InvalidArgument(
             "all tensors should have the same data type");
