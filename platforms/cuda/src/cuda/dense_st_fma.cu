@@ -44,6 +44,7 @@ struct DenseSTFmaFunctor {
                             out_shape.end() - 1,
                             1LL,
                             std::multiplies<>{});
+        RPY_XLA_SUCCESS_OR_RETURN(check_batch_size(n_tensors));
 
         return select_strategy<Accum>(tensor_size, [&](auto strategy) {
             using LaunchCfg = typename decltype(strategy)::LaunchConfig;
@@ -75,6 +76,7 @@ struct DenseSTFmaFunctor {
                             out_shape.end() - 1,
                             1LL,
                             std::multiplies<>{});
+        RPY_XLA_SUCCESS_OR_RETURN(check_batch_size(n_tensors));
 
         return select_strategy<Accum>(tensor_size, [&](auto strategy) {
             using LaunchCfg = typename decltype(strategy)::LaunchConfig;
@@ -124,7 +126,6 @@ ffi::Error cuda_dense_st_fma_impl(cudaStream_t stream,
     RPY_XLA_SUCCESS_OR_RETURN(check_data_degree(a, static_args.basis, a_max_deg));
     RPY_XLA_SUCCESS_OR_RETURN(check_data_degree(b, static_args.basis, b_max_deg));
     RPY_XLA_SUCCESS_OR_RETURN(check_data_degree(c, static_args.basis, c_max_deg));
-
     if (!all_buffers_match_type(out->element_type(), a, b, c)) {
         return ffi::Error::InvalidArgument(
             "all tensors should have the same data type");
@@ -159,7 +160,6 @@ ffi::Error cuda_dense_st_mul_impl(cudaStream_t stream,
     RPY_XLA_SUCCESS_OR_RETURN(check_data_degree(out, static_args.basis, depth));
     RPY_XLA_SUCCESS_OR_RETURN(check_data_degree(lhs, static_args.basis, lhs_max_deg));
     RPY_XLA_SUCCESS_OR_RETURN(check_data_degree(rhs, static_args.basis, rhs_max_deg));
-
     if (!all_buffers_match_type(out->element_type(), lhs, rhs)) {
         return ffi::Error::InvalidArgument(
             "all tensors should have the same data type");

@@ -36,6 +36,7 @@ struct DenseTensorPairingFunctor {
         const auto tensor_size = static_args.basis.size();
         auto out_shape = out->dimensions();
         const auto batch_size = std::accumulate(out_shape.begin(), out_shape.end(), 1LL, std::multiplies<int64_t>());
+        RPY_XLA_SUCCESS_OR_RETURN(check_batch_size(batch_size));
 
         return select_strategy<Accum>(tensor_size, [&](auto strategy) {
             using LaunchCfg = typename decltype(strategy)::LaunchConfig;
@@ -77,7 +78,6 @@ ffi::Error cuda_dense_tensor_pairing(
 
     RPY_XLA_SUCCESS_OR_RETURN(check_data_degree(functional, static_args.basis, fun_max_deg));
     RPY_XLA_SUCCESS_OR_RETURN(check_data_degree(argument, static_args.basis, arg_max_deg));
-
     if (!all_buffers_match_type(out->element_type(), functional, argument)) {
         return ffi::Error::InvalidArgument(
             "all arguments should have the same data type");

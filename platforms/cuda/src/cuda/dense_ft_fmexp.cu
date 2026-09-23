@@ -41,6 +41,7 @@ struct DenseFTFMExpFunctor {
                             out_shape.end() - 1,
                             1LL,
                             std::multiplies<>{});
+        RPY_XLA_SUCCESS_OR_RETURN(check_batch_size(n_tensors));
 
         return select_strategy<Accum>(tensor_size, [&](auto strategy) {
             using LaunchCfg = typename decltype(strategy)::LaunchConfig;
@@ -88,7 +89,6 @@ ffi::Error cuda_dense_ft_fmexp_impl(cudaStream_t stream,
         check_data_degree(multiplier, static_args.basis, mul_max_deg));
     RPY_XLA_SUCCESS_OR_RETURN(
         check_data_degree(exponent, static_args.basis, exp_max_deg));
-
     if (!all_buffers_match_type(out->element_type(), multiplier, exponent)) {
         return ffi::Error::InvalidArgument(
             "all tensors should have the same data type");
