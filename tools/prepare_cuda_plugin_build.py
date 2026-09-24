@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import shutil
 import tomllib
@@ -120,12 +121,12 @@ def render_pyproject(
     major: str,
     family: str,
     root_pyproject: dict,
+    scm_root: str,
 ) -> str:
     root_project = root_pyproject["project"]
     root_cibw = root_pyproject.get("tool", {}).get("cibuildwheel", {})
     authors = root_project.get("authors", [])
     classifiers = plugin_classifiers(root_pyproject)
-    version = root_project["version"]
     requires_python = root_project["requires-python"]
     keywords = root_project.get("keywords", [])
     license_text = root_project.get("license", {}).get("text", "BSD-3-Clause")
@@ -144,16 +145,17 @@ def render_pyproject(
         [
             "[build-system]",
             "requires = [",
-            '    "scikit-build-core[pyproject]>=0.10",',
+            '    "scikit-build-core[pyproject]>=1.0",',
             '    "roughpy>=0.3.0",',
             '    "jax>=0.4.0",',
             '    "jaxlib>=0.4.0",',
+            '    "setuptools-scm>=9.0"',
             "]",
             'build-backend = "scikit_build_core.build"',
             "",
             "[project]",
             f'name = "{project_name}"',
-            f'version = "{version}"',
+            'dynamic = ["version"]',
             f'description = "CUDA {major} plugin package for roughpy-jax custom calls and kernels"',
             'readme = "README.md"',
             f"authors = {authors_block}",
@@ -174,10 +176,16 @@ def render_pyproject(
             "wheel.packages = []",
             f'wheel.py-api = "{py_api}"',
             "",
+            "[[tool.dynamic-metadata]]",
+            'provider = "scikit_build_core.metadata.setuptools_scm"',
+            "",
+            "[tool.setuptools_scm]",
+            f'root = "{scm_root}"',
+            'local_scheme = "no-local-version"',
+            "",
             "[tool.scikit-build.cmake.define]",
             f'RPJ_CUDA_TOOLKIT_MAJOR = "{major}"',
             f'RPJ_CUDA_PACKAGE_DIR = "{package_module}"',
-            f'RPJ_CUDA_PLUGIN_VERSION = "{version}"',
             f'RPJ_CUDA_VARIANT = "{family}"',
             f'CMAKE_CUDA_ARCHITECTURES = "{cuda_architectures}"',
             "",
@@ -226,6 +234,7 @@ def main() -> None:
     major, family = normalise_variant(args.variant)
     project_name = plugin_distribution_name(root_pyproject, family)
     out_dir = (args.out or repo_root / "build" / "cuda-plugin" / family).resolve()
+    scm_root = Path(os.path.relpath(repo_root, out_dir)).as_posix()
 
     if out_dir.exists():
         shutil.rmtree(out_dir)
@@ -238,7 +247,7 @@ def main() -> None:
     shutil.copy2(repo_root / "platforms" / "cuda" / "CMakeLists.txt", out_dir / "CMakeLists.txt")
 
     (out_dir / "pyproject.toml").write_text(
-        render_pyproject(major, family, root_pyproject),
+        render_pyproject(major, family, root_pyproject, scm_root),
         encoding="utf-8",
     )
     (out_dir / "README.md").write_text(

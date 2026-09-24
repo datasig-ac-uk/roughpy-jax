@@ -1,6 +1,12 @@
 cmake_minimum_required(VERSION 3.30)
 
-project(RoughPy_JAX_CUDA VERSION 1.1.0 LANGUAGES C CXX CUDA)
+if (SKBUILD AND DEFINED SKBUILD_PROJECT_VERSION)
+    set(RPJ_PLUGIN_VERSION ${SKBUILD_PROJECT_VERSION})
+else ()
+    set(RPJ_PLUGIN_VERSOIN 1.0.0)
+endif ()
+
+project(RoughPy_JAX_CUDA VERSION "${RPJ_PLUGIN_VERSION}" LANGUAGES C CXX CUDA)
 
 include(GNUInstallDirs)
 
@@ -9,8 +15,6 @@ option(RPJ_CUDA_INPLACE_BUILD "Build the plugin into the local package directory
 set(RPJ_CUDA_PACKAGE_DIR "roughpy_jax_cuda_plugin" CACHE STRING
         "Python package directory for the CUDA plugin wheel")
 set(RPJ_CUDA_MODULE_NAME "_rpy_jax_cuda")
-set(RPJ_CUDA_PLUGIN_VERSION "${PROJECT_VERSION}" CACHE STRING
-        "Version of roughpy-jax with which this plugin was released")
 set(RPJ_CUDA_VARIANT "" CACHE STRING
         "CUDA toolkit variant label recorded in the plugin metadata, e.g. 12.8 or 13")
 

@@ -2,7 +2,8 @@ cmake_minimum_required(VERSION 3.30)
 
 
 if (SKBUILD AND DEFINED SKBUILD_PROJECT_VERSION)
-    set(RPJ_VERSION ${SKBUILD_PROJECT_VERSION})
+    string(REGEX MATCH "^[0-9]+(\\.[0-9]+)*" RPJ_VERSION
+            "${SKBUILD_PROJECT_VERSION}")
 else()
     set(RPJ_VERSION 1.0.0)
 endif()

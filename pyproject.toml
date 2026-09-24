@@ -1,15 +1,16 @@
 [build-system]
 requires = [
-    "scikit-build-core[pyproject]>=0.10",
+    "scikit-build-core[pyproject]>=1.0",
     "roughpy>=0.3.0",
     "jax>=0.4.0",
-    "jaxlib>=0.4.0"
+    "jaxlib>=0.4.0",
+    "setuptools-scm>=9.0"
 ]
 build-backend = "scikit_build_core.build"
 
 [project]
 name = "roughpy-jax"
-dynamic=["version"]
+dynamic = ["version"]
 
 description = "JAX bindings and operations for RoughPy"
 readme = "README.md"
@@ -42,11 +43,11 @@ jax = ["jax>=0.4.0", "jaxlib>=0.4.0"]
 benchmarks = ["asv", "virtualenv", "psutil"]
 "cuda12" = [
     "jax[cuda12]>=0.4.0; platform_system == 'Linux'",
-    "roughpy-jax-cuda12-plugin==1.1.1; platform_system == 'Linux'",
+    "roughpy-jax-cuda12-plugin; platform_system == 'Linux'",
 ]
 "cuda13" = [
     "jax[cuda13]>=0.4.0; platform_system == 'Linux'",
-    "roughpy-jax-cuda13-plugin==1.1.1; platform_system == 'Linux'",
+    "roughpy-jax-cuda13-plugin; platform_system == 'Linux'",
 ]
 
 
@@ -67,7 +68,7 @@ wheel.py-api = "cp311"
 editable.mode = "inplace"
 
 
-[tool.dynamic-metadata]
+[[tool.dynamic-metadata]]
 provider = "scikit_build_core.metadata.setuptools_scm"
 
 [tool.cibuildwheel]
