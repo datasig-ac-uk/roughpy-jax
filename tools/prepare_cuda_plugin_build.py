@@ -146,9 +146,7 @@ def render_pyproject(
             "[build-system]",
             "requires = [",
             '    "scikit-build-core[pyproject]>=1.0",',
-            '    "roughpy>=0.3.0",',
             '    "jax>=0.4.0",',
-            '    "jaxlib>=0.4.0",',
             '    "setuptools-scm>=9.0"',
             "]",
             'build-backend = "scikit_build_core.build"',
@@ -191,7 +189,6 @@ def render_pyproject(
             "",
             "[tool.cibuildwheel]",
             f'build = "{py_api}-manylinux_x86_64"',
-            'build-frontend = { name = "pip", args = ["--no-build-isolation"] }',
             f"skip = {skip_block}",
             "",
         ]

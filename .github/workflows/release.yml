@@ -67,8 +67,6 @@ jobs:
   build_cuda_plugin_wheels:
     name: Build plugin wheels (${{ matrix.variant }})
     runs-on: ubuntu-latest
-    needs:
-      - build_main_wheels
     strategy:
       fail-fast: false
       matrix:
@@ -81,11 +79,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/download-artifact@v8
-        with:
-          name: wheels-ubuntu-latest-x86_64
-          path: .cibw-dist/main
-
       - name: Prepare plugin build tree
         run: python3 tools/prepare_cuda_plugin_build.py --variant "${{ matrix.variant }}"
 
@@ -96,14 +89,13 @@ jobs:
           CIBW_MANYLINUX_X86_64_IMAGE: ${{ matrix.cibw_manylinux_image }}
           CIBW_BEFORE_ALL_LINUX: >-
             bash tools/bootstrap_rough_path_primitives.sh
-          CIBW_BEFORE_BUILD_LINUX: >-
-            python -m pip install --upgrade /project/.cibw-dist/main/roughpy_jax-*.whl "jax>=0.4.0" "jaxlib>=0.4.0" "scikit-build-core[pyproject]>=1.0"
           CIBW_ENVIRONMENT_LINUX: >-
             CMAKE_PREFIX_PATH=/usr
             RPP_GIT_TAG=releases/1.0.2
           CIBW_REPAIR_WHEEL_COMMAND_LINUX: >-
             auditwheel repair --exclude libcudart.so.12 --exclude libcudart.so.13 -w {dest_dir} {wheel}
-          CIBW_TEST_SKIP: "*"
+          # Importing the plugin requires CUDA-capable hardware, which GitHub-hosted runners lack.
+          CIBW_TEST_COMMAND_LINUX: ""
           RPP_GIT_TAG: main
         with:
           package-dir: build/cuda-plugin/${{ matrix.variant }}
