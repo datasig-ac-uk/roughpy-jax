@@ -5,8 +5,10 @@ stream classes and dense algebraic objects (such as free tensors, shuffle
 tensors, and elements of the free Lie algebra) for computational rough path 
 theory, and supports JAX JIT-compilation and differentiation.
 
-This library is currently in an alpha stage. The API is still evolving, and
-some features are incomplete or subject to change as the package matures.
+`roughpy-jax` publishes stable releases and is under active development. APIs
+may evolve on a faster timeline than projects with longer compatibility
+cycles. Breaking changes and deprecations are documented in the
+[GitHub release notes](https://github.com/datasig-ac-uk/roughpy-jax/releases).
 
 ## What This Package Provides
 
@@ -23,7 +25,7 @@ includes:
 
 ## Installation
 
-Once published, `roughpy-jax` can be installed from PyPI with:
+`roughpy-jax` can be installed from PyPI with:
 
 ```bash
 pip install roughpy-jax
@@ -34,15 +36,16 @@ through extras on the main package:
 
 ```bash
 pip install "roughpy-jax[cuda12]"
+pip install "roughpy-jax[cuda13]"
 ```
 
 The core package auto-discovers installed backend plugins through Python entry
 points, so users do not need a separate `import` for the CUDA extension.
 
-The package requires the latest version of roughpy (0.3.0) and Python 3.11 or newer.
+The package requires RoughPy 0.3.0 or newer and Python 3.11 or newer.
 
-Release artifacts can also be downloaded from the GitHub Releases page for this
-repository.
+Release notes and artifacts are available from the
+[GitHub Releases page](https://github.com/datasig-ac-uk/roughpy-jax/releases).
 
 CUDA plugin wheels are intended for Linux only and follow JAX's CUDA package
 families (`cuda12` and `cuda13`). A `manylinux_2_28` baseline is used for Linux
@@ -109,32 +112,41 @@ These bases do not need to be identical, but they do need to be compatible.
 Exactly which bases exist, and whether they are user-facing, is stream-type
 dependent.
 
-Only very basic interval support is currently implemented. This area still
-needs to be expanded.
+The package provides real and dyadic intervals, partitions, batched interval
+endpoints, and left-closed/right-open and left-open/right-closed endpoint
+conventions. These types are JAX pytrees and can be used directly in stream
+queries. Some operations remain incomplete; in particular, intersection of two
+dyadic intervals is not yet implemented.
 
-It might not be possible to convert RoughPy objects directly to roughpy-jax 
-equivalents.
+Direct conversion from RoughPy objects to `roughpy-jax` equivalents is not
+currently provided.
 
-## JAX Notes
+## JAX Integration
 
-All algebra objects and algebraic operations are intended to support JIT and
-are fully differentiable. In particular, the package provides explicit
-derivative and adjoint-derivative functions alongside the corresponding primal
-operations, and these are the functions whose type information should be relied
-upon.
+Dense algebra objects are JAX pytrees. Their coefficient arrays are dynamic
+leaves, while basis information is static metadata. Core algebra operations
+support JIT compilation and reverse-mode transformations through custom VJP
+rules, whose adjoint-derivatives backpropagate cotangents between operations.
+Explicit derivative and adjoint-derivative functions are also available when
+these operations need to be used directly.
 
-Stream objects are more limited. Some stream types may support JIT in some
-contexts, but stream support is not yet uniform. In particular,
-`LieIncrementStream` is not currently registered as a pytree because of
-technical limitations that have not yet been resolved.
+`LieIncrementStream`, `PiecewiseAbelianStream`, intervals, and partitions are
+also registered as pytrees. Stream queries can be JIT-compiled, and reverse-mode
+transformations can propagate cotangents through the stored algebra data or
+dyadic cache. Timestamps, query endpoints, partitions, bases, resolutions, and
+interval conventions are treated as non-differentiable configuration.
 
-There is also an important JAX-specific subtlety in reverse-mode code. Because
-JAX tree handling does not preserve the intended algebraic type information in
-all backward-pass cotangents, cotangents may be represented using the wrong
-algebra wrapper. For example, a value that should be treated as a shuffle tensor
-may arrive as a free tensor, or vice versa. To handle this, internal JAX-facing
-code applies corrective conversions on incoming and outgoing cotangents. The
-public derivative and adjoint-derivative APIs expose the correct algebraic
+The dyadic resolution used by `LieIncrementStream.from_increments` determines
+the shape of its cache and must be static during JIT compilation. Passing
+`resolution=None` is deprecated. Use `compute_separating_resolution` outside
+the compiled function and pass the selected resolution explicitly.
+
+JAX requires cotangents returned by a custom VJP to have the same pytree
+structure as the corresponding primal value. This differs from the mathematical
+duality between free tensors and shuffle tensors, so a cotangent produced by a
+JAX reverse-mode transformation may use the primal algebra wrapper even when
+the mathematical cotangent belongs to its dual algebra. The explicit
+adjoint-derivative functions expose the mathematically appropriate algebra
 types.
 
 ## Testing
@@ -146,8 +158,12 @@ backend. Locally, the main test command is:
 pytest -m "not extra" roughpy_jax/tests
 ```
 
-Wheel builds are tested through `cibuildwheel` in CI, and release artifacts are
-validated before publishing.
+Main-package wheel builds are tested through `cibuildwheel` in CI, and release
+artifacts are validated before publishing. CUDA plugin wheels are built but not
+executed in CI because GitHub-hosted runners do not provide suitable GPUs.
+
+Run `pytest` without the marker expression to include the longer tests marked
+as `extra`.
 
 CUDA plugin wheel builds are prepared with:
 
@@ -155,14 +171,16 @@ CUDA plugin wheel builds are prepared with:
 python tools/prepare_cuda_plugin_build.py --variant 12
 ```
 
-That generates a variant-specific build directory under `build/cuda-plugin/`
-and prints the exact `python -m build` command to run for that wheel.
+That generates a variant-specific source and metadata tree under
+`build/cuda-plugin/`. The release workflow passes this directory to
+`cibuildwheel`; compiling it locally additionally requires the matching CUDA
+toolkit and the native RoughPathPrimitives dependencies.
 
 ## Example
 
-For examples on how to use the higher level stream objects, see the `examples/` 
-folder. Here the 'words' example from the RoughPy documentation has been 
-converted to use the new Stream objects. 
+For examples of how to use the higher-level stream objects, see the `examples/`
+folder. The `words` example from the RoughPy documentation has been converted
+to use the `roughpy-jax` stream objects.
 
 ## Support
 
