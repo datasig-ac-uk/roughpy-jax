@@ -3,10 +3,11 @@ from __future__ import annotations
 import enum
 import typing
 from dataclasses import FrozenInstanceError, dataclass
-from typing import Any, Protocol, TypeVar
+from typing import Any, Protocol, TypeAlias, TypeVar
 
 import jax
 import jax.numpy as jnp
+import numpy.typing as npt
 from jax import Array
 from jax.typing import ArrayLike
 
@@ -142,6 +143,9 @@ class Dyadic:
     :type n: Array
     """
 
+    k: Array
+    n: Array
+
     def __init__(self, k: ArrayLike, n: ArrayLike) -> None:
         k = jnp.asarray(k)
         n = jnp.asarray(n)
@@ -167,7 +171,6 @@ class Dyadic:
     def __eq__(self, other: object) -> bool:
         if type(self) is not type(other):
             return False
-        other = typing.cast(Dyadic, other)
         return bool(
             jnp.array_equal(self.k, other.k)
             and jnp.array_equal(self.n, other.n)
@@ -184,6 +187,8 @@ class DyadicInterval(Dyadic):
     endpoints (and width) are fully defined by the k and n parameters of Dyadic
     and whether the interval is closed or open on either end.
     """
+
+    _interval_type: IntervalType
 
     def __init__(
             self, k: ArrayLike, n: ArrayLike, interval_type: IntervalType = IntervalType.ClOpen
@@ -227,20 +232,28 @@ class DyadicInterval(Dyadic):
         raise NotImplementedError("DyadicInterval intersection is not implemented yet")
 
 
-def _dyadic_tree_flatten(dyadic: Dyadic):
+def _dyadic_tree_flatten(dyadic: Dyadic) -> tuple[tuple[Array, Array], None]:
     return (dyadic.k, dyadic.n), None
 
 
-def _dyadic_tree_unflatten(_aux_data, children):
-    return Dyadic(*children)
+def _dyadic_tree_unflatten(
+        _aux_data: None, children: tuple[Array, Array]
+) -> Dyadic:
+    k, n = children
+    return Dyadic(k, n)
 
 
-def _dyadic_interval_tree_flatten(interval: DyadicInterval):
+def _dyadic_interval_tree_flatten(
+        interval: DyadicInterval,
+) -> tuple[tuple[Array, Array], IntervalType]:
     return (interval.k, interval.n), interval.interval_type
 
 
-def _dyadic_interval_tree_unflatten(interval_type, children):
-    return DyadicInterval(*children, interval_type)
+def _dyadic_interval_tree_unflatten(
+        interval_type: IntervalType, children: tuple[Array, Array]
+) -> DyadicInterval:
+    k, n = children
+    return DyadicInterval(k, n, interval_type)
 
 
 jax.tree_util.register_pytree_node(
@@ -253,7 +266,7 @@ jax.tree_util.register_pytree_node(
 )
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, init=False)
 class RealInterval:
     """A interval in the real line or collection thereof.
 
@@ -274,8 +287,25 @@ class RealInterval:
     _sup: Array
     _interval_type: IntervalType
 
+    def __init__(
+            self,
+            _inf: ArrayLike,
+            _sup: ArrayLike,
+            _interval_type: IntervalType,
+    ) -> None:
+        object.__setattr__(self, "_inf", jnp.asarray(_inf))
+        object.__setattr__(self, "_sup", jnp.asarray(_sup))
+        object.__setattr__(self, "_interval_type", _interval_type)
+
     def __str__(self) -> str:
         return BaseInterval.to_string(self)
+
+    def __hash__(self) -> int:
+        if self._inf.ndim != 0 or self._sup.ndim != 0:
+            raise TypeError("batched RealInterval objects are unhashable")
+        return hash(
+            (self._inf.item(), self._sup.item(), self._interval_type)
+        )
 
     @property
     def interval_type(self) -> IntervalType:
