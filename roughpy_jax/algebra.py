@@ -332,7 +332,10 @@ def concatenate(
 
 @jax.custom_vjp
 def ft_fma(
-        a: DenseFreeTensor, b: DenseFreeTensor, c: DenseFreeTensor
+        a: DenseFreeTensor,
+        b: DenseFreeTensor,
+        c: DenseFreeTensor,
+        out_basis: TensorBasis | None = None,
 ) -> DenseFreeTensor:
     """
     Free tensor fused multiply-add
@@ -343,12 +346,15 @@ def ft_fma(
     :param a: addition operand
     :param b: left-hand multiply operand
     :param c: right-hand multiple operand
+    :param out_basis: Optional basis defining the result's truncation. If not
+        specified, the basis of ``a`` is used. This argument should be passed
+        by keyword.
     :return: result
     """
     dtype = jnp.result_type(a.dtype, b.dtype, c.dtype)
     batch_dims = get_common_batch_shape(a, b, c)
 
-    a_max_deg = a.basis.depth
+    out_depth = a.basis.depth if out_basis is None else out_basis.depth
 
     op_cls = Operation.get_operation("ft_fma", "dense")
 
@@ -356,9 +362,10 @@ def ft_fma(
         (a.basis, b.basis, c.basis),
         dtype,
         batch_dims,
-        a_max_deg=np.int32(a_max_deg),
-        b_max_deg=np.int32(min(a_max_deg, b.basis.depth)),
-        c_max_deg=np.int32(min(a_max_deg, c.basis.depth)),
+        specific_basis=out_basis,
+        a_max_deg=np.int32(out_depth),
+        b_max_deg=np.int32(b.basis.depth),
+        c_max_deg=np.int32(c.basis.depth),
         b_min_deg=np.int32(0),
         c_min_deg=np.int32(0),
     )
@@ -375,6 +382,7 @@ def ft_fma_derivative(
         t_a: DenseFreeTensor,
         t_b: DenseFreeTensor,
         t_c: DenseFreeTensor,
+        out_basis: TensorBasis | None = None,
 ) -> DenseFreeTensor:
     """
     Free tensor fused multiply-add derivative
@@ -385,11 +393,23 @@ def ft_fma_derivative(
     :param t_a: tangent perturbation at a
     :param t_b: tangent perturbation at b
     :param t_c: tangent perturbation at c
+    :param out_basis: Optional basis defining the result's truncation. If not
+        specified, the basis of ``a`` is used. This argument should be passed
+        by keyword.
     :return: derivative in tangent direction (s_a, s_b, s_c)
     """
+    check_basis_compat(
+        a.basis, b.basis, c.basis, t_a.basis, t_b.basis, t_c.basis
+    )
+    if out_basis is not None:
+        check_basis_compat(a.basis, out_basis)
+
+    basis = a.basis if out_basis is None else out_basis
     return (
-            t_a + ft_mul_derivative(b, c, t_b, t_c)
-    ).change_depth(a.basis.depth)
+            t_a + ft_mul_derivative(
+                b, c, t_b, t_c, out_basis=basis
+            )
+    ).change_depth(basis.depth)
 
 
 def ft_fma_adjoint_derivative(
@@ -406,27 +426,39 @@ def ft_fma_adjoint_derivative(
     :param c: right-hand multiple operand
     :param ct_result: cotangent from the output
     :return: (cotangent for a, cotangent for b, cotangent for c)
+
+    An ``out_basis`` argument is not needed: ``ct_result.basis`` already
+    identifies the result space of the primal operation.
     """
-    ct_a = ct_result
+    check_basis_compat(a.basis, b.basis, c.basis, ct_result.basis)
+    get_common_batch_shape(a, b, c, ct_result)
+
+    ct_a = ct_result.change_depth(a.basis.depth)
     ct_b, ct_c = ft_mul_adjoint_derivative(b, c, ct_result)
     return ct_a, ct_b, ct_c
 
 
 def _ft_fma_vjp_fwd(
-        a: DenseFreeTensor, b: DenseFreeTensor, c: DenseFreeTensor
+        a: DenseFreeTensor,
+        b: DenseFreeTensor,
+        c: DenseFreeTensor,
+        out_basis: TensorBasis | None = None,
 ):
-    result = ft_fma(a, b, c)
-    return result, (a, b, c)
+    result = ft_fma(a, b, c, out_basis=out_basis)
+    return result, (a, b, c, result)
 
 
 def _ft_fma_vjp_bwd(residuals, ct_result_data) -> tuple[Any, ...]:
-    a, b, c = residuals
-    ct_result = from_jax_cotangent(DenseShuffleTensor, ct_result_data, a.basis)
+    a, b, c, result = residuals
+    ct_result = from_jax_cotangent(
+        DenseShuffleTensor, ct_result_data, result.basis
+    )
     ct_a, ct_b, ct_c = ft_fma_adjoint_derivative(a, b, c, ct_result)
     return (
         to_jax_cotangent(type(a), ct_a),
         to_jax_cotangent(type(b), ct_b),
         to_jax_cotangent(type(c), ct_c),
+        None,
     )
 
 
@@ -434,7 +466,11 @@ ft_fma.defvjp(_ft_fma_vjp_fwd, _ft_fma_vjp_bwd)
 
 
 @jax.custom_vjp
-def ft_mul(a: DenseFreeTensor, b: DenseFreeTensor) -> DenseFreeTensor:
+def ft_mul(
+        a: DenseFreeTensor,
+        b: DenseFreeTensor,
+        out_basis: TensorBasis | None = None,
+) -> DenseFreeTensor:
     """
     Free tensor multiply
 
@@ -443,6 +479,9 @@ def ft_mul(a: DenseFreeTensor, b: DenseFreeTensor) -> DenseFreeTensor:
 
     :param a: left-hand multiply operand
     :param b: right-hand multiple operand
+    :param out_basis: Optional basis defining the result's truncation. If not
+        specified, the deeper operand basis is used. This argument should be
+        passed by keyword.
     :return: result
     """
     dtype = jnp.result_type(a.dtype, b.dtype)
@@ -455,6 +494,7 @@ def ft_mul(a: DenseFreeTensor, b: DenseFreeTensor) -> DenseFreeTensor:
         (a.basis, b.basis),
         dtype,
         batch_dims,
+        specific_basis=out_basis,
         lhs_max_deg=np.int32(a.basis.depth),
         rhs_max_deg=np.int32(b.basis.depth),
         lhs_min_deg=np.int32(0),
@@ -471,6 +511,7 @@ def ft_mul_derivative(
         rhs: DenseFreeTensor,
         t_lhs: DenseFreeTensor,
         t_rhs: DenseFreeTensor,
+        out_basis: TensorBasis | None = None,
 ) -> DenseFreeTensor:
     """
     Free tensor multiply derivative (product rule).
@@ -481,9 +522,20 @@ def ft_mul_derivative(
     :param rhs: right-hand operand
     :param t_lhs: tangent perturbation at lhs
     :param t_rhs: tangent perturbation at rhs
+    :param out_basis: Optional basis defining the result's truncation. If not
+        specified, the deeper primal operand basis is used. This argument
+        should be passed by keyword.
     :return: derivative in tangent direction (s,t)
     """
-    return ft_mul(lhs, t_rhs) + ft_mul(t_lhs, rhs)
+    check_basis_compat(lhs.basis, rhs.basis, t_lhs.basis, t_rhs.basis)
+    if out_basis is not None:
+        check_basis_compat(lhs.basis, out_basis)
+
+    basis = out_basis or result_basis(lhs.basis, rhs.basis)
+    return (
+        ft_mul(lhs, t_rhs, out_basis=basis)
+        + ft_mul(t_lhs, rhs, out_basis=basis)
+    ).change_depth(basis.depth)
 
 
 def ft_mul_adjoint_derivative(
@@ -500,25 +552,35 @@ def ft_mul_adjoint_derivative(
     :param rhs: right-hand operand
     :param ct_result: cotangent from the output
     :return: (cotangent for lhs, cotangent for rhs)
+
+    An ``out_basis`` argument is not needed: ``ct_result.basis`` already
+    identifies the result space of the primal operation.
     """
+    check_basis_compat(lhs.basis, rhs.basis, ct_result.basis)
+    get_common_batch_shape(lhs, rhs, ct_result)
+
     ct_lhs = ft_adjoint_right_mul(rhs, ct_result).change_depth(lhs.basis.depth)
     ct_rhs = ft_adjoint_left_mul(lhs, ct_result).change_depth(rhs.basis.depth)
     return ct_lhs, ct_rhs
 
 
-def _ft_mul_vjp_fwd(lhs: DenseFreeTensor, rhs: DenseFreeTensor):
-    result = ft_mul(lhs, rhs)
-    return result, (lhs, rhs)
+def _ft_mul_vjp_fwd(
+        lhs: DenseFreeTensor,
+        rhs: DenseFreeTensor,
+        out_basis: TensorBasis | None = None,
+):
+    result = ft_mul(lhs, rhs, out_basis=out_basis)
+    return result, (lhs, rhs, result)
 
 
 def _ft_mul_vjp_bwd(residuals, ct_result_data) -> tuple[Any, ...]:
-    lhs, rhs = residuals
-    out_basis = result_basis(lhs.basis, rhs.basis)
-    ct_result = from_jax_cotangent(DenseShuffleTensor, ct_result_data,
-                                   out_basis)
+    lhs, rhs, result = residuals
+    ct_result = from_jax_cotangent(
+        DenseShuffleTensor, ct_result_data, result.basis
+    )
     ct_lhs, ct_rhs = ft_mul_adjoint_derivative(lhs, rhs, ct_result)
     return (to_jax_cotangent(type(lhs), ct_lhs),
-            to_jax_cotangent(type(rhs), ct_rhs))
+            to_jax_cotangent(type(rhs), ct_rhs), None)
 
 
 ft_mul.defvjp(_ft_mul_vjp_fwd, _ft_mul_vjp_bwd)
@@ -605,7 +667,10 @@ antipode.defvjp(_antipode_vjp_fwd, _antipode_vjp_bwd)
 
 @jax.custom_vjp
 def st_fma(
-        a: DenseShuffleTensor, b: DenseShuffleTensor, c: DenseShuffleTensor
+        a: DenseShuffleTensor,
+        b: DenseShuffleTensor,
+        c: DenseShuffleTensor,
+        out_basis: TensorBasis | None = None,
 ) -> DenseShuffleTensor:
     """
     Shuffle tensor fused multiply-add
@@ -616,10 +681,14 @@ def st_fma(
     :param a: input and first operand
     :param b: left-hand operand
     :param c: right-hand operand
+    :param out_basis: Optional basis defining the result's truncation. If not
+        specified, the basis of ``a`` is used. This argument should be passed
+        by keyword.
     :return: shuffle fused multiply-add
     """
     batch_dims = get_common_batch_shape(a, b, c)
     dtype = jnp.result_type(a.dtype, b.dtype, c.dtype)
+    out_depth = a.basis.depth if out_basis is None else out_basis.depth
 
     op_cls = Operation.get_operation("st_fma", "dense")
 
@@ -627,9 +696,10 @@ def st_fma(
         (a.basis, b.basis, c.basis),
         dtype,
         batch_dims,
-        a_max_deg=np.int32(a.basis.depth),
-        b_max_deg=np.int32(min(a.basis.depth, b.basis.depth)),
-        c_max_deg=np.int32(min(a.basis.depth, c.basis.depth)),
+        specific_basis=out_basis,
+        a_max_deg=np.int32(out_depth),
+        b_max_deg=np.int32(b.basis.depth),
+        c_max_deg=np.int32(c.basis.depth),
         b_min_deg=np.int32(0),
         c_min_deg=np.int32(0),
     )
@@ -645,15 +715,27 @@ def st_fma_derivative(
         t_a: DenseShuffleTensor,
         t_b: DenseShuffleTensor,
         t_c: DenseShuffleTensor,
+        out_basis: TensorBasis | None = None,
 ) -> DenseShuffleTensor:
-    """Compute the derivative of `st_fma` in the supplied tangent direction."""
+    """Compute the derivative of `st_fma` in the supplied tangent direction.
+
+    :param out_basis: Optional basis defining the result's truncation. If not
+        specified, the basis of ``a`` is used. This argument should be passed
+        by keyword.
+    """
     check_basis_compat(a.basis, b.basis, c.basis, t_a.basis, t_b.basis,
                        t_c.basis)
+    if out_basis is not None:
+        check_basis_compat(a.basis, out_basis)
+
     get_common_batch_shape(a, b, c, t_a, t_b, t_c)
 
+    basis = a.basis if out_basis is None else out_basis
     return (
-            t_a + st_mul_derivative(b, c, t_b, t_c)
-    ).change_depth(a.basis.depth)
+            t_a + st_mul_derivative(
+                b, c, t_b, t_c, out_basis=basis
+            )
+    ).change_depth(basis.depth)
 
 
 def st_fma_adjoint_derivative(
@@ -662,39 +744,58 @@ def st_fma_adjoint_derivative(
         c: DenseShuffleTensor,
         ct_result: DenseFreeTensor,
 ) -> tuple[DenseFreeTensor, DenseFreeTensor, DenseFreeTensor]:
-    """Compute the JAX-facing cotangents for `st_fma`."""
+    """Compute the JAX-facing cotangents for `st_fma`.
+
+    An ``out_basis`` argument is not needed: ``ct_result.basis`` already
+    identifies the result space of the primal operation.
+    """
     check_basis_compat(a.basis, b.basis, c.basis, ct_result.basis)
     get_common_batch_shape(a, b, c, ct_result)
 
-    ct_a = ct_result
+    ct_a = ct_result.change_depth(a.basis.depth)
     ct_b, ct_c = st_mul_adjoint_derivative(b, c, ct_result)
 
     return ct_a, ct_b, ct_c
 
 
 def _st_fma_vjp_fwd(
-        a: DenseShuffleTensor, b: DenseShuffleTensor, c: DenseShuffleTensor
+        a: DenseShuffleTensor,
+        b: DenseShuffleTensor,
+        c: DenseShuffleTensor,
+        out_basis: TensorBasis | None = None,
 ) -> tuple[
     DenseShuffleTensor,
-    tuple[DenseShuffleTensor, DenseShuffleTensor, DenseShuffleTensor],
+    tuple[
+        DenseShuffleTensor,
+        DenseShuffleTensor,
+        DenseShuffleTensor,
+        DenseShuffleTensor,
+    ],
 ]:
-    result = st_fma(a, b, c)
-    return result, (a, b, c)
+    result = st_fma(a, b, c, out_basis=out_basis)
+    return result, (a, b, c, result)
 
 
 def _st_fma_vjp_bwd(
         residuals: tuple[
-            DenseShuffleTensor, DenseShuffleTensor, DenseShuffleTensor],
+            DenseShuffleTensor,
+            DenseShuffleTensor,
+            DenseShuffleTensor,
+            DenseShuffleTensor,
+        ],
         ct_result_data: jax.Array | DenseFreeTensor | DenseShuffleTensor,
 ) -> tuple[Any, ...]:
-    a, b, c = residuals
-    ct_result = from_jax_cotangent(DenseFreeTensor, ct_result_data, a.basis)
+    a, b, c, result = residuals
+    ct_result = from_jax_cotangent(
+        DenseFreeTensor, ct_result_data, result.basis
+    )
     ct_a, ct_b, ct_c = st_fma_adjoint_derivative(a, b, c, ct_result)
 
     return (
         to_jax_cotangent(type(a), ct_a),
         to_jax_cotangent(type(b), ct_b),
         to_jax_cotangent(type(c), ct_c),
+        None,
     )
 
 
@@ -702,8 +803,11 @@ st_fma.defvjp(_st_fma_vjp_fwd, _st_fma_vjp_bwd)
 
 
 @jax.custom_vjp
-def st_mul(lhs: DenseShuffleTensor,
-           rhs: DenseShuffleTensor) -> DenseShuffleTensor:
+def st_mul(
+        lhs: DenseShuffleTensor,
+        rhs: DenseShuffleTensor,
+        out_basis: TensorBasis | None = None,
+) -> DenseShuffleTensor:
     """
     Shuffle tensor product
 
@@ -712,6 +816,9 @@ def st_mul(lhs: DenseShuffleTensor,
 
     :param lhs: left-hand operand
     :param rhs: right-hand operand
+    :param out_basis: Optional basis defining the result's truncation. If not
+        specified, the deeper operand basis is used. This argument should be
+        passed by keyword.
     :return: the shuffle product of lhs and rhs
     """
     dtype = jnp.result_type(lhs.dtype, rhs.dtype)
@@ -723,6 +830,7 @@ def st_mul(lhs: DenseShuffleTensor,
         (lhs.basis, rhs.basis),
         dtype,
         batch_dims,
+        specific_basis=out_basis,
         lhs_max_deg=np.int32(lhs.basis.depth),
         rhs_max_deg=np.int32(rhs.basis.depth),
         lhs_min_deg=np.int32(0),
@@ -739,20 +847,37 @@ def st_mul_derivative(
         rhs: DenseShuffleTensor,
         t_lhs: DenseShuffleTensor,
         t_rhs: DenseShuffleTensor,
+        out_basis: TensorBasis | None = None,
 ) -> DenseShuffleTensor:
-    """Compute the derivative of `st_mul` in the supplied tangent direction."""
+    """Compute the derivative of `st_mul` in the supplied tangent direction.
+
+    :param out_basis: Optional basis defining the result's truncation. If not
+        specified, the deeper primal operand basis is used. This argument
+        should be passed by keyword.
+    """
     check_basis_compat(lhs.basis, rhs.basis, t_lhs.basis, t_rhs.basis)
+    if out_basis is not None:
+        check_basis_compat(lhs.basis, out_basis)
+
     get_common_batch_shape(lhs, rhs, t_lhs, t_rhs)
 
-    t_result = st_mul(lhs, t_rhs) + st_mul(t_lhs, rhs)
-    return t_result
+    basis = out_basis or result_basis(lhs.basis, rhs.basis)
+    t_result = (
+        st_mul(lhs, t_rhs, out_basis=basis)
+        + st_mul(t_lhs, rhs, out_basis=basis)
+    )
+    return t_result.change_depth(basis.depth)
 
 
 def st_mul_adjoint_derivative(
         lhs: DenseShuffleTensor, rhs: DenseShuffleTensor,
         ct_result: DenseFreeTensor
 ) -> tuple[DenseFreeTensor, DenseFreeTensor]:
-    """Compute the JAX-facing cotangents for `st_mul`."""
+    """Compute the JAX-facing cotangents for `st_mul`.
+
+    An ``out_basis`` argument is not needed: ``ct_result.basis`` already
+    identifies the result space of the primal operation.
+    """
     check_basis_compat(lhs.basis, rhs.basis, ct_result.basis)
     get_common_batch_shape(lhs, rhs, ct_result)
 
@@ -762,19 +887,25 @@ def st_mul_adjoint_derivative(
     return ct_lhs, ct_rhs
 
 
-def _st_mul_vjp_fwd(lhs, rhs):
-    result = st_mul(lhs, rhs)
-    return result, (lhs, rhs)
+def _st_mul_vjp_fwd(
+        lhs,
+        rhs,
+        out_basis: TensorBasis | None = None,
+):
+    result = st_mul(lhs, rhs, out_basis=out_basis)
+    return result, (lhs, rhs, result)
 
 
 def _st_mul_vjp_bwd(residuals, ct_result):
-    lhs, rhs = residuals
-    out_basis = result_basis(lhs.basis, rhs.basis)
-    ct_result_math = from_jax_cotangent(DenseFreeTensor, ct_result, out_basis)
+    lhs, rhs, result = residuals
+    ct_result_math = from_jax_cotangent(
+        DenseFreeTensor, ct_result, result.basis
+    )
     ct_lhs, ct_rhs = st_mul_adjoint_derivative(lhs, rhs, ct_result_math)
     return (
         to_jax_cotangent(type(lhs), ct_lhs),
         to_jax_cotangent(type(rhs), ct_rhs),
+        None,
     )
 
 
@@ -792,12 +923,10 @@ def ft_exp(x: DenseFreeTensor,
     If `out_basis` is not specified, the same basis as `x` is used.
 
     :param x: argument
-    :param out_basis: optional output basis.
+    :param out_basis: Optional output basis. This argument should be passed by
+        keyword.
     :return: tensor exponential of `x`
     """
-    if out_basis is not None:
-        check_basis_compat(x.basis, out_basis)
-
     dtype = x.dtype
 
     op_cls = Operation.get_operation("ft_exp", "dense")
@@ -825,7 +954,8 @@ def ft_exp_derivative(
     :param x: Argument at which to evaluate the derivative.
     :param t_x: Tangent direction at ``x``.
     :param out_basis: Optional basis for the result space. If not specified,
-        the same basis as ``x`` is used.
+        the same basis as ``x`` is used. This argument should be passed by
+        keyword.
     """
     check_basis_compat(x.basis, t_x.basis)
     if out_basis is not None:
@@ -948,12 +1078,10 @@ def ft_log(x: DenseFreeTensor,
     If `out_basis` is not specified, the same basis as `x` is used.
 
     :param x: argument
-    :param out_basis: optional output basis.
+    :param out_basis: Optional output basis. This argument should be passed by
+        keyword.
     :return: tensor logarithm of `x`
     """
-    if out_basis is not None:
-        check_basis_compat(x.basis, out_basis)
-
     dtype = x.dtype
 
     op_cls = Operation.get_operation("ft_log", "dense")
@@ -981,7 +1109,8 @@ def ft_log_derivative(
     :param x: Argument at which to evaluate the derivative.
     :param t_x: Tangent direction at ``x``.
     :param out_basis: Optional basis for the result space. If not specified,
-        the same basis as ``x`` is used.
+        the same basis as ``x`` is used. This argument should be passed by
+        keyword.
     """
     check_basis_compat(x.basis, t_x.basis)
     if out_basis is not None:
@@ -1097,12 +1226,10 @@ def ft_fmexp(
 
     :param multiplier: Multiplier free tensor
     :param exponent: Free tensor to exponential
-    :param out_basis: Optional output basis. If not specified, the same basis as `multiplier` is used.
+    :param out_basis: Optional output basis. If not specified, the same basis
+        as ``multiplier`` is used. This argument should be passed by keyword.
     :return: Resulting fused multiply-exponential of `multiplier` and `exponent`
     """
-    if out_basis is not None:
-        check_basis_compat(multiplier.basis, exponent.basis, out_basis)
-
     dtype = jnp.result_type(multiplier.dtype, exponent.dtype)
     batch_dims = get_common_batch_shape(multiplier, exponent)
 
@@ -1132,33 +1259,45 @@ def ft_fmexp_derivative(
         exponent: DenseFreeTensor,
         t_multiplier: DenseFreeTensor,
         t_exponent: DenseFreeTensor,
+        out_basis: TensorBasis | None = None,
 ) -> DenseFreeTensor:
-    """Compute the derivative of `ft_fmexp` in the supplied tangent direction."""
+    """Compute the derivative of `ft_fmexp` in the supplied tangent direction.
+
+    :param out_basis: Optional basis defining the result's truncation. If not
+        specified, the basis of ``multiplier`` is used. This argument should
+        be passed by keyword.
+    """
     check_basis_compat(
         multiplier.basis, exponent.basis, t_multiplier.basis, t_exponent.basis
     )
+    if out_basis is not None:
+        check_basis_compat(multiplier.basis, out_basis)
+
     get_common_batch_shape(multiplier, exponent, t_multiplier, t_exponent)
 
     exponent = _remove_unit_term(exponent)
     t_exponent = _remove_unit_term(t_exponent)
 
-    basis = multiplier.basis
+    basis = out_basis or multiplier.basis
     depth = basis.depth
 
-    r_d = multiplier
-    t_r_d = t_multiplier
+    r_d = multiplier.change_depth(basis.depth)
+    t_r_d = t_multiplier.change_depth(basis.depth)
 
     for d in range(depth, 0, -1):
         scale = 1.0 / d
-        r_dm1 = multiplier + scale * ft_mul(r_d, exponent)
-        t_r_dm1 = t_multiplier + scale * (
-                ft_mul(r_d, t_exponent) + ft_mul(t_r_d, exponent)
-        )
+        r_dm1 = (
+            multiplier + scale * ft_mul(r_d, exponent, out_basis=basis)
+        ).change_depth(basis.depth)
+        t_r_dm1 = (t_multiplier + scale * (
+                ft_mul(r_d, t_exponent, out_basis=basis)
+                + ft_mul(t_r_d, exponent, out_basis=basis)
+        )).change_depth(basis.depth)
 
         r_d = r_dm1
         t_r_d = t_r_dm1
 
-    return t_r_d.change_depth(multiplier.basis.depth)
+    return t_r_d.change_depth(basis.depth)
 
 
 def ft_fmexp_adjoint_derivative(
@@ -1166,14 +1305,18 @@ def ft_fmexp_adjoint_derivative(
         exponent: DenseFreeTensor,
         ct_result: DenseShuffleTensor,
 ) -> tuple[DenseShuffleTensor, DenseShuffleTensor]:
-    """Compute the JAX-facing cotangents for `ft_fmexp`."""
+    """Compute the JAX-facing cotangents for `ft_fmexp`.
+
+    An ``out_basis`` argument is not needed: ``ct_result.basis`` already
+    identifies the result space of the primal operation.
+    """
     check_basis_compat(multiplier.basis, exponent.basis, ct_result.basis)
     get_common_batch_shape(multiplier, exponent, ct_result)
 
     # tensor_type = type(multiplier)
     ct_type = type(ct_result)
 
-    basis = multiplier.basis
+    basis = ct_result.basis
     depth = basis.depth
 
     exponent = _remove_unit_term(exponent)
@@ -1185,11 +1328,16 @@ def ft_fmexp_adjoint_derivative(
     # not implemented here yet, because we haven't built the support into the high
     # level functions of disregarding higher-order terms yet.
 
-    r_data = [None for _ in range(depth)] + [multiplier]
+    r_data = [None for _ in range(depth)] + [
+        multiplier.change_depth(basis.depth)
+    ]
     for d in range(depth, 0, -1):
         scale = 1.0 / d
         # noinspection PyTypeChecker
-        r_data[d - 1] = multiplier + scale * ft_mul(exponent, r_data[d])
+        r_data[d - 1] = (
+            multiplier
+            + scale * ft_mul(exponent, r_data[d], out_basis=basis)
+        ).change_depth(basis.depth)
 
     # Now we can update the cotangents in sequence. We have to accumulate the
     # ct_multiplier and ct_exponent values, as well as the cotangents of
@@ -1220,7 +1368,7 @@ def _ft_fmexp_vjp_fwd(
         exponent: DenseFreeTensor,
         out_basis: TensorBasis | None,
 ):
-    result = ft_fmexp(multiplier, exponent, out_basis)
+    result = ft_fmexp(multiplier, exponent, out_basis=out_basis)
     return result, (multiplier, exponent, result)
 
 
@@ -1896,10 +2044,9 @@ lie_pairing.defvjp(_lie_pairing_vjp_fwd, _lie_pairing_vjp_bwd)
 @jax.custom_vjp
 def st_adjoint_mul(
         op_arg: DenseShuffleTensor,
-        arg: DenseFreeTensor,
+    arg: DenseFreeTensor,
 ) -> DenseFreeTensor:
     dtype = jnp.result_type(op_arg.dtype, arg.dtype)
-    check_basis_compat(op_arg.basis, arg.basis)
     batch_dims = get_common_batch_shape(op_arg, arg)
 
     op_cls = Operation.get_operation("st_adj_mul", "dense")
@@ -2055,7 +2202,9 @@ def cbh(*lie_pieces: DenseLie, lie_basis: LieBasis | None = None) -> DenseLie:
     result = DenseFreeTensor.identity(tensor_basis, dtype, batch_dims)
 
     for lie in lie_pieces:
-        result = ft_fmexp(result, lie_to_tensor(lie), tensor_basis)
+        result = ft_fmexp(
+            result, lie_to_tensor(lie), out_basis=tensor_basis
+        )
 
     # The basis should already match the desired output basis
     return to_log_signature(result)
