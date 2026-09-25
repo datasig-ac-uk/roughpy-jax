@@ -580,32 +580,30 @@ class Operation:
             if (impl_name := get_impl(platform)) is not None
         }
 
-    def convert_args_dtypes(self, *data_args: jax.Array):
+    def prepare_args(self, *data_args: jax.Array) -> tuple[jax.Array, ...]:
         """
-        Converts the data types of the provided arguments to match the instance's data
-        dtype attribute. This operation ensures the consistency of data types within
-        the instance's context.
+        Prepare runtime data arguments for backend dispatch.
 
-        :param data_args: Positional arguments whose data types need to be converted.
-        :type data_args: tuple
-        :return: A tuple containing arguments with their data types converted to
-            the instance's `data_dtype` data type.
-        :rtype: tuple
+        The default implementation converts every argument to the operation's
+        data dtype. Subclasses may extend this hook when a kernel requires
+        additional preparation, such as adjusting argument shapes or layouts.
+
+        :param data_args: Runtime array arguments supplied to the operation.
+        :return: Arguments prepared for the fallback and accelerated kernels.
         """
         return tuple(arg.astype(self.data_dtype) for arg in data_args)
 
     def __call__(self, *data_args) -> cabc.Sequence[Array]:
-        # Most operations will require homogeneous data arguments
-        converted_args = self.convert_args_dtypes(*data_args)
+        prepared_args = self.prepare_args(*data_args)
 
         # The fallback implementation, preloaded with static args
         fallback = self.get_fallback()
 
         if self.no_acceleration:
-            return fallback(*converted_args)
+            return fallback(*prepared_args)
 
         impls = self.get_implementations()
-        return jax.lax.platform_dependent(*converted_args, **impls, default=fallback)
+        return jax.lax.platform_dependent(*prepared_args, **impls, default=fallback)
 
 
 class DenseOperation:
@@ -799,6 +797,13 @@ class DenseFTFma(Operation, DenseOperation):
             return result_basis(preferred_basis, *bases, strategy="first")
         return result_basis(*bases, strategy="first")
 
+    def prepare_args(self, *data_args: Array) -> tuple[Array, ...]:
+        converted_args = super().prepare_args(*data_args)
+        basis_size = self.basis.size()
+        return tuple(
+            _redepth_data(arg, basis_size) for arg in converted_args
+        )
+
     @staticmethod
     def fallback(
             a_data: Array,
@@ -913,11 +918,11 @@ class DenseSTFma(Operation, DenseOperation):
         static_args["c_max_deg"] = operand_max_degree
         return self.StaticArgs(**static_args)
 
-    def convert_args_dtypes(self, *data_args: Array) -> tuple[Array, ...]:
-        a_data, b_data, c_data = super().convert_args_dtypes(*data_args)
+    def prepare_args(self, *data_args: Array) -> tuple[Array, ...]:
+        a_data, b_data, c_data = super().prepare_args(*data_args)
         basis_size = self.basis.size()
         return (
-            a_data,
+            _redepth_data(a_data, basis_size),
             _redepth_data(b_data, basis_size),
             _redepth_data(c_data, basis_size),
         )
@@ -960,8 +965,8 @@ class DenseSTMul(Operation, DenseOperation):
         static_args["rhs_max_deg"] = operand_max_degree
         return self.StaticArgs(**static_args)
 
-    def convert_args_dtypes(self, *data_args: Array) -> tuple[Array, ...]:
-        converted_args = super().convert_args_dtypes(*data_args)
+    def prepare_args(self, *data_args: Array) -> tuple[Array, ...]:
+        converted_args = super().prepare_args(*data_args)
         basis_size = self.basis.size()
         return tuple(_redepth_data(arg, basis_size) for arg in converted_args)
 
@@ -1375,8 +1380,8 @@ class DenseSTAdjMul(Operation, DenseOperation):
         static_args["arg_max_deg"] = operand_max_degree
         return self.StaticArgs(**static_args)
 
-    def convert_args_dtypes(self, *data_args: Array) -> tuple[Array, ...]:
-        converted_args = super().convert_args_dtypes(*data_args)
+    def prepare_args(self, *data_args: Array) -> tuple[Array, ...]:
+        converted_args = super().prepare_args(*data_args)
         basis_size = self.basis.size()
         return tuple(_redepth_data(arg, basis_size) for arg in converted_args)
 
