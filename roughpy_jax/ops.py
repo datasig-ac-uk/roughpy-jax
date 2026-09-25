@@ -78,9 +78,6 @@ def _get_lie_sparse_matrices(lie_basis, dtype):
     return _lie_sparse_matrix_cache[key]
 
 
-class EmptyStaticArgs(TypedDict): ...
-
-
 def _batched_fallback_wrapper(single_tensor_fn):
     """
     Generate a batched tensor function from a function that operates on a single tensor.
@@ -188,7 +185,7 @@ class Operation(Generic[BasisT]):
 
     :cvar StaticArgs: TypedDict subclass that describes static arguments required
         for FFI implementations and fallback operations.
-    :type StaticArgs: ClassVar[type[TypedDict]]
+    :type StaticArgs: TypedDict
 
     :ivar basis: The basis of the operation result. Each concrete operation is
         responsible for selecting a basis appropriate for constructing its
@@ -207,7 +204,7 @@ class Operation(Generic[BasisT]):
 
     :ivar static_args: Dictionary of static arguments passed to FFI calls or
         fallback implementations.
-    :type static_args: type[TypedDict]
+    :type static_args: Mapping[str, Any]
 
     :ivar result_shape_dtypes: Shape and type information for the output arrays,
         used in FFI call generation.
@@ -265,7 +262,8 @@ class Operation(Generic[BasisT]):
     # of all the required and optional arguments. This will be passed to the
     # FFI calls by ** unpacking. Using a TypedDict gives some level of
     # argument checking
-    StaticArgs: ClassVar[type[Any]]
+    class StaticArgs(TypedDict):
+        """Static arguments supplied in addition to the basis attributes."""
 
     ## The following instance attributes are used by the class upon call to
     ## select from available implementations and populate static arguments.
@@ -427,9 +425,6 @@ class Operation(Generic[BasisT]):
         if not hasattr(cls, "implementations"):
             cls.implementations = {}
 
-        if not hasattr(cls, "StaticArgs"):
-            cls.StaticArgs = EmptyStaticArgs
-
         Operation.__all_operations[cls.fn_name, cls.data_layout] = cls
 
     def __init__(
@@ -463,7 +458,7 @@ class Operation(Generic[BasisT]):
             if name.endswith("_deg") or name.endswith("_degree"):
                 degree = int(value)
                 static_args[name] = np.int32(min(degree, max_degree))
-        return self.StaticArgs(**static_args)  # type: ignore[call-arg]  # noqa: PGH004, RUF100
+        return self.StaticArgs(**static_args)
 
     def get_min_supported_cpu_dtype(
             self, target_dtype: jnp.dtype
@@ -963,11 +958,9 @@ class DenseSTFma(Operation[TensorBasis], DenseOperation):
         # The current C++ shuffle kernel assumes that both multiplicands extend
         # through the result depth. Remove this normalization when the kernel
         # handles independently truncated operand views.
-        static_args = dict(super().make_static_args(kwargs))
-        operand_max_degree = np.int32(self.basis.depth)
-        static_args["b_max_deg"] = operand_max_degree
-        static_args["c_max_deg"] = operand_max_degree
-        return self.StaticArgs(**static_args)
+        kwargs["b_max_deg"] = self.basis.depth
+        kwargs["c_max_deg"] = self.basis.depth
+        return super().make_static_args(kwargs)
 
     def prepare_args(self, *data_args: Array) -> tuple[Array, ...]:
         a_data, b_data, c_data = super().prepare_args(*data_args)
@@ -1010,11 +1003,9 @@ class DenseSTMul(Operation[TensorBasis], DenseOperation):
         # The current C++ shuffle kernel assumes that both operands extend
         # through the result depth. Remove this normalization when the kernel
         # handles independently truncated operand views.
-        static_args = dict(super().make_static_args(kwargs))
-        operand_max_degree = np.int32(self.basis.depth)
-        static_args["lhs_max_deg"] = operand_max_degree
-        static_args["rhs_max_deg"] = operand_max_degree
-        return self.StaticArgs(**static_args)
+        kwargs["lhs_max_deg"] = self.basis.depth
+        kwargs["rhs_max_deg"] = self.basis.depth
+        return super().make_static_args(kwargs)
 
     def prepare_args(self, *data_args: Array) -> tuple[Array, ...]:
         converted_args = super().prepare_args(*data_args)
@@ -1439,11 +1430,9 @@ class DenseSTAdjMul(Operation[TensorBasis], DenseOperation):
         # The current C++ shuffle-adjoint kernel assumes that both operands
         # extend through the result depth. Remove this normalization when the
         # kernel handles independently truncated operand views.
-        static_args = dict(super().make_static_args(kwargs))
-        operand_max_degree = np.int32(self.basis.depth)
-        static_args["op_max_deg"] = operand_max_degree
-        static_args["arg_max_deg"] = operand_max_degree
-        return self.StaticArgs(**static_args)
+        kwargs["op_max_deg"] = self.basis.depth
+        kwargs["arg_max_deg"] = self.basis.depth
+        return super().make_static_args(kwargs)
 
     def prepare_args(self, *data_args: Array) -> tuple[Array, ...]:
         converted_args = super().prepare_args(*data_args)
