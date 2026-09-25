@@ -13,8 +13,8 @@ def _endpoint(k: int, n: int) -> float:
 
 def _contains(query: RealInterval, value: float) -> bool:
     if query.interval_type == IntervalType.ClOpen:
-        return jnp.all(query.inf <= value < query.sup)
-    return jnp.all(query.inf < value <= query.sup)
+        return bool(jnp.all(query.inf <= value < query.sup))
+    return bool(jnp.all(query.inf < value <= query.sup))
 
 
 def _collect_endpoints(

@@ -1,8 +1,7 @@
-from typing import Any, Sequence, TypeAlias, TypeVar
+from typing import Any, Sequence, TypeAlias, TypeVar, cast
 
 import jax
 import jax.numpy as jnp
-import numpy as np
 
 from roughpy_jax.bases import (
     LieBasis,
@@ -21,7 +20,7 @@ from roughpy_jax.dense_algebra import (
 )
 from roughpy_jax.ops import Operation, _get_lie_sparse_matrices
 
-AlgebraT = TypeVar("AlgebraT", bound=DenseAlgebra)
+AlgebraT = TypeVar("AlgebraT", bound=DenseAlgebra[Any])
 TensorT = TypeVar("TensorT", bound=DenseTensor)
 
 
@@ -363,16 +362,16 @@ def ft_fma(
         dtype,
         batch_dims,
         specific_basis=out_basis,
-        a_max_deg=np.int32(out_depth),
-        b_max_deg=np.int32(b.basis.depth),
-        c_max_deg=np.int32(c.basis.depth),
-        b_min_deg=np.int32(0),
-        c_min_deg=np.int32(0),
+        a_max_deg=out_depth,
+        b_max_deg=b.basis.depth,
+        c_max_deg=c.basis.depth,
+        b_min_deg=0,
+        c_min_deg=0,
     )
 
     out_data = op(a.data, b.data, c.data)
 
-    return DenseFreeTensor(out_data[0], op.basis)
+    return DenseFreeTensor(out_data[0], cast(TensorBasis, op.basis))
 
 
 def ft_fma_derivative(
@@ -495,15 +494,15 @@ def ft_mul(
         dtype,
         batch_dims,
         specific_basis=out_basis,
-        lhs_max_deg=np.int32(a.basis.depth),
-        rhs_max_deg=np.int32(b.basis.depth),
-        lhs_min_deg=np.int32(0),
-        rhs_min_deg=np.int32(0),
+        lhs_max_deg=a.basis.depth,
+        rhs_max_deg=b.basis.depth,
+        lhs_min_deg=0,
+        rhs_min_deg=0,
     )
 
     out_data = op(a.data, b.data)
 
-    return DenseFreeTensor(out_data[0], op.basis)
+    return DenseFreeTensor(out_data[0], cast(TensorBasis, op.basis))
 
 
 def ft_mul_derivative(
@@ -603,12 +602,12 @@ def antipode(a: TensorT) -> TensorT:
         (a.basis,),
         a.dtype,
         batch_dims,
-        arg_max_deg=np.int32(a.basis.depth),
+        arg_max_deg=a.basis.depth,
         no_sign=False,
     )
 
     out_data = op(a.data)
-    out_basis = op.basis
+    out_basis = cast(TensorBasis, op.basis)
 
     return out_class(out_data[0], out_basis)
 
@@ -697,15 +696,15 @@ def st_fma(
         dtype,
         batch_dims,
         specific_basis=out_basis,
-        a_max_deg=np.int32(out_depth),
-        b_max_deg=np.int32(b.basis.depth),
-        c_max_deg=np.int32(c.basis.depth),
-        b_min_deg=np.int32(0),
-        c_min_deg=np.int32(0),
+        a_max_deg=out_depth,
+        b_max_deg=b.basis.depth,
+        c_max_deg=c.basis.depth,
+        b_min_deg=0,
+        c_min_deg=0,
     )
     out_data = op(a.data, b.data, c.data)
 
-    return DenseShuffleTensor(out_data[0], op.basis)
+    return DenseShuffleTensor(out_data[0], cast(TensorBasis, op.basis))
 
 
 def st_fma_derivative(
@@ -831,15 +830,15 @@ def st_mul(
         dtype,
         batch_dims,
         specific_basis=out_basis,
-        lhs_max_deg=np.int32(lhs.basis.depth),
-        rhs_max_deg=np.int32(rhs.basis.depth),
-        lhs_min_deg=np.int32(0),
-        rhs_min_deg=np.int32(0),
+        lhs_max_deg=lhs.basis.depth,
+        rhs_max_deg=rhs.basis.depth,
+        lhs_min_deg=0,
+        rhs_min_deg=0,
     )
 
     out_data = op(lhs.data, rhs.data)
 
-    return DenseShuffleTensor(out_data[0], op.basis)
+    return DenseShuffleTensor(out_data[0], cast(TensorBasis, op.basis))
 
 
 def st_mul_derivative(
@@ -935,11 +934,11 @@ def ft_exp(x: DenseFreeTensor,
         dtype,
         x.batch_shape,
         specific_basis=out_basis,
-        arg_max_deg=np.int32(x.basis.depth),
+        arg_max_deg=x.basis.depth,
     )
 
     out_data = op(x.data)
-    out_basis = op.basis
+    out_basis = cast(TensorBasis, op.basis)
 
     return DenseFreeTensor(out_data[0], out_basis)
 
@@ -1013,15 +1012,15 @@ def ft_exp_adjoint_derivative(
 
     ident_data = jnp.zeros((*batch_dims, basis.size()), dtype=dtype).at[
         ..., 0].set(1)
-    ident = ShuffleTensor(ident_data, basis)
+    ident = DenseFreeTensor(ident_data, basis)
 
-    r_data = [None for _ in range(depth)] + [ident]
+    r_data: list[DenseFreeTensor | None] = [None for _ in range(depth)] + [ident]
     for d in range(depth, 0, -1):
         scale = 1.0 / d
-        # noinspection PyTypeChecker
-        r_data[d - 1] = scale * ft_mul(x, r_data[d])
-        r_data[d - 1].data = r_data[d - 1].data.at[..., 0].add(
-            1)  # ty: ignore[invalid-assignment, unresolved-attribute]
+        r_d = cast(DenseFreeTensor, r_data[d])
+        r_dm1 = scale * ft_mul(x, r_d)
+        r_dm1.data = r_dm1.data.at[..., 0].add(1)
+        r_data[d - 1] = r_dm1
 
     ct_x_data = jnp.zeros((*batch_dims, basis.size()), dtype=dtype)
     ct_x = DenseShuffleTensor(ct_x_data, basis)
@@ -1029,7 +1028,8 @@ def ft_exp_adjoint_derivative(
 
     for d in range(1, depth + 1):
         scale = 1.0 / d
-        ct_x = ct_x + scale * ft_adjoint_left_mul(r_data[d], ct_r)
+        r_d = cast(DenseFreeTensor, r_data[d])
+        ct_x = ct_x + scale * ft_adjoint_left_mul(r_d, ct_r)
         ct_r = scale * ft_adjoint_right_mul(x, ct_r)
 
     # The function ft_exp is actually exp composed with the projection onto the non-unit terms
@@ -1090,11 +1090,11 @@ def ft_log(x: DenseFreeTensor,
         dtype,
         x.batch_shape,
         specific_basis=out_basis,
-        arg_max_deg=np.int32(x.basis.depth),
+        arg_max_deg=x.basis.depth,
     )
 
     out_data = op(x.data)
-    out_basis = op.basis
+    out_basis = cast(TensorBasis, op.basis)
 
     return DenseFreeTensor(out_data[0], out_basis)
 
@@ -1162,11 +1162,11 @@ def ft_log_adjoint_derivative(
 
     zero_data = jnp.zeros((*batch_dims, basis.size()), dtype=dtype)
     zero = DenseFreeTensor(zero_data, basis)
-    rs = [None for _ in range(depth)] + [zero]
+    rs: list[DenseFreeTensor | None] = [None for _ in range(depth)] + [zero]
     for d in range(depth, 0, -1):
         sign = -1 if d % 2 == 0 else 1
-        r_data = rs[d].data.at[..., 0].add(
-            sign / d)  # ty: ignore[unresolved-attribute]
+        r_d = cast(DenseFreeTensor, rs[d])
+        r_data = r_d.data.at[..., 0].add(sign / d)
         r = DenseFreeTensor(r_data, basis)
         rs[d - 1] = ft_mul(x, r)
 
@@ -1176,8 +1176,8 @@ def ft_log_adjoint_derivative(
 
     for d in range(1, depth + 1):
         sign = -1 if d % 2 == 0 else 1
-        u_d_data = rs[d].data.at[..., 0].add(
-            sign / d)  # ty: ignore[unresolved-attribute]
+        r_d = cast(DenseFreeTensor, rs[d])
+        u_d_data = r_d.data.at[..., 0].add(sign / d)
         u_d = DenseFreeTensor(u_d_data, basis)
 
         ct_x = ct_x + ft_adjoint_right_mul(u_d, ct_r_d)
@@ -1242,14 +1242,14 @@ def ft_fmexp(
         dtype,
         batch_dims,
         specific_basis=out_basis,
-        mul_max_deg=np.int32(mul_depth),
-        exp_max_deg=np.int32(exp_depth),
-        mul_min_deg=np.int32(0),
-        exp_min_deg=np.int32(0),
+        mul_max_deg=mul_depth,
+        exp_max_deg=exp_depth,
+        mul_min_deg=0,
+        exp_min_deg=0,
     )
 
     out_data = op(multiplier.data, exponent.data)
-    out_basis = op.basis
+    out_basis = cast(TensorBasis, op.basis)
 
     return DenseFreeTensor(out_data[0], out_basis)
 
@@ -1416,7 +1416,7 @@ def lie_to_tensor(arg: DenseLie, scale_factor=None) -> DenseFreeTensor:
     )
 
     out_data = op(arg.data)
-    out_basis = op.basis
+    out_basis = cast(TensorBasis, op.basis)
 
     return DenseFreeTensor(out_data[0], out_basis)
 
@@ -1553,7 +1553,7 @@ def tensor_to_lie(arg: DenseFreeTensor, scale_factor=None) -> DenseLie:
     )
 
     out_data = op(arg.data)
-    out_basis = op.basis
+    out_basis = cast(LieBasis, op.basis)
 
     return DenseLie(out_data[0], out_basis)
 
@@ -1696,12 +1696,12 @@ def ft_adjoint_left_mul(
         (op.basis, arg.basis),
         dtype,
         batch_dims,
-        op_max_deg=np.int32(op.basis.depth),
-        arg_max_deg=np.int32(arg.basis.depth),
+        op_max_deg=op.basis.depth,
+        arg_max_deg=arg.basis.depth,
     )
 
     out_data = op_call(op.data, arg.data)
-    out_basis = op_call.basis
+    out_basis = cast(TensorBasis, op_call.basis)
 
     return DenseShuffleTensor(out_data[0], out_basis)
 
@@ -1723,8 +1723,8 @@ def ft_adjoint_left_mul_derivative(
 
 def ft_adjoint_left_mul_adjoint_derivative(
         op: DenseFreeTensor, arg: DenseShuffleTensor, ct_result: DenseFreeTensor
-) -> tuple[DenseFreeTensor, DenseFreeTensor]:
-    """Compute the JAX-facing cotangents for `ft_adjoint_left_mul`."""
+) -> tuple[DenseShuffleTensor, DenseFreeTensor]:
+    """Compute the mathematical cotangents for `ft_adjoint_left_mul`."""
     check_basis_compat(op.basis, arg.basis, ct_result.basis)
     get_common_batch_shape(op, arg, ct_result)
 
@@ -1783,12 +1783,12 @@ def ft_adjoint_right_mul(
         (op.basis, arg.basis),
         dtype,
         batch_dims,
-        op_max_deg=np.int32(op.basis.depth),
-        arg_max_deg=np.int32(arg.basis.depth),
+        op_max_deg=op.basis.depth,
+        arg_max_deg=arg.basis.depth,
     )
 
     out_data = op_call(op.data, arg.data)
-    out_basis = op_call.basis
+    out_basis = cast(TensorBasis, op_call.basis)
 
     return DenseShuffleTensor(out_data[0], out_basis)
 
@@ -1809,8 +1809,8 @@ def ft_adjoint_right_mul_derivative(
 
 def ft_adjoint_right_mul_adjoint_derivative(
         op: DenseFreeTensor, arg: DenseShuffleTensor, ct_result: DenseFreeTensor
-) -> tuple[DenseFreeTensor, DenseFreeTensor]:
-    """Compute the JAX-facing cotangents for `ft_adjoint_right_mul`."""
+) -> tuple[DenseShuffleTensor, DenseFreeTensor]:
+    """Compute the mathematical cotangents for `ft_adjoint_right_mul`."""
     check_basis_compat(op.basis, arg.basis, ct_result.basis)
     get_common_batch_shape(op, arg, ct_result)
 
@@ -2055,13 +2055,13 @@ def st_adjoint_mul(
         (op_arg.basis, arg.basis),
         dtype,
         batch_dims,
-        op_max_deg=np.int32(op_arg.basis.depth),
-        arg_max_deg=np.int32(arg.basis.depth),
+        op_max_deg=op_arg.basis.depth,
+        arg_max_deg=arg.basis.depth,
     )
 
     (result,) = op_call(op_arg.data, arg.data)
 
-    return DenseFreeTensor(result, op_call.basis)
+    return DenseFreeTensor(result, cast(TensorBasis, op_call.basis))
 
 
 def st_adjoint_mul_derivative(
@@ -2082,8 +2082,8 @@ def st_adjoint_mul_derivative(
 def st_adjoint_mul_adjoint_derivative(
         op: DenseShuffleTensor, arg: DenseFreeTensor,
         ct_result: DenseShuffleTensor
-) -> tuple[DenseShuffleTensor, DenseShuffleTensor]:
-    """Compute the JAX-facing cotangents for `st_adjoint_mul`."""
+) -> tuple[DenseFreeTensor, DenseShuffleTensor]:
+    """Compute the mathematical cotangents for `st_adjoint_mul`."""
     check_basis_compat(op.basis, arg.basis, ct_result.basis)
     get_common_batch_shape(op, arg, ct_result)
 

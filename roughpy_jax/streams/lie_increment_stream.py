@@ -4,7 +4,7 @@ import math
 import warnings
 from collections.abc import Callable
 from functools import partial
-from typing import Any, Self, TypeAlias, TypeVar
+from typing import Any, Self, TypeAlias, TypeVar, cast
 
 import jax
 import jax.numpy as jnp
@@ -20,7 +20,7 @@ from roughpy_jax.algebra import (
     lie_to_tensor,
     to_log_signature,
 )
-from roughpy_jax.bases import Basis, to_tensor_basis
+from roughpy_jax.bases import to_tensor_basis
 from roughpy_jax.intervals import (
     DyadicInterval,
     Interval,
@@ -31,7 +31,7 @@ from roughpy_jax.intervals import (
 from .concepts import Stream
 from .utils import _index_stream_batch
 
-T = TypeVar("T")
+T = TypeVar("T", bound="LieIncrementStream")
 
 
 def _zero_lie(basis: LieBasis, batch_dims: tuple[int, ...],
@@ -44,12 +44,10 @@ LeftT = TypeVar("LeftT")
 RightT = TypeVar("RightT")
 AccT = TypeVar("AccT")
 
-DQInitT: TypeAlias = Callable[[Any, jax.Array, jax.Array, jax.Array], AccT]
-DQLeftGetterT: TypeAlias = Callable[
-    [Any, jax.Array, jax.Array, jax.Array], LeftT]
-DQRightGetterT: TypeAlias = Callable[
-    [Any, jax.Array, jax.Array, jax.Array], RightT]
-DQCombineT: TypeAlias = Callable[[Any, LeftT, AccT, RightT], AccT]
+DQInitT: TypeAlias = Callable[..., AccT]
+DQLeftGetterT: TypeAlias = Callable[..., LeftT]
+DQRightGetterT: TypeAlias = Callable[..., RightT]
+DQCombineT: TypeAlias = Callable[..., AccT]
 
 
 def _resolve_short_case(
@@ -88,9 +86,9 @@ def _tree_where(mask: jax.Array, candidate, current):
 @dataclasses.dataclass(frozen=True)
 class _QueryContext:
     cache: jax.Array
-    cache_basis: Basis
-    query_basis: Basis
-    group_basis: Basis
+    cache_basis: LieBasis
+    query_basis: LieBasis
+    group_basis: TensorBasis
 
 
 def _is_clopen(itype: IntervalType) -> bool:
@@ -499,8 +497,8 @@ def _extend_from_finest_level(
 
 def compute_separating_resolution(
         timestamps: list[jax.Array],
-        min_ts: float | None = None,
-        max_ts: float | None = None,
+        min_ts: ArrayLike | None = None,
+        max_ts: ArrayLike | None = None,
         sorted_arrays: bool = False,
 ) -> int:
     """Estimate a dyadic resolution that separates adjacent timestamps.
@@ -550,6 +548,8 @@ def compute_separating_resolution(
     if max_ts is None:
         max_ts = max(jnp.max(arr) for arr in timestamps)
 
+    min_ts = jnp.asarray(min_ts)
+    max_ts = jnp.asarray(max_ts)
     extent = max_ts - min_ts
     if extent < 0:
         raise ValueError("max_ts must not be less than min_ts")
@@ -629,13 +629,21 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
     supported. This may change in the future.
     """
 
+    _cache: jax.Array
+    _lie_basis: LieBasis
+    _group_basis: TensorBasis
+    _support: Interval
+    _resolution: int
+    _interval_type: IntervalType
+    __base_stream__: Stream[Lie, FreeTensor]
+
     @staticmethod
     def _cache_length_from_resolution(resolution: int) -> int:
         return 1 << (int(resolution) + 1)
 
     def __init__(
             self,
-            cache: jnp.ndarray,
+            cache: jax.Array,
             lie_basis: LieBasis,
             resolution: int,
             support: Interval | None = None,
@@ -726,8 +734,8 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
     @classmethod
     def from_stream(cls: type[T], stream: Stream[Lie, FreeTensor],
                     resolution: int) -> T:
-        lie_basis = stream.lie_basis
-        group_basis = stream.group_basis
+        lie_basis = cast(LieBasis, stream.lie_basis)
+        group_basis = cast(TensorBasis, stream.group_basis)
         support = stream.support
 
         if resolution <= 0:
@@ -736,8 +744,7 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
         if (fun := getattr(stream, "__dyadic_cache__", None)) is not None:
             cache = jnp.asarray(fun(resolution))
         else:
-            cache = cls._stream_to_cache(stream,
-                                         resolution)  # ty: ignore[unresolved-attribute]
+            cache = cls._stream_to_cache(stream, resolution)
 
         new_stream = cls(
             cache=cache,
@@ -747,7 +754,7 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
             resolution=resolution,
         )
 
-        new_stream.__base_stream__ = stream  # ty: ignore[unresolved-attribute]
+        new_stream.__base_stream__ = stream
 
         return new_stream
 

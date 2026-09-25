@@ -1,6 +1,6 @@
 import typing
 from collections.abc import Iterable
-from typing import Literal, TypeVar
+from typing import Literal, TypeVar, cast
 
 import jax
 import numpy as np
@@ -19,9 +19,14 @@ class Basis(typing.Protocol):
     and degree offsets needed to construct compatible tensor or Lie bases.
     """
 
-    width: np.int32 | int
-    depth: np.int32 | int
-    degree_begin: DegreeBeginArray
+    @property
+    def width(self) -> int: ...
+
+    @property
+    def depth(self) -> int: ...
+
+    @property
+    def degree_begin(self) -> DegreeBeginArray: ...
 
     def size(self) -> int: ...
     def __hash__(self) -> int: ...
@@ -110,7 +115,8 @@ def check_basis_compat(
 
 
 def result_basis(
-    *bases: BasisT, strategy: Literal["first", "max_depth", "min_depth"] = "max_depth"
+    *bases: BasisT | Iterable[BasisT],
+    strategy: Literal["first", "max_depth", "min_depth"] = "max_depth",
 ) -> BasisT:
     """
     Select a result basis from a compatible collection of same-type bases.
@@ -134,22 +140,24 @@ def result_basis(
         and isinstance(bases[0], Iterable)
         and not isinstance(bases[0], Basis)
     ):
-        bases = tuple(bases[0])
+        candidates = tuple(cast(Iterable[BasisT], bases[0]))
+    else:
+        candidates = cast(tuple[BasisT, ...], bases)
 
-    if not bases:
+    if not candidates:
         raise ValueError("expected at least one basis")
 
-    basis, *tail = bases
+    basis, *tail = candidates
     check_basis_compat(basis, *tail, same_type=True)
 
     if strategy == "first":
         return basis
 
     if strategy == "max_depth":
-        return max(bases, key=lambda item: item.depth)
+        return max(candidates, key=lambda item: item.depth)
 
     if strategy == "min_depth":
-        return min(bases, key=lambda item: item.depth)
+        return min(candidates, key=lambda item: item.depth)
 
     raise ValueError(f"unknown basis selection strategy: {strategy}")
 
