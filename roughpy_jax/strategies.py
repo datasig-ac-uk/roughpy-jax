@@ -40,7 +40,12 @@ def signature(draw, **kwargs):
 
 def strictly_increasing_float_pair():
     """Returns a pair of floats a, b, with b > a"""
-    base = st.floats(allow_nan=False, allow_infinity=False)
+    # Subnormals are santised by JAX, this needs a rethink.
+    base = st.floats(
+        allow_nan=False,
+        allow_infinity=False,
+        allow_subnormal=False,
+    )
     # filter out values where nextafter would be infinite (i.e., largest representable float)
     base = base.filter(lambda a: not math.isinf(math.nextafter(a, math.inf)))
     return base.flatmap(
@@ -50,6 +55,7 @@ def strictly_increasing_float_pair():
                 min_value=math.nextafter(a, math.inf),
                 allow_nan=False,
                 allow_infinity=False,
+                allow_subnormal=False,
             ),
         )
     )
