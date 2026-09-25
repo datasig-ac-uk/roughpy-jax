@@ -126,6 +126,62 @@ def test_st_mul_mixed_depth(lhs_depth, rhs_depth):
     assert jnp.allclose(result.data, expected.data)
 
 
+@pytest.mark.parametrize("out_depth", [1, 3])
+def test_st_mul_explicit_out_basis(out_depth):
+    input_basis = rpj.TensorBasis(2, 2)
+    out_basis = rpj.TensorBasis(2, out_depth)
+    lhs = rpj.ShuffleTensor(
+        jnp.arange(1, input_basis.size() + 1, dtype=jnp.float32), input_basis
+    )
+    rhs = rpj.ShuffleTensor(
+        jnp.arange(2, input_basis.size() + 2, dtype=jnp.float32), input_basis
+    )
+    t_lhs = rpj.ShuffleTensor(jnp.ones(input_basis.size()), input_basis)
+    t_rhs = rpj.ShuffleTensor(2 * jnp.ones(input_basis.size()), input_basis)
+
+    result = rpj.st_mul(lhs, rhs, out_basis=out_basis)
+    expected = rpj.st_mul(
+        lhs.change_depth(out_depth), rhs.change_depth(out_depth)
+    )
+    derivative = rpj.st_mul_derivative(
+        lhs, rhs, t_lhs, t_rhs, out_basis=out_basis
+    )
+    expected_derivative = rpj.st_mul_derivative(
+        lhs.change_depth(out_depth),
+        rhs.change_depth(out_depth),
+        t_lhs.change_depth(out_depth),
+        t_rhs.change_depth(out_depth),
+    )
+
+    assert result.basis == out_basis
+    assert jnp.allclose(result.data, expected.data)
+    assert derivative.basis == out_basis
+    assert jnp.allclose(derivative.data, expected_derivative.data)
+
+    _, pullback = jax.vjp(
+        lambda left, right: rpj.st_mul(
+            left, right, out_basis=out_basis
+        ),
+        lhs,
+        rhs,
+    )
+    ct_lhs, ct_rhs = pullback(
+        rpj.ShuffleTensor(
+            jnp.ones(out_basis.size(), dtype=jnp.float32), out_basis
+        )
+    )
+    assert ct_lhs.basis == input_basis
+    assert ct_rhs.basis == input_basis
+
+
+def test_st_mul_rejects_incompatible_out_basis():
+    basis = rpj.TensorBasis(2, 2)
+    argument = rpj.ShuffleTensor(jnp.ones(basis.size()), basis)
+
+    with pytest.raises(ValueError, match="Incompatible width"):
+        rpj.st_mul(argument, argument, out_basis=rpj.TensorBasis(3, 2))
+
+
 @pytest.mark.parametrize(("lhs_depth", "rhs_depth"), [(1, 2), (2, 1)])
 def test_st_mul_mixed_depth_adjoint(lhs_depth, rhs_depth):
     lhs_basis = rpj.TensorBasis(2, lhs_depth)

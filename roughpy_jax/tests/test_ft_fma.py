@@ -109,6 +109,61 @@ def test_ft_fma_mixed_depth(a_depth, b_depth, c_depth):
     assert jnp.allclose(result.data, expected.data)
 
 
+@pytest.mark.parametrize("out_depth", [1, 3])
+def test_ft_fma_explicit_out_basis(out_depth):
+    input_basis = rpj.TensorBasis(2, 2)
+    out_basis = rpj.TensorBasis(2, out_depth)
+
+    def make_tensor(offset):
+        data = jnp.arange(
+            offset, offset + input_basis.size(), dtype=jnp.float32
+        )
+        return rpj.FreeTensor(data, input_basis)
+
+    a, b, c = make_tensor(1), make_tensor(2), make_tensor(3)
+    t_a, t_b, t_c = make_tensor(4), make_tensor(5), make_tensor(6)
+
+    result = rpj.ft_fma(a, b, c, out_basis=out_basis)
+    expected = rpj.ft_fma(
+        a.change_depth(out_depth),
+        b.change_depth(out_depth),
+        c.change_depth(out_depth),
+    )
+    derivative = rpj.ft_fma_derivative(
+        a, b, c, t_a, t_b, t_c, out_basis=out_basis
+    )
+    expected_derivative = rpj.ft_fma_derivative(
+        a.change_depth(out_depth),
+        b.change_depth(out_depth),
+        c.change_depth(out_depth),
+        t_a.change_depth(out_depth),
+        t_b.change_depth(out_depth),
+        t_c.change_depth(out_depth),
+    )
+
+    assert result.basis == out_basis
+    assert jnp.allclose(result.data, expected.data)
+    assert derivative.basis == out_basis
+    assert jnp.allclose(derivative.data, expected_derivative.data)
+
+    _, pullback = jax.vjp(
+        lambda add, left, right: rpj.ft_fma(
+            add, left, right, out_basis=out_basis
+        ),
+        a,
+        b,
+        c,
+    )
+    ct_a, ct_b, ct_c = pullback(
+        rpj.FreeTensor(
+            jnp.ones(out_basis.size(), dtype=jnp.float32), out_basis
+        )
+    )
+    assert ct_a.basis == input_basis
+    assert ct_b.basis == input_basis
+    assert ct_c.basis == input_basis
+
+
 @pytest.mark.parametrize(
     ("a_depth", "b_depth", "c_depth"),
     [(2, 1, 2), (2, 2, 1), (1, 2, 2)],

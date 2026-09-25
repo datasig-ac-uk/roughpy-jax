@@ -170,6 +170,66 @@ def test_ft_fmexp_mixed_depth(multiplier_depth, exponent_depth):
     assert jax_ct_exponent.basis == exponent_basis
 
 
+@pytest.mark.parametrize("out_depth", [1, 3])
+def test_ft_fmexp_derivatives_with_explicit_out_basis(out_depth):
+    input_basis = rpj.TensorBasis(2, 2)
+    out_basis = rpj.TensorBasis(2, out_depth)
+    multiplier = rpj.FreeTensor(
+        jnp.arange(1, input_basis.size() + 1, dtype=jnp.float32), input_basis
+    )
+    exponent = rpj.FreeTensor(
+        jnp.arange(input_basis.size(), dtype=jnp.float32).at[0].set(0),
+        input_basis,
+    )
+    t_multiplier = rpj.FreeTensor(jnp.ones(input_basis.size()), input_basis)
+    t_exponent = rpj.FreeTensor(
+        2 * jnp.ones(input_basis.size()).at[0].set(0), input_basis
+    )
+
+    result = rpj.ft_fmexp(
+        multiplier, exponent, out_basis=out_basis
+    )
+    derivative = rpj.ft_fmexp_derivative(
+        multiplier,
+        exponent,
+        t_multiplier,
+        t_exponent,
+        out_basis=out_basis,
+    )
+    expected_derivative = rpj.ft_fmexp_derivative(
+        multiplier.change_depth(out_depth),
+        exponent.change_depth(out_depth),
+        t_multiplier.change_depth(out_depth),
+        t_exponent.change_depth(out_depth),
+    )
+
+    assert result.basis == out_basis
+    assert derivative.basis == out_basis
+    assert jnp.allclose(derivative.data, expected_derivative.data)
+
+    ct_result = rpj.ShuffleTensor(
+        jnp.ones(out_basis.size(), dtype=jnp.float32), out_basis
+    )
+    explicit_cts = rpj.ft_fmexp_adjoint_derivative(
+        multiplier, exponent, ct_result
+    )
+    _, pullback = jax.vjp(
+        lambda mul, exp: rpj.ft_fmexp(
+            mul, exp, out_basis=out_basis
+        ),
+        multiplier,
+        exponent,
+    )
+    jax_cts = pullback(rpj.FreeTensor(ct_result.data, out_basis))
+
+    for explicit_ct, jax_ct, basis in zip(
+        explicit_cts, jax_cts, (multiplier.basis, exponent.basis)
+    ):
+        assert explicit_ct.basis == basis
+        assert jax_ct.basis == basis
+        assert jnp.allclose(explicit_ct.data, jax_ct.data)
+
+
 @pytest.mark.parametrize(("input_depth", "output_depth"), [(1, 2), (2, 1)])
 @pytest.mark.parametrize(
     ("fn", "derivative_fn", "adjoint_derivative_fn", "unit_value"),
