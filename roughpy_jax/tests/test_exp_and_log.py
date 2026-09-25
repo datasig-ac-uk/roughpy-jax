@@ -171,9 +171,20 @@ def test_ft_fmexp_mixed_depth(multiplier_depth, exponent_depth):
 
 
 @pytest.mark.parametrize(("input_depth", "output_depth"), [(1, 2), (2, 1)])
-@pytest.mark.parametrize(("fn", "unit_value"), [(rpj.ft_exp, 0), (rpj.ft_log, 1)])
+@pytest.mark.parametrize(
+    ("fn", "derivative_fn", "adjoint_derivative_fn", "unit_value"),
+    [
+        (rpj.ft_exp, rpj.ft_exp_derivative, rpj.ft_exp_adjoint_derivative, 0),
+        (rpj.ft_log, rpj.ft_log_derivative, rpj.ft_log_adjoint_derivative, 1),
+    ],
+)
 def test_ft_exp_log_vjp_with_different_output_depth(
-    fn, unit_value, input_depth, output_depth
+    fn,
+    derivative_fn,
+    adjoint_derivative_fn,
+    unit_value,
+    input_depth,
+    output_depth,
 ):
     input_basis = rpj.TensorBasis(2, input_depth)
     output_basis = rpj.TensorBasis(2, output_depth)
@@ -189,8 +200,49 @@ def test_ft_exp_log_vjp_with_different_output_depth(
         rpj.FreeTensor(jnp.ones_like(result.data), result.basis)
     )
 
+    tangent = rpj.FreeTensor(jnp.ones_like(argument.data), input_basis)
+    derivative = derivative_fn(
+        argument, tangent, out_basis=output_basis
+    )
+    expected_derivative = derivative_fn(
+        argument.change_depth(output_depth),
+        tangent.change_depth(output_depth),
+    )
+
+    ct_result = rpj.ShuffleTensor(jnp.ones_like(result.data), result.basis)
+    (explicit_ct_argument,) = adjoint_derivative_fn(argument, ct_result)
+
     assert result.basis == output_basis
+    assert derivative.basis == output_basis
+    assert jnp.allclose(derivative.data, expected_derivative.data)
     assert ct_argument.basis == input_basis
+    assert explicit_ct_argument.basis == input_basis
+    assert jnp.allclose(explicit_ct_argument.data, ct_argument.data)
+
+
+def test_out_basis_must_have_compatible_width():
+    basis = rpj.TensorBasis(2, 2)
+    incompatible_basis = rpj.TensorBasis(3, 2)
+    argument = rpj.FreeTensor(jnp.zeros(basis.size()), basis)
+    tangent = rpj.FreeTensor(jnp.ones(basis.size()), basis)
+
+    calls = (
+        lambda: rpj.ft_exp(argument, out_basis=incompatible_basis),
+        lambda: rpj.ft_exp_derivative(
+            argument, tangent, out_basis=incompatible_basis
+        ),
+        lambda: rpj.ft_log(argument, out_basis=incompatible_basis),
+        lambda: rpj.ft_log_derivative(
+            argument, tangent, out_basis=incompatible_basis
+        ),
+        lambda: rpj.ft_fmexp(
+            argument, argument, out_basis=incompatible_basis
+        ),
+    )
+
+    for call in calls:
+        with pytest.raises(ValueError, match="Incompatible width"):
+            call()
 
 
 def _ft_exp_adjoint_derivative(x, ct_result):
