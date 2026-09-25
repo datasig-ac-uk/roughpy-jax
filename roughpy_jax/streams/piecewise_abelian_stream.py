@@ -191,7 +191,11 @@ class PiecewiseAbelianStream(Stream[DenseLie, DenseFreeTensor]):
 
         def combine(carry, piece_data):
             piece = DenseLie(piece_data, self._lie_basis)
-            update = ft_fmexp(carry, lie_to_tensor(piece), self._group_basis)
+            update = ft_fmexp(
+                carry,
+                lie_to_tensor(piece),
+                out_basis=self._group_basis,
+            )
             return update, None
 
         result_tensor, _ = jax.lax.scan(combine, initial, path_data)
