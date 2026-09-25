@@ -1,9 +1,11 @@
-from typing import Any, Sequence, TypeAlias, TypeVar, cast
+from dataclasses import dataclass, field
+from typing import Any, Generic, Sequence, TypeAlias, TypeVar, cast
 
 import jax
 import jax.numpy as jnp
 
 from roughpy_jax.bases import (
+    Basis,
     LieBasis,
     TensorBasis,
     check_basis_compat,
@@ -52,6 +54,60 @@ DenseLie.DualVector = DenseLie
 FreeTensor: TypeAlias = DenseFreeTensor
 ShuffleTensor: TypeAlias = DenseShuffleTensor
 Lie: TypeAlias = DenseLie
+
+
+@jax.tree_util.register_dataclass
+@dataclass(frozen=True)
+class DegreeView(Generic[AlgebraT]):
+    """A zero-copy view restricting the active degrees of an algebra.
+
+    The underlying algebra retains its ambient basis and complete coefficient
+    buffer. The degree bounds are static pytree metadata so that operations can
+    pass them to compiled kernels without treating them as array values.
+    """
+
+    algebra: AlgebraT
+    min_degree: int = field(metadata={"static": True})
+    max_degree: int = field(metadata={"static": True})
+
+    @property
+    def basis(self) -> Basis:
+        return self.algebra.basis
+
+    @property
+    def data(self) -> jax.Array:
+        return self.algebra.data
+
+
+def degree_view(
+        algebra: AlgebraT | DegreeView[AlgebraT],
+        *,
+        min_degree: int = 0,
+        max_degree: int | None = None,
+) -> DegreeView[AlgebraT]:
+    """Construct a zero-copy view over a range of homogeneous degrees.
+
+    :param algebra: Algebra whose coefficient buffer is viewed.
+    :param min_degree: Lowest active degree, inclusive.
+    :param max_degree: Highest active degree, inclusive. Defaults to the depth
+        of the algebra's basis.
+    :return: A degree-restricted view sharing ``algebra``'s data and basis.
+    :raises ValueError: If the bounds do not lie within the ambient basis.
+    """
+    if max_degree is None:
+        max_degree = algebra.basis.depth
+
+    if min_degree < 0:
+        raise ValueError("min_degree must be non-negative")
+    if max_degree < min_degree:
+        raise ValueError("max_degree must be greater than or equal to min_degree")
+    if max_degree > algebra.basis.depth:
+        raise ValueError("max_degree must not exceed the basis depth")
+
+    if isinstance(DegreeView):
+        return dataclasses.replace(algebra, min_degree=min_degree, max_degree=max_degree)
+
+    return DegreeView(algebra, min_degree, max_degree)
 
 
 def _remove_unit_term(tensor: TensorT) -> TensorT:
