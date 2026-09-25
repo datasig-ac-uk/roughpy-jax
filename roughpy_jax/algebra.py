@@ -1723,8 +1723,8 @@ def ft_adjoint_left_mul_derivative(
 
 def ft_adjoint_left_mul_adjoint_derivative(
         op: DenseFreeTensor, arg: DenseShuffleTensor, ct_result: DenseFreeTensor
-) -> tuple[DenseFreeTensor, DenseFreeTensor]:
-    """Compute the JAX-facing cotangents for `ft_adjoint_left_mul`."""
+) -> tuple[DenseShuffleTensor, DenseFreeTensor]:
+    """Compute the mathematical cotangents for `ft_adjoint_left_mul`."""
     check_basis_compat(op.basis, arg.basis, ct_result.basis)
     get_common_batch_shape(op, arg, ct_result)
 
@@ -1809,8 +1809,8 @@ def ft_adjoint_right_mul_derivative(
 
 def ft_adjoint_right_mul_adjoint_derivative(
         op: DenseFreeTensor, arg: DenseShuffleTensor, ct_result: DenseFreeTensor
-) -> tuple[DenseFreeTensor, DenseFreeTensor]:
-    """Compute the JAX-facing cotangents for `ft_adjoint_right_mul`."""
+) -> tuple[DenseShuffleTensor, DenseFreeTensor]:
+    """Compute the mathematical cotangents for `ft_adjoint_right_mul`."""
     check_basis_compat(op.basis, arg.basis, ct_result.basis)
     get_common_batch_shape(op, arg, ct_result)
 
@@ -2082,8 +2082,8 @@ def st_adjoint_mul_derivative(
 def st_adjoint_mul_adjoint_derivative(
         op: DenseShuffleTensor, arg: DenseFreeTensor,
         ct_result: DenseShuffleTensor
-) -> tuple[DenseShuffleTensor, DenseShuffleTensor]:
-    """Compute the JAX-facing cotangents for `st_adjoint_mul`."""
+) -> tuple[DenseFreeTensor, DenseShuffleTensor]:
+    """Compute the mathematical cotangents for `st_adjoint_mul`."""
     check_basis_compat(op.basis, arg.basis, ct_result.basis)
     get_common_batch_shape(op, arg, ct_result)
 
