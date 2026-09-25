@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Generic, Sequence, TypeAlias, TypeVar, cast
 
 import jax
@@ -78,6 +78,28 @@ class DegreeView(Generic[AlgebraT]):
     def data(self) -> jax.Array:
         return self.algebra.data
 
+    @property
+    def dtype(self):
+        return self.algebra.dtype
+
+    @property
+    def batch_shape(self) -> tuple[int, ...]:
+        return self.algebra.batch_shape
+
+
+FreeTensorLike: TypeAlias = DenseFreeTensor | DegreeView[DenseFreeTensor]
+ShuffleTensorLike: TypeAlias = DenseShuffleTensor | DegreeView[DenseShuffleTensor]
+LieLike: TypeAlias = DenseLie | DegreeView[DenseLie]
+
+
+def _degree_bounds(
+        algebra: DenseAlgebra[Any] | DegreeView[Any]
+) -> tuple[int, int]:
+    """Return the active inclusive degree bounds for an algebra or view."""
+    if isinstance(algebra, DegreeView):
+        return algebra.min_degree, algebra.max_degree
+    return 0, algebra.basis.depth
+
 
 def degree_view(
         algebra: AlgebraT | DegreeView[AlgebraT],
@@ -104,8 +126,8 @@ def degree_view(
     if max_degree > algebra.basis.depth:
         raise ValueError("max_degree must not exceed the basis depth")
 
-    if isinstance(DegreeView):
-        return dataclasses.replace(algebra, min_degree=min_degree, max_degree=max_degree)
+    if isinstance(algebra, DegreeView):
+        return replace(algebra, min_degree=min_degree, max_degree=max_degree)
 
     return DegreeView(algebra, min_degree, max_degree)
 
