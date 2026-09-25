@@ -2,7 +2,7 @@ import collections.abc as cabc
 from collections.abc import Callable
 from functools import partial
 from threading import RLock
-from typing import TYPE_CHECKING, Any, ClassVar, TypedDict
+from typing import TYPE_CHECKING, Any, ClassVar, Generic, TypeVar, TypedDict, cast
 
 import jax
 import jax.numpy as jnp
@@ -13,6 +13,8 @@ from jax import Array
 from .bases import (
     Basis,
     DegreeBeginArray,
+    LieBasis,
+    TensorBasis,
     check_basis_compat,
     result_basis,
     to_lie_basis,
@@ -47,6 +49,8 @@ registration_lock = RLock()
 
 
 _all_supported_platforms: set[str] = set()
+
+ResultBasisT = TypeVar("ResultBasisT", bound=Basis)
 
 
 def get_supported_platforms() -> frozenset[str]:
@@ -149,7 +153,7 @@ _RPJ_TO_JAX_FFI_PLATFORM_MAPPING: dict[str, str] = {
 
 
 
-class Operation:
+class Operation(Generic[ResultBasisT]):
     """
     Represents a base class for defining JAX-based operations with support for
     platform-specific implementations, fallback mechanisms, static argument
@@ -189,7 +193,12 @@ class Operation:
         for FFI implementations and fallback operations.
     :type StaticArgs: ClassVar[type[TypedDict]]
 
-    :ivar basis: The primary basis object associated with the operation.
+    :ivar basis: The basis of the operation result. Each concrete operation is
+        responsible for selecting a basis appropriate for constructing its
+        public output, including operations whose inputs and output belong to
+        different algebra spaces. Code invoking an operation may therefore
+        narrow this attribute to the basis type required by that operation's
+        output contract.
     :type basis: Basis
 
     :ivar data_dtype: The data type for all input and output data for the operation.
@@ -222,7 +231,9 @@ class Operation:
     # when deriving from this class.
     #
     # Users should not interact with this directly
-    __all_operations: ClassVar[dict[tuple[str, str], type['Operation']]] = {}
+    __all_operations: ClassVar[
+        dict[tuple[str, str], type["Operation[Any]"]]
+    ] = {}
 
     # The supported layout for data for algebra objects. At the moment all
     # operations only support densely represented objects. In the future,
@@ -262,8 +273,10 @@ class Operation:
     ## The following instance attributes are used by the class upon call to
     ## select from available implementations and populate static arguments.
 
-    # The primary basis associated with the operation
-    basis: Basis
+    # The basis appropriate for constructing this operation's output. Input
+    # bases may be heterogeneous; concrete operations own the contract that
+    # selects the correct output basis from them.
+    basis: ResultBasisT
     # The bases for each argument
     bases: tuple[Basis, ...]
     # data type for all data inputs and outputs
@@ -322,7 +335,7 @@ class Operation:
     @classmethod
     def get_operation(
             cls, fn_name: str, layout: str = "dense"
-    ) -> type['Operation']:
+    ) -> type["Operation[Any]"]:
         """
         Retrieves a registered operation class based on the function name and layout.
 
@@ -346,7 +359,7 @@ class Operation:
                            f"has been defined")
 
     @classmethod
-    def make_result_dtypes(cls, basis, dtype, batch_dims):
+    def make_result_dtypes(cls, basis: ResultBasisT, dtype, batch_dims):
         """
         Creates result dtypes for use in computations based on the provided basis, data type, and batch dimensions.
 
@@ -374,7 +387,11 @@ class Operation:
         )
 
     @classmethod
-    def get_result_basis(cls, bases: tuple[Basis, ...], preferred_basis) -> Basis:
+    def get_result_basis(
+            cls,
+            bases: tuple[Basis, ...],
+            preferred_basis: ResultBasisT | None,
+    ) -> ResultBasisT:
         """
         Determines the appropriate basis from a list of bases, considering an optional
         preferred basis. The method ensures that all bases in the list have matching
@@ -386,6 +403,11 @@ class Operation:
                       and selects the deepest valid basis.
         :param preferred_basis: An optional Basis object. If supplied and valid, this
                                 basis will be returned instead of evaluating the others.
+        Concrete operations with mixed input and output spaces must override
+        this method so that the returned basis is suitable for constructing
+        their output. This is an internal operation contract; callers may rely
+        on :attr:`basis` having the correct concrete type after construction.
+
         :return: The selected Basis object, either the preferred basis (if provided
                  and valid) or the valid deepest basis from the `bases` tuple.
         :raises ValueError: If the `bases` tuple is empty or if any basis in the tuple
@@ -393,9 +415,12 @@ class Operation:
                             the `preferred_basis` width does not match the base width.
         """
         if preferred_basis is not None:
-            return result_basis(preferred_basis, *bases, strategy="first")
+            return cast(
+                ResultBasisT,
+                result_basis(preferred_basis, *bases, strategy="first"),
+            )
 
-        return result_basis(*bases, strategy="max_depth")
+        return cast(ResultBasisT, result_basis(*bases, strategy="max_depth"))
 
     @classmethod
     def __init_subclass__(cls, **kwargs):
@@ -412,11 +437,11 @@ class Operation:
 
     def __init__(
             self,
-            bases,
+            bases: tuple[Basis, ...],
             dtype,
             batch_dims,
             ffi_call_args: dict[str, Any] | None = None,
-            specific_basis: Basis | None = None,
+            specific_basis: ResultBasisT | None = None,
             **kwargs,
     ):
         self.basis = basis = self.get_result_basis(bases, specific_basis)
@@ -781,7 +806,7 @@ def _fallback_ft_adj_lmul(
     return out
 
 
-class DenseFTFma(Operation, DenseOperation):
+class DenseFTFma(Operation[TensorBasis], DenseOperation):
     fn_name = "ft_fma"
 
     class StaticArgs(TypedDict):
@@ -792,10 +817,15 @@ class DenseFTFma(Operation, DenseOperation):
         c_min_deg: np.int32  # not required
 
     @classmethod
-    def get_result_basis(cls, bases: tuple[Basis, ...], preferred_basis) -> Basis:
+    def get_result_basis(
+            cls, bases: tuple[Basis, ...], preferred_basis: TensorBasis | None
+    ) -> TensorBasis:
         if preferred_basis is not None:
-            return result_basis(preferred_basis, *bases, strategy="first")
-        return result_basis(*bases, strategy="first")
+            return cast(
+                TensorBasis,
+                result_basis(preferred_basis, *bases, strategy="first"),
+            )
+        return cast(TensorBasis, result_basis(*bases, strategy="first"))
 
     def prepare_args(self, *data_args: Array) -> tuple[Array, ...]:
         converted_args = super().prepare_args(*data_args)
@@ -834,7 +864,7 @@ class DenseFTFma(Operation, DenseOperation):
         return (a_data + mul,)
 
 
-class DenseFTMul(Operation, DenseOperation):
+class DenseFTMul(Operation[TensorBasis], DenseOperation):
     fn_name = "ft_mul"
 
     class StaticArgs(TypedDict):
@@ -868,7 +898,7 @@ class DenseFTMul(Operation, DenseOperation):
         return (mul,)
 
 
-class DenseAntipode(Operation, DenseOperation):
+class DenseAntipode(Operation[TensorBasis], DenseOperation):
     fn_name = "ft_antipode"
 
     class StaticArgs(TypedDict):
@@ -892,7 +922,7 @@ class DenseAntipode(Operation, DenseOperation):
         return (antipode,)
 
 
-class DenseSTFma(Operation, DenseOperation):
+class DenseSTFma(Operation[TensorBasis], DenseOperation):
     fn_name = "st_fma"
 
     class StaticArgs(TypedDict):
@@ -903,10 +933,15 @@ class DenseSTFma(Operation, DenseOperation):
         c_min_deg: np.int32  # not required
 
     @classmethod
-    def get_result_basis(cls, bases: tuple[Basis, ...], preferred_basis) -> Basis:
+    def get_result_basis(
+            cls, bases: tuple[Basis, ...], preferred_basis: TensorBasis | None
+    ) -> TensorBasis:
         if preferred_basis is not None:
-            return result_basis(preferred_basis, *bases, strategy="first")
-        return result_basis(*bases, strategy="first")
+            return cast(
+                TensorBasis,
+                result_basis(preferred_basis, *bases, strategy="first"),
+            )
+        return cast(TensorBasis, result_basis(*bases, strategy="first"))
 
     def make_static_args(self, kwargs) -> cabc.Mapping[str, Any]:
         # The current C++ shuffle kernel assumes that both multiplicands extend
@@ -946,7 +981,7 @@ class DenseSTFma(Operation, DenseOperation):
         )
 
 
-class DenseSTMul(Operation, DenseOperation):
+class DenseSTMul(Operation[TensorBasis], DenseOperation):
     fn_name = "st_mul"
 
     class StaticArgs(TypedDict):
@@ -971,7 +1006,7 @@ class DenseSTMul(Operation, DenseOperation):
         return tuple(_redepth_data(arg, basis_size) for arg in converted_args)
 
 
-class DenseFTAdjLeftMul(Operation, DenseOperation):
+class DenseFTAdjLeftMul(Operation[TensorBasis], DenseOperation):
     fn_name = "ft_adj_lmul"
 
     class StaticArgs(TypedDict):
@@ -1007,7 +1042,7 @@ class DenseFTAdjLeftMul(Operation, DenseOperation):
         return (lmul,)
 
 
-class DenseFTAdjRightMul(Operation, DenseOperation):
+class DenseFTAdjRightMul(Operation[TensorBasis], DenseOperation):
     fn_name = "ft_adj_rmul"
 
     class StaticArgs(TypedDict):
@@ -1045,7 +1080,7 @@ class DenseFTAdjRightMul(Operation, DenseOperation):
         return (rmul,)
 
 
-class DenseLieToTensor(Operation, DenseOperation):
+class DenseLieToTensor(Operation[TensorBasis], DenseOperation):
     fn_name = "lie_to_tensor"
 
     class StaticArgs(TypedDict):
@@ -1056,7 +1091,9 @@ class DenseLieToTensor(Operation, DenseOperation):
         scale_factor: None | np.float64
 
     @classmethod
-    def get_result_basis(cls, bases: tuple[Basis, ...], preferred_basis) -> Basis:
+    def get_result_basis(
+            cls, bases: tuple[Basis, ...], preferred_basis: TensorBasis | None
+    ) -> TensorBasis:
         basis = to_tensor_basis(bases[0])
 
         if preferred_basis is not None:
@@ -1102,7 +1139,7 @@ class DenseLieToTensor(Operation, DenseOperation):
         return (result,)
 
 
-class DenseTensorToLie(Operation, DenseOperation):
+class DenseTensorToLie(Operation[LieBasis], DenseOperation):
     fn_name = "tensor_to_lie"
 
     class StaticArgs(TypedDict):
@@ -1113,7 +1150,9 @@ class DenseTensorToLie(Operation, DenseOperation):
         scale_factor: None | np.float64
 
     @classmethod
-    def get_result_basis(cls, bases: tuple[Basis, ...], preferred_basis) -> Basis:
+    def get_result_basis(
+            cls, bases: tuple[Basis, ...], preferred_basis: LieBasis | None
+    ) -> LieBasis:
         basis = to_lie_basis(bases[0])
 
         if preferred_basis is not None:
@@ -1159,15 +1198,17 @@ class DenseTensorToLie(Operation, DenseOperation):
 
 
 ## Intermediate operations
-class DenseFTExp(Operation, DenseOperation):
+class DenseFTExp(Operation[TensorBasis], DenseOperation):
     fn_name = "ft_exp"
 
     class StaticArgs(TypedDict):
         arg_max_deg: np.int32
 
     @classmethod
-    def get_result_basis(cls, bases: tuple[Basis, ...], preferred_basis) -> Basis:
-        basis = bases[0]
+    def get_result_basis(
+            cls, bases: tuple[Basis, ...], preferred_basis: TensorBasis | None
+    ) -> TensorBasis:
+        basis = cast(TensorBasis, bases[0])
         if preferred_basis is not None:
             check_basis_compat(preferred_basis, basis, same_type=True)
             return preferred_basis
@@ -1187,7 +1228,7 @@ class DenseFTExp(Operation, DenseOperation):
         return (exp,)
 
 
-class DenseFTFMExp(Operation, DenseOperation):
+class DenseFTFMExp(Operation[TensorBasis], DenseOperation):
     fn_name = "ft_fmexp"
 
     class StaticArgs(TypedDict):
@@ -1197,10 +1238,15 @@ class DenseFTFMExp(Operation, DenseOperation):
         exp_min_deg: np.int32
 
     @classmethod
-    def get_result_basis(cls, bases: tuple[Basis, ...], preferred_basis) -> Basis:
+    def get_result_basis(
+            cls, bases: tuple[Basis, ...], preferred_basis: TensorBasis | None
+    ) -> TensorBasis:
         if preferred_basis is not None:
-            return result_basis(preferred_basis, *bases, strategy="first")
-        return result_basis(*bases, strategy="first")
+            return cast(
+                TensorBasis,
+                result_basis(preferred_basis, *bases, strategy="first"),
+            )
+        return cast(TensorBasis, result_basis(*bases, strategy="first"))
 
     @staticmethod
     def fallback(
@@ -1232,15 +1278,17 @@ class DenseFTFMExp(Operation, DenseOperation):
         return (mul,)
 
 
-class DenseFTLog(Operation, DenseOperation):
+class DenseFTLog(Operation[TensorBasis], DenseOperation):
     fn_name = "ft_log"
 
     class StaticArgs(TypedDict):
         arg_max_deg: np.int32
 
     @classmethod
-    def get_result_basis(cls, bases: tuple[Basis, ...], preferred_basis) -> Basis:
-        basis = bases[0]
+    def get_result_basis(
+            cls, bases: tuple[Basis, ...], preferred_basis: TensorBasis | None
+    ) -> TensorBasis:
+        basis = cast(TensorBasis, bases[0])
         if preferred_basis is not None:
             check_basis_compat(preferred_basis, basis, same_type=True)
             return preferred_basis
@@ -1281,7 +1329,7 @@ class DenseFTLog(Operation, DenseOperation):
         return (log,)
 
 
-class DenseTensorPairing(Operation, DenseOperation):
+class DenseTensorPairing(Operation[TensorBasis], DenseOperation):
     fn_name = "tensor_pairing"
 
     class StaticArgs(TypedDict):
@@ -1321,7 +1369,7 @@ class DenseTensorPairing(Operation, DenseOperation):
         return partial(self.fallback, **self.make_ffi_static_args())
 
 
-class DenseLiePairing(Operation, DenseOperation):
+class DenseLiePairing(Operation[LieBasis], DenseOperation):
     fn_name = "lie_pairing"
 
     class StaticArgs(TypedDict):
@@ -1361,7 +1409,7 @@ class DenseLiePairing(Operation, DenseOperation):
         return partial(self.fallback, **self.make_ffi_static_args())
 
 
-class DenseSTAdjMul(Operation, DenseOperation):
+class DenseSTAdjMul(Operation[TensorBasis], DenseOperation):
     fn_name = "st_adj_mul"
 
     class StaticArgs(TypedDict):
