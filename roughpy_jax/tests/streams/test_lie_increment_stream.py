@@ -1,4 +1,5 @@
 import math
+from typing import Any, cast
 
 import jax
 import jax.numpy as jnp
@@ -257,7 +258,9 @@ def test_from_stream_rejects_nonpositive_resolution():
             pass
 
     with pytest.raises(ValueError, match="resolution must be positive"):
-        LieIncrementStream.from_stream(DummyStream(), resolution=0)
+        LieIncrementStream.from_stream(
+            cast(Any, DummyStream()), resolution=0
+        )
 
 
 def test_from_stream_uses_stream_dyadic_cache_provider():
@@ -279,7 +282,7 @@ def test_from_stream_uses_stream_dyadic_cache_provider():
             )
 
     src = DummyStream()
-    result = LieIncrementStream.from_stream(src, resolution=4)
+    result = LieIncrementStream.from_stream(cast(Any, src), resolution=4)
 
     assert isinstance(result, LieIncrementStream)
     assert result.resolution == 4
@@ -323,7 +326,7 @@ def test_from_stream_falls_back_to_stream_to_cache(monkeypatch):
         LieIncrementStream, "_stream_to_cache", staticmethod(fake_stream_to_cache)
     )
 
-    result = LieIncrementStream.from_stream(src, resolution=3)
+    result = LieIncrementStream.from_stream(cast(Any, src), resolution=3)
     assert isinstance(result, LieIncrementStream)
     assert result.resolution == 3
     assert captured["stream"] is src

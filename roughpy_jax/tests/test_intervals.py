@@ -127,7 +127,7 @@ class TestRealInterval:
 
         # Frozen dataclass should not allow mutation
         with pytest.raises(dataclasses.FrozenInstanceError):
-            ri._inf = 0.0
+            ri._inf = 0.0  # ty: ignore[invalid-assignment]
             
     def test_real_interval_length(self):
         ri = RealInterval(0.1, 0.2, IntervalType.ClOpen)
@@ -283,7 +283,10 @@ class TestIntersection:
         left_interval = RealInterval(1.0, 0.0, interval_type)
 
         with pytest.raises(TypeError):
-            intersection(left_interval, 0.5)
+            intersection(
+                left_interval,
+                0.5,  # ty: ignore[invalid-argument-type]
+            )
 
 
 @pytest.fixture()
@@ -360,6 +363,7 @@ class TestPartitionIntersection:
         p2 = RealInterval(-0.25, 0.75, interval_type)
 
         inters = intersection(p1, p2)
+        assert isinstance(inters, Partition)
         assert inters.length > 0.0
         assert inters.inf == pytest.approx(0.0)
         assert inters.sup == pytest.approx(0.75)
@@ -379,6 +383,7 @@ class TestPartitionIntersection:
         p2 = RealInterval(0.25, 0.75, interval_type)
 
         inters = intersection(p1, p2)
+        assert isinstance(inters, Partition)
         assert inters.length > 0.0
         assert inters.inf == pytest.approx(0.25)
         assert inters.sup == pytest.approx(0.75)

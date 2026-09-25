@@ -1,5 +1,6 @@
 import jax.numpy as jnp
 import pytest
+from typing import Any
 from roughpy_jax.compressed import csc_matvec, csr_matvec, expand_indptr
 
 
@@ -37,14 +38,14 @@ class SampleMatrixFixture:
         self.csc_indices = self.rows
         self.csc_indptr = _indptr_from_outer_indices(self.cols)
 
-    def matvec_args(self, fmt):
+    def matvec_args(self, fmt) -> tuple[Any, Any, Any, int]:
         is_csr = fmt == "csr"
-        return [
+        return (
             self.data,
             self.csr_indices if is_csr else self.csc_indices,
             self.csr_indptr if is_csr else self.csc_indptr,
             self.n_cols if is_csr else self.n_rows,
-        ]
+        )
 
 
 @pytest.fixture
@@ -69,11 +70,12 @@ def test_sparse_expand_indptr():
 def test_sparse_matvec(sample_matrix, fmt):
     # Test sparse matrix mult y = A @ x
     matvec_args = sample_matrix.matvec_args(fmt)
+    data, indices, indptr, explicit_dim = matvec_args
     matvec_fn = csr_matvec if fmt == "csr" else csc_matvec
 
     # x = |1 2 3| gives y = |1 6 1|
     x = jnp.array([1, 2, 3])
-    y = matvec_fn(*matvec_args, x)
+    y = matvec_fn(data, indices, indptr, explicit_dim, x)
     expected_y = jnp.array([1, 6, 1])
     assert jnp.array_equal(y, expected_y)
 
@@ -81,14 +83,15 @@ def test_sparse_matvec(sample_matrix, fmt):
 @pytest.mark.parametrize("fmt", ["csr", "csc"])
 def test_sparse_csr_matvec_roundtrip(sample_matrix, fmt):
     matvec_args = sample_matrix.matvec_args(fmt)
+    data, indices, indptr, explicit_dim = matvec_args
     matvec_fn = csr_matvec if fmt == "csr" else csc_matvec
 
     x = jnp.array([10.0, 20.0, 30.0])
-    y = matvec_fn(*matvec_args, x)
+    y = matvec_fn(data, indices, indptr, explicit_dim, x)
     assert jnp.allclose(y, sample_matrix.dense @ x)
 
     xb = jnp.stack([x, x * 0.1])
-    yb = matvec_fn(*matvec_args, xb)
+    yb = matvec_fn(data, indices, indptr, explicit_dim, xb)
     assert jnp.allclose(yb, xb @ sample_matrix.dense.T)
 
 
@@ -126,7 +129,8 @@ def test_sparse_matvec_rectangular(dense, fmt):
 @pytest.mark.parametrize("fmt", ["csr", "csc"])
 def test_sparse_matvec_rejects_wrong_vector_length(sample_matrix, fmt):
     matvec_args = sample_matrix.matvec_args(fmt)
+    data, indices, indptr, explicit_dim = matvec_args
     matvec_fn = csr_matvec if fmt == "csr" else csc_matvec
 
     with pytest.raises(ValueError, match="expected an input with 3 columns"):
-        matvec_fn(*matvec_args, jnp.ones(2))
+        matvec_fn(data, indices, indptr, explicit_dim, jnp.ones(2))

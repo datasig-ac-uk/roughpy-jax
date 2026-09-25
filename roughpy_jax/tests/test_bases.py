@@ -2,6 +2,7 @@ from dataclasses import dataclass
 
 import jax
 import numpy as np
+import numpy.typing as npt
 import pytest
 
 from roughpy_jax import bases as rpj_bases
@@ -9,16 +10,16 @@ from roughpy_jax import bases as rpj_bases
 
 @dataclass(frozen=True)
 class MockBasis:
-    width: np.int32
-    depth: np.int32
-    degree_begin: np.ndarray
+    width: int
+    depth: int
+    degree_begin: npt.NDArray[np.intp]
 
     def size(self) -> int:
         return int(self.degree_begin[-1])
 
-    def __eq__(self, other) -> bool:
+    def __eq__(self, other: object) -> bool:
         if not isinstance(other, MockBasis):
-            return NotImplemented
+            return False
         return (
             self.width == other.width
             and self.depth == other.depth
@@ -31,8 +32,8 @@ class MockBasis:
 
 def make_mock_basis(width: int, depth: int) -> MockBasis:
     return MockBasis(
-        np.int32(width),
-        np.int32(depth),
+        width,
+        depth,
         np.array([0, 1, width + 1], dtype=np.intp),
     )
 
@@ -94,7 +95,10 @@ def test_result_basis_rejects_unknown_strategy():
     basis = rpj_bases.TensorBasis(2, 3)
 
     with pytest.raises(ValueError, match="unknown basis selection strategy"):
-        rpj_bases.result_basis(basis, strategy="largest")
+        rpj_bases.result_basis(
+            basis,
+            strategy="largest",  # ty: ignore[invalid-argument-type]
+        )
 
 
 def test_to_tensor_basis_converts_basis_like_object():

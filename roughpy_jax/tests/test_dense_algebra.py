@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 import jax
 import jax.numpy as jnp
 import numpy as np
+import numpy.typing as npt
 import pytest
 import roughpy_jax as rpj
 
@@ -19,16 +20,16 @@ from roughpy_jax.dense_algebra import (
 class MockBasis:
     width: int = 5
     depth: int = 5
-    degree_begin: np.ndarray = field(
+    degree_begin: npt.NDArray[np.intp] = field(
         default_factory=lambda: np.array([0, 0, 1, 2, 3, 4, 5], dtype=np.int64)
     )
 
     def size(self) -> int:
         return 5
 
-    def __eq__(self, other) -> bool:
+    def __eq__(self, other: object) -> bool:
         if not isinstance(other, MockBasis):
-            return NotImplemented
+            return False
         return (
             self.width == other.width
             and self.depth == other.depth
