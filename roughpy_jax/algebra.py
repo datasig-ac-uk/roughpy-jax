@@ -2,7 +2,6 @@ from typing import Any, Sequence, TypeAlias, TypeVar, cast
 
 import jax
 import jax.numpy as jnp
-import numpy as np
 
 from roughpy_jax.bases import (
     LieBasis,
@@ -363,11 +362,11 @@ def ft_fma(
         dtype,
         batch_dims,
         specific_basis=out_basis,
-        a_max_deg=np.int32(out_depth),
-        b_max_deg=np.int32(b.basis.depth),
-        c_max_deg=np.int32(c.basis.depth),
-        b_min_deg=np.int32(0),
-        c_min_deg=np.int32(0),
+        a_max_deg=out_depth,
+        b_max_deg=b.basis.depth,
+        c_max_deg=c.basis.depth,
+        b_min_deg=0,
+        c_min_deg=0,
     )
 
     out_data = op(a.data, b.data, c.data)
@@ -495,10 +494,10 @@ def ft_mul(
         dtype,
         batch_dims,
         specific_basis=out_basis,
-        lhs_max_deg=np.int32(a.basis.depth),
-        rhs_max_deg=np.int32(b.basis.depth),
-        lhs_min_deg=np.int32(0),
-        rhs_min_deg=np.int32(0),
+        lhs_max_deg=a.basis.depth,
+        rhs_max_deg=b.basis.depth,
+        lhs_min_deg=0,
+        rhs_min_deg=0,
     )
 
     out_data = op(a.data, b.data)
@@ -603,7 +602,7 @@ def antipode(a: TensorT) -> TensorT:
         (a.basis,),
         a.dtype,
         batch_dims,
-        arg_max_deg=np.int32(a.basis.depth),
+        arg_max_deg=a.basis.depth,
         no_sign=False,
     )
 
@@ -697,11 +696,11 @@ def st_fma(
         dtype,
         batch_dims,
         specific_basis=out_basis,
-        a_max_deg=np.int32(out_depth),
-        b_max_deg=np.int32(b.basis.depth),
-        c_max_deg=np.int32(c.basis.depth),
-        b_min_deg=np.int32(0),
-        c_min_deg=np.int32(0),
+        a_max_deg=out_depth,
+        b_max_deg=b.basis.depth,
+        c_max_deg=c.basis.depth,
+        b_min_deg=0,
+        c_min_deg=0,
     )
     out_data = op(a.data, b.data, c.data)
 
@@ -831,10 +830,10 @@ def st_mul(
         dtype,
         batch_dims,
         specific_basis=out_basis,
-        lhs_max_deg=np.int32(lhs.basis.depth),
-        rhs_max_deg=np.int32(rhs.basis.depth),
-        lhs_min_deg=np.int32(0),
-        rhs_min_deg=np.int32(0),
+        lhs_max_deg=lhs.basis.depth,
+        rhs_max_deg=rhs.basis.depth,
+        lhs_min_deg=0,
+        rhs_min_deg=0,
     )
 
     out_data = op(lhs.data, rhs.data)
@@ -935,7 +934,7 @@ def ft_exp(x: DenseFreeTensor,
         dtype,
         x.batch_shape,
         specific_basis=out_basis,
-        arg_max_deg=np.int32(x.basis.depth),
+        arg_max_deg=x.basis.depth,
     )
 
     out_data = op(x.data)
@@ -1091,7 +1090,7 @@ def ft_log(x: DenseFreeTensor,
         dtype,
         x.batch_shape,
         specific_basis=out_basis,
-        arg_max_deg=np.int32(x.basis.depth),
+        arg_max_deg=x.basis.depth,
     )
 
     out_data = op(x.data)
@@ -1243,10 +1242,10 @@ def ft_fmexp(
         dtype,
         batch_dims,
         specific_basis=out_basis,
-        mul_max_deg=np.int32(mul_depth),
-        exp_max_deg=np.int32(exp_depth),
-        mul_min_deg=np.int32(0),
-        exp_min_deg=np.int32(0),
+        mul_max_deg=mul_depth,
+        exp_max_deg=exp_depth,
+        mul_min_deg=0,
+        exp_min_deg=0,
     )
 
     out_data = op(multiplier.data, exponent.data)
@@ -1697,8 +1696,8 @@ def ft_adjoint_left_mul(
         (op.basis, arg.basis),
         dtype,
         batch_dims,
-        op_max_deg=np.int32(op.basis.depth),
-        arg_max_deg=np.int32(arg.basis.depth),
+        op_max_deg=op.basis.depth,
+        arg_max_deg=arg.basis.depth,
     )
 
     out_data = op_call(op.data, arg.data)
@@ -1784,8 +1783,8 @@ def ft_adjoint_right_mul(
         (op.basis, arg.basis),
         dtype,
         batch_dims,
-        op_max_deg=np.int32(op.basis.depth),
-        arg_max_deg=np.int32(arg.basis.depth),
+        op_max_deg=op.basis.depth,
+        arg_max_deg=arg.basis.depth,
     )
 
     out_data = op_call(op.data, arg.data)
@@ -2056,8 +2055,8 @@ def st_adjoint_mul(
         (op_arg.basis, arg.basis),
         dtype,
         batch_dims,
-        op_max_deg=np.int32(op_arg.basis.depth),
-        arg_max_deg=np.int32(arg.basis.depth),
+        op_max_deg=op_arg.basis.depth,
+        arg_max_deg=arg.basis.depth,
     )
 
     (result,) = op_call(op_arg.data, arg.data)

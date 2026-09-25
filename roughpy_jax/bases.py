@@ -19,8 +19,8 @@ class Basis(typing.Protocol):
     and degree offsets needed to construct compatible tensor or Lie bases.
     """
 
-    width: np.int32 | int
-    depth: np.int32 | int
+    width: int
+    depth: int
     degree_begin: DegreeBeginArray
 
     def size(self) -> int: ...
