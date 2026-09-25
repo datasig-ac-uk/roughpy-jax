@@ -1,4 +1,4 @@
-from typing import TypeVar, Callable, Generic, ClassVar, Type, Sequence
+from typing import Any, TypeVar, Callable, Generic, ClassVar, Type, Sequence
 
 import jax
 import jax.numpy as jnp
@@ -6,7 +6,7 @@ import numpy as np
 
 from roughpy_jax.bases import BasisT, TensorBasis, result_basis
 
-AlgebraT = TypeVar("AlgebraT", bound="DenseAlgebra")
+AlgebraT = TypeVar("AlgebraT", bound="DenseAlgebra[Any]")
 
 
 def get_batch_shape(operand) -> tuple[int, ...]:

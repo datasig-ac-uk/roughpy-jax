@@ -21,7 +21,7 @@ from roughpy_jax.dense_algebra import (
 )
 from roughpy_jax.ops import Operation, _get_lie_sparse_matrices
 
-AlgebraT = TypeVar("AlgebraT", bound=DenseAlgebra)
+AlgebraT = TypeVar("AlgebraT", bound=DenseAlgebra[Any])
 TensorT = TypeVar("TensorT", bound=DenseTensor)
 
 
