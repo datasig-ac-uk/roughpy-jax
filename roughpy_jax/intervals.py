@@ -3,11 +3,10 @@ from __future__ import annotations
 import enum
 import typing
 from dataclasses import FrozenInstanceError, dataclass
-from typing import Any, Protocol, TypeAlias, TypeVar
+from typing import Any, Protocol, TypeVar
 
 import jax
 import jax.numpy as jnp
-import numpy.typing as npt
 from jax import Array
 from jax.typing import ArrayLike
 
@@ -79,8 +78,8 @@ class BaseInterval:
 
 
 def intersection(
-        left_interval: Interval,
-        right_interval: Interval,
+    left_interval: Interval,
+    right_interval: Interval,
 ) -> RealInterval | DyadicInterval | Partition:
     """
     Calculate the intersection of two intervals, dispatching to the
@@ -98,7 +97,7 @@ def intersection(
     :return: The intersection.
     """
     if not isinstance(left_interval, Interval) or not isinstance(
-            right_interval, Interval
+        right_interval, Interval
     ):
         raise TypeError("Both arguments must be of type Interval")
 
@@ -107,11 +106,11 @@ def intersection(
 
     # Two dyadics → dyadic class method
     if isinstance(left_interval, DyadicInterval) and isinstance(
-            right_interval, DyadicInterval
+        right_interval, DyadicInterval
     ):
         return DyadicInterval.intersection(left_interval, right_interval)
     elif isinstance(left_interval, DyadicInterval) or isinstance(
-            right_interval, DyadicInterval
+        right_interval, DyadicInterval
     ):
         raise ValueError("Cannot intersect a DyadicInterval with a non-DyadicInterval")
 
@@ -151,13 +150,9 @@ class Dyadic:
         n = jnp.asarray(n)
 
         if not jnp.issubdtype(k.dtype, jnp.integer):
-            raise TypeError(
-                f"Dyadic.k must be an integer array, got {k.dtype}: {k!r}"
-            )
+            raise TypeError(f"Dyadic.k must be an integer array, got {k.dtype}: {k!r}")
         if not jnp.issubdtype(n.dtype, jnp.integer):
-            raise TypeError(
-                f"Dyadic.n must be an integer array, got {n.dtype}: {n!r}"
-            )
+            raise TypeError(f"Dyadic.n must be an integer array, got {n.dtype}: {n!r}")
 
         object.__setattr__(self, "k", k)
         object.__setattr__(self, "n", n)
@@ -172,8 +167,7 @@ class Dyadic:
         if type(self) is not type(other):
             return False
         return bool(
-            jnp.array_equal(self.k, other.k)
-            and jnp.array_equal(self.n, other.n)
+            jnp.array_equal(self.k, other.k) and jnp.array_equal(self.n, other.n)
         )
 
     def __jax_array__(self) -> Array:
@@ -191,7 +185,10 @@ class DyadicInterval(Dyadic):
     _interval_type: IntervalType
 
     def __init__(
-            self, k: ArrayLike, n: ArrayLike, interval_type: IntervalType = IntervalType.ClOpen
+        self,
+        k: ArrayLike,
+        n: ArrayLike,
+        interval_type: IntervalType = IntervalType.ClOpen,
     ) -> None:
         super().__init__(k, n)
         object.__setattr__(self, "_interval_type", interval_type)
@@ -205,10 +202,10 @@ class DyadicInterval(Dyadic):
 
     def __eq__(self, other: object) -> bool:
         return (
-                isinstance(other, DyadicInterval)
-                and self.interval_type == other.interval_type
-                and bool(jnp.array_equal(self.k, other.k))
-                and bool(jnp.array_equal(self.n, other.n))
+            isinstance(other, DyadicInterval)
+            and self.interval_type == other.interval_type
+            and bool(jnp.array_equal(self.k, other.k))
+            and bool(jnp.array_equal(self.n, other.n))
         )
 
     @property
@@ -227,7 +224,7 @@ class DyadicInterval(Dyadic):
 
     @classmethod
     def intersection(
-            cls, left: DyadicInterval, right: DyadicInterval
+        cls, left: DyadicInterval, right: DyadicInterval
     ) -> DyadicInterval:
         raise NotImplementedError("DyadicInterval intersection is not implemented yet")
 
@@ -236,29 +233,25 @@ def _dyadic_tree_flatten(dyadic: Dyadic) -> tuple[tuple[Array, Array], None]:
     return (dyadic.k, dyadic.n), None
 
 
-def _dyadic_tree_unflatten(
-        _aux_data: None, children: tuple[Array, Array]
-) -> Dyadic:
+def _dyadic_tree_unflatten(_aux_data: None, children: tuple[Array, Array]) -> Dyadic:
     k, n = children
     return Dyadic(k, n)
 
 
 def _dyadic_interval_tree_flatten(
-        interval: DyadicInterval,
+    interval: DyadicInterval,
 ) -> tuple[tuple[Array, Array], IntervalType]:
     return (interval.k, interval.n), interval.interval_type
 
 
 def _dyadic_interval_tree_unflatten(
-        interval_type: IntervalType, children: tuple[Array, Array]
+    interval_type: IntervalType, children: tuple[Array, Array]
 ) -> DyadicInterval:
     k, n = children
     return DyadicInterval(k, n, interval_type)
 
 
-jax.tree_util.register_pytree_node(
-    Dyadic, _dyadic_tree_flatten, _dyadic_tree_unflatten
-)
+jax.tree_util.register_pytree_node(Dyadic, _dyadic_tree_flatten, _dyadic_tree_unflatten)
 jax.tree_util.register_pytree_node(
     DyadicInterval,
     _dyadic_interval_tree_flatten,
@@ -289,10 +282,10 @@ class RealInterval:
     _interval_type: IntervalType
 
     def __init__(
-            self,
-            _inf: ArrayLike,
-            _sup: ArrayLike,
-            _interval_type: IntervalType,
+        self,
+        _inf: ArrayLike,
+        _sup: ArrayLike,
+        _interval_type: IntervalType,
     ) -> None:
         inf, sup = jnp.broadcast_arrays(jnp.asarray(_inf), jnp.asarray(_sup))
         object.__setattr__(self, "_inf", inf)
@@ -305,9 +298,7 @@ class RealInterval:
     def __hash__(self) -> int:
         if self._inf.ndim != 0 or self._sup.ndim != 0:
             raise TypeError("batched RealInterval objects are unhashable")
-        return hash(
-            (self._inf.item(), self._sup.item(), self._interval_type)
-        )
+        return hash((self._inf.item(), self._sup.item(), self._interval_type))
 
     @property
     def interval_type(self) -> IntervalType:
@@ -432,7 +423,9 @@ class Partition:
 
     def to_intervals(self) -> RealInterval:
         """Return all subintervals as one batched :class:`RealInterval`."""
-        return RealInterval(self.endpoints[..., :-1], self.endpoints[..., 1:], self.interval_type)
+        return RealInterval(
+            self.endpoints[..., :-1], self.endpoints[..., 1:], self.interval_type
+        )
 
     def truncate(self, other: Interval) -> Partition:
         """
@@ -449,9 +442,7 @@ class Partition:
         if self.interval_type != other.interval_type:
             raise ValueError("Cannot truncate partitions with different interval type")
 
-        endpoints = jnp.clip(
-            self.endpoints, other.inf[..., None], other.sup[..., None]
-        )
+        endpoints = jnp.clip(self.endpoints, other.inf[..., None], other.sup[..., None])
         return Partition(endpoints, self.interval_type)
 
     def merge(self, other: Partition) -> Partition:

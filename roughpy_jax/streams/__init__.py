@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from roughpy_jax.intervals import Interval, Partition
 from roughpy_jax.algebra import DenseFreeTensor, DenseLie
+from roughpy_jax.intervals import Interval, Partition
 
-from .concepts import Stream, ValueStream, LieT, GroupT
+from .concepts import GroupT, LieT, Stream, ValueStream
 from .lie_increment_stream import (
     LieIncrementStream,
     compute_separating_resolution,
@@ -28,6 +28,7 @@ __all__ = [
     "simplify",
     "to_piecewise_abelian_stream",
 ]
+
 
 def log_signature(stream: Stream[LieT, GroupT], query: Partition | Interval) -> LieT:
     """
@@ -63,7 +64,9 @@ def signature(stream: Stream[LieT, GroupT], query: Partition | Interval) -> Grou
     return stream.signature(query)
 
 
-def simplify(stream: Stream[DenseLie, DenseFreeTensor], partition: Partition) -> PiecewiseAbelianStream:
+def simplify(
+    stream: Stream[DenseLie, DenseFreeTensor], partition: Partition
+) -> PiecewiseAbelianStream:
     """
     Simplify a stream into a piecewise abelian stream.
 

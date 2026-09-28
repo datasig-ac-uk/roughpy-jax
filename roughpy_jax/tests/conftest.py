@@ -130,7 +130,7 @@ class BatchFixtureHelper:
         """
         # Built using np not jnp for easy mutability
         data = np.zeros(self.tensor_batch_shape(basis), dtype)
-        data[..., 1: basis.width + 1] = self.rng.normal(
+        data[..., 1 : basis.width + 1] = self.rng.normal(
             size=(*self.shape, basis.width)
         )
         device = kwargs.pop("device", self.device)

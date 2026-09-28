@@ -3,6 +3,7 @@ import dataclasses
 import jax
 import jax.numpy as jnp
 import pytest
+
 from roughpy_jax.intervals import (
     Dyadic,
     DyadicInterval,
@@ -83,10 +84,7 @@ def test_interval_pytree_can_be_passed_to_jit(interval, expected_length):
     assert jnp.allclose(interval_length(interval), expected_length)
 
 
-@pytest.mark.parametrize(
-    "interval_type",
-    (IntervalType.ClOpen, IntervalType.OpenCl)
-)
+@pytest.mark.parametrize("interval_type", (IntervalType.ClOpen, IntervalType.OpenCl))
 def test_protocol_conformance_runtime_checkable(interval_type):
     # All three concrete types should be instances of the Interval protocol
     di = DyadicInterval(2, 1, interval_type)
@@ -123,13 +121,14 @@ class TestDyadic:
         with pytest.raises(dataclasses.FrozenInstanceError):
             d.k = jnp.asarray(4)
 
+
 class TestDyadicInterval:
     def test_dyadic_interval_clopen(self):
         di = DyadicInterval(3, 1, IntervalType.ClOpen)
         assert di.inf == pytest.approx(1.5)
         assert di.sup == pytest.approx(2.0)
         assert di.length == pytest.approx(0.5)
-        
+
     def test_dyadic_interval_opencl(self):
         di = DyadicInterval(3, 1, IntervalType.OpenCl)
         assert di.inf == pytest.approx(1.0)
@@ -147,21 +146,21 @@ class TestRealInterval:
         # Frozen dataclass should not allow mutation
         with pytest.raises(dataclasses.FrozenInstanceError):
             ri._inf = 0.0  # ty: ignore[invalid-assignment]
-            
+
     def test_real_interval_length(self):
         ri = RealInterval(0.1, 0.2, IntervalType.ClOpen)
         assert ri.length == pytest.approx(0.1)
-        
+
     def test_real_interval_length_zero(self):
         ri = RealInterval(0.1, 0.1, IntervalType.ClOpen)
         assert ri.length == pytest.approx(0.0)
-    
+
     def test_real_interval_length_negative(self):
-        # This is the principal edge case - the interval is invalid and length 
-        # should be zero as that's how we determine no-overlap in intersection. 
+        # This is the principal edge case - the interval is invalid and length
+        # should be zero as that's how we determine no-overlap in intersection.
         ri = RealInterval(0.2, 0.1, IntervalType.ClOpen)
         assert ri.length == pytest.approx(0.0)
-    
+
     def test_to_string(self):
         ri = RealInterval(0.1, 0.2, IntervalType.ClOpen)
         assert str(ri) == "[0.1, 0.2)"
@@ -174,12 +173,14 @@ def test_partition_with_dyadic_endpoints_uses_jax_conversion():
     p = Partition(endpoints, IntervalType.ClOpen)
     assert p.inf == pytest.approx(0.0)
     assert p.sup == pytest.approx(1.0)
-    
 
-@pytest.fixture(params=[
-    pytest.param(IntervalType.ClOpen, id="ClOpen"),
-    pytest.param(IntervalType.OpenCl, id="OpenCl")
-])
+
+@pytest.fixture(
+    params=[
+        pytest.param(IntervalType.ClOpen, id="ClOpen"),
+        pytest.param(IntervalType.OpenCl, id="OpenCl"),
+    ]
+)
 def interval_type(request) -> IntervalType:
     return request.param
 
@@ -193,11 +194,11 @@ def real_intervals(interval_type) -> tuple[RealInterval, RealInterval]:
 
 class TestIntersection:
     """
-    Tests for the intersection function, which computes the intersection of two 
-    intervals. This has been pruned back to only work on RealInterval, as it's 
+    Tests for the intersection function, which computes the intersection of two
+    intervals. This has been pruned back to only work on RealInterval, as it's
     the only type of interval we currently support intersection for.
     """
-    
+
     @pytest.mark.parametrize(
         "left_interval,right_interval,expected_inf,expected_sup",
         [
@@ -222,20 +223,16 @@ class TestIntersection:
         ],
     )
     def test_intersection(
-        self, 
-        left_interval, 
-        right_interval, 
-        expected_inf, 
-        expected_sup
+        self, left_interval, right_interval, expected_inf, expected_sup
     ) -> None:
         inters = intersection(left_interval, right_interval)
         assert inters is not None
         assert inters.inf == expected_inf
         assert inters.sup == expected_sup
-        
+
     def test_interval_commutativity(self, real_intervals) -> None:
         left_interval, right_interval = real_intervals
-        
+
         inters_1 = intersection(left_interval, right_interval)
         inters_2 = intersection(right_interval, left_interval)
         assert inters_1.inf == inters_2.inf
@@ -252,7 +249,7 @@ class TestIntersection:
         assert inters.inf == pytest.approx(1.5)
         assert inters.sup == pytest.approx(1.0)
         assert inters.interval_type == interval_type
-        
+
     def test_intersection_full_overlap(self, interval_type) -> None:
         left_interval = RealInterval(0.0, 1.0, interval_type)
         right_interval = RealInterval(0.0, 1.0, interval_type)
@@ -262,7 +259,7 @@ class TestIntersection:
         assert inters.inf == pytest.approx(0.0)
         assert inters.sup == pytest.approx(1.0)
         assert inters.interval_type == interval_type
-        
+
     def test_intersection_point_overlap(self, interval_type) -> None:
         left_interval = RealInterval(0.0, 1.0, interval_type)
         right_interval = RealInterval(1.0, 2.0, interval_type)
@@ -272,14 +269,14 @@ class TestIntersection:
         assert inters.inf == pytest.approx(1.0)
         assert inters.sup == pytest.approx(1.0)
         assert inters.interval_type == interval_type
-    
+
     def test_intersection_different_types(self) -> None:
         left_interval = RealInterval(0.0, 1.0, IntervalType.ClOpen)
         right_interval = RealInterval(0.5, 1.5, IntervalType.OpenCl)
 
         with pytest.raises(TypeError):
             intersection(left_interval, right_interval)
-    
+
     def test_intersection_mixed_intervals(self, interval_type) -> None:
         left_partition = Partition([0.0, 1.0], interval_type)
         right_interval = RealInterval(0.5, 1.5, interval_type)
@@ -288,16 +285,16 @@ class TestIntersection:
         assert inters.inf == pytest.approx(0.5)
         assert inters.sup == pytest.approx(1.0)
         assert inters.interval_type == interval_type
-            
+
     def test_intersection_mixed_intervals_2(self) -> None:
         left_interval = RealInterval(0.0, 1.0, IntervalType.ClOpen)
         right_interval = DyadicInterval(3, 1, IntervalType.ClOpen)
 
-        # TODO: This is a bit of an odd case - we could potentially support this by converting the DyadicInterval to a 
+        # TODO: This is a bit of an odd case - we could potentially support this by converting the DyadicInterval to a
         # RealInterval.
         with pytest.raises(ValueError):
             intersection(left_interval, right_interval)
-    
+
     def test_intersection_invalid_types(self, interval_type) -> None:
         left_interval = RealInterval(1.0, 0.0, interval_type)
 
@@ -329,18 +326,19 @@ class TestPartition:
         assert jnp.array_equal(intervals.inf, jnp.asarray([0.0, 0.5]))
         assert jnp.array_equal(intervals.sup, jnp.asarray([0.5, 1.0]))
         assert intervals.interval_type is interval_type
-        
+
     def test_partition_short_length(self, interval_type):
         with pytest.raises(ValueError, match="at least two endpoints"):
             Partition([0.0], interval_type)
-        
+
     def test_partition_to_string(self, partition):
         p = Partition([0.0, 1.0], IntervalType.ClOpen)
         assert str(p) == "[0.0, ..., 1.0)"
-        
+
         p2 = Partition([0.0, 1.0], IntervalType.OpenCl)
         assert str(p2) == "(0.0, ..., 1.0]"
-        
+
+
 class TestPartitionMergeAndTruncate:
     def test_partition_merge_aligned(self, partition, interval_type):
         p1 = partition
@@ -355,7 +353,7 @@ class TestPartitionMergeAndTruncate:
             jnp.asarray([0.0, 0.5, 0.5, 1.0, 1.0]),
         )
         assert merged.interval_type is interval_type
-        
+
     def test_partition_merge_unaligned(self, partition, interval_type):
         p1 = partition
         p2 = Partition([0.25, 0.75], interval_type)
@@ -367,12 +365,8 @@ class TestPartitionMergeAndTruncate:
         assert merged.interval_type is interval_type
 
     def test_partition_merge_matching_batches(self, interval_type):
-        left = Partition(
-            [[0.0, 0.5, 1.0], [10.0, 11.0, 12.0]], interval_type
-        )
-        right = Partition(
-            [[0.25, 0.75], [10.5, 11.5]], interval_type
-        )
+        left = Partition([[0.0, 0.5, 1.0], [10.0, 11.0, 12.0]], interval_type)
+        right = Partition([[0.25, 0.75], [10.5, 11.5]], interval_type)
 
         merged = left.merge(right)
 
@@ -398,14 +392,14 @@ class TestPartitionMergeAndTruncate:
         ],
     )
     def test_partition_merge_rejects_different_batch_shapes(
-            self, interval_type, left_endpoints, right_endpoints
+        self, interval_type, left_endpoints, right_endpoints
     ):
         left = Partition(left_endpoints, interval_type)
         right = Partition(right_endpoints, interval_type)
 
         with pytest.raises(ValueError, match="different batch dimensions"):
             left.merge(right)
-        
+
     def test_partition_truncate(self, partition, interval_type):
         p = partition
         ri = RealInterval(0.25, 0.75, interval_type)
@@ -417,7 +411,7 @@ class TestPartitionMergeAndTruncate:
         assert truncated.interval_type is interval_type
 
     def test_unbatched_partition_truncate_by_batched_interval(
-            self, partition, interval_type
+        self, partition, interval_type
     ):
         interval = RealInterval(
             jnp.asarray([0.25, -0.5]),
@@ -430,14 +424,10 @@ class TestPartitionMergeAndTruncate:
         assert truncated.batch_dims == (2,)
         assert jnp.array_equal(
             truncated.endpoints,
-            jnp.asarray(
-                [[0.25, 0.5, 0.75], [0.0, 0.5, 0.5]]
-            ),
+            jnp.asarray([[0.25, 0.5, 0.75], [0.0, 0.5, 0.5]]),
         )
 
-    def test_partition_truncate_broadcasts_compatible_batch_shapes(
-            self, interval_type
-    ):
+    def test_partition_truncate_broadcasts_compatible_batch_shapes(self, interval_type):
         partition = Partition(
             [
                 [[0.0, 0.5, 1.0]],
@@ -475,12 +465,8 @@ class TestPartitionMergeAndTruncate:
             ),
         )
 
-    def test_partition_truncate_rejects_incompatible_batch_shapes(
-            self, interval_type
-    ):
-        partition = Partition(
-            [[0.0, 0.5, 1.0], [1.0, 1.5, 2.0]], interval_type
-        )
+    def test_partition_truncate_rejects_incompatible_batch_shapes(self, interval_type):
+        partition = Partition([[0.0, 0.5, 1.0], [1.0, 1.5, 2.0]], interval_type)
         interval = RealInterval(
             jnp.asarray([0.0, 0.5, 1.0]),
             jnp.asarray([1.0, 1.5, 2.0]),
@@ -489,6 +475,7 @@ class TestPartitionMergeAndTruncate:
 
         with pytest.raises(TypeError, match="incompatible shapes for broadcasting"):
             partition.truncate(interval)
+
 
 class TestPartitionIntersection:
     def test_partition_intersection_interval(self, interval_type):

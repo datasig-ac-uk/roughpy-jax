@@ -77,7 +77,9 @@ def test_result_basis_uses_selection_strategy():
 
     assert rpj_bases.result_basis(shallow, medium, deep, strategy="first") is shallow
     assert rpj_bases.result_basis(shallow, medium, deep, strategy="max_depth") is deep
-    assert rpj_bases.result_basis(shallow, medium, deep, strategy="min_depth") is shallow
+    assert (
+        rpj_bases.result_basis(shallow, medium, deep, strategy="min_depth") is shallow
+    )
 
 
 def test_result_basis_accepts_single_iterable():

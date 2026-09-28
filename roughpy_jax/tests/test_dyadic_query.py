@@ -3,6 +3,7 @@ from collections import deque
 
 import jax.numpy as jnp
 import pytest
+
 from roughpy_jax.intervals import IntervalType, RealInterval
 from roughpy_jax.streams.lie_increment_stream import dyadic_query
 
@@ -235,9 +236,7 @@ def test_short_intervals_handle_all_query_and_cache_interval_type_pairs(
         (IntervalType.OpenCl, IntervalType.OpenCl),
     ],
 )
-def test_short_intervals_exclude_finest_endpoint_outside_query(
-    query_type, cache_type
-):
+def test_short_intervals_exclude_finest_endpoint_outside_query(query_type, cache_type):
     query = RealInterval(0.251, 0.26, query_type)
 
     result = _collect_endpoints(query, resolution=3, cache_interval_type=cache_type)
@@ -279,14 +278,23 @@ def test_batched_callback_api_uses_the_dyadic_query_kernel():
         IntervalType.ClOpen,
     )
 
-    actual = dyadic_query(
-        query, 3, init, get, get, combine, context=None
+    actual = dyadic_query(query, 3, init, get, get, combine, context=None)
+    expected = jnp.asarray(
+        [
+            dyadic_query(
+                RealInterval(
+                    float(query.inf[i]), float(query.sup[i]), query.interval_type
+                ),
+                3,
+                init,
+                get,
+                get,
+                combine,
+                context=None,
+            )
+            for i in range(3)
+        ]
     )
-    expected = jnp.asarray([
-        dyadic_query(RealInterval(float(query.inf[i]), float(query.sup[i]), query.interval_type),
-                     3, init, get, get, combine, context=None)
-        for i in range(3)
-    ])
 
     assert actual.shape == (3,)
     assert jnp.allclose(actual, expected)

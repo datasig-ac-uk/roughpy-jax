@@ -1,6 +1,8 @@
+from typing import Any
+
 import jax.numpy as jnp
 import pytest
-from typing import Any
+
 from roughpy_jax.compressed import csc_matvec, csr_matvec, expand_indptr
 
 
@@ -120,9 +122,7 @@ def test_sparse_matvec_rectangular(dense, fmt):
     assert jnp.allclose(result, dense @ x)
 
     batched_x = jnp.stack([x, 2 * x])
-    batched_result = matvec_fn(
-        data, indices, indptr, explicit_dim, batched_x
-    )
+    batched_result = matvec_fn(data, indices, indptr, explicit_dim, batched_x)
     assert jnp.allclose(batched_result, batched_x @ dense.T)
 
 

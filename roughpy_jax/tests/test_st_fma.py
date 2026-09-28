@@ -3,14 +3,14 @@ from functools import partial
 import jax
 import jax.numpy as jnp
 import pytest
-import roughpy_jax as rpj
-from jax import test_util as jtu
-
 from derivative_testing import (
     DerivativeTrialsHelper,
     assert_is_adjoint_derivative,
     assert_is_derivative,
 )
+from jax import test_util as jtu
+
+import roughpy_jax as rpj
 from roughpy_jax.algebra import st_fma_adjoint_derivative, st_fma_derivative
 
 
@@ -46,9 +46,7 @@ def test_st_fma_mixed_depth(a_depth, b_depth, c_depth):
     c = make_shuffle(c_depth, 3)
 
     result = rpj.st_fma(a, b, c)
-    expected = a + rpj.st_mul(
-        b.change_depth(a_depth), c.change_depth(a_depth)
-    )
+    expected = a + rpj.st_mul(b.change_depth(a_depth), c.change_depth(a_depth))
 
     assert result.basis == a.basis
     assert jnp.allclose(result.data, expected.data)
@@ -60,9 +58,7 @@ def test_st_fma_explicit_out_basis(out_depth):
     out_basis = rpj.TensorBasis(2, out_depth)
 
     def make_shuffle(offset):
-        data = jnp.arange(
-            offset, offset + input_basis.size(), dtype=jnp.float32
-        )
+        data = jnp.arange(offset, offset + input_basis.size(), dtype=jnp.float32)
         return rpj.ShuffleTensor(data, input_basis)
 
     a, b, c = make_shuffle(1), make_shuffle(2), make_shuffle(3)
@@ -74,9 +70,7 @@ def test_st_fma_explicit_out_basis(out_depth):
         b.change_depth(out_depth),
         c.change_depth(out_depth),
     )
-    derivative = rpj.st_fma_derivative(
-        a, b, c, t_a, t_b, t_c, out_basis=out_basis
-    )
+    derivative = rpj.st_fma_derivative(a, b, c, t_a, t_b, t_c, out_basis=out_basis)
     expected_derivative = rpj.st_fma_derivative(
         a.change_depth(out_depth),
         b.change_depth(out_depth),
@@ -92,17 +86,13 @@ def test_st_fma_explicit_out_basis(out_depth):
     assert jnp.allclose(derivative.data, expected_derivative.data)
 
     _, pullback = jax.vjp(
-        lambda add, left, right: rpj.st_fma(
-            add, left, right, out_basis=out_basis
-        ),
+        lambda add, left, right: rpj.st_fma(add, left, right, out_basis=out_basis),
         a,
         b,
         c,
     )
     ct_a, ct_b, ct_c = pullback(
-        rpj.ShuffleTensor(
-            jnp.ones(out_basis.size(), dtype=jnp.float32), out_basis
-        )
+        rpj.ShuffleTensor(jnp.ones(out_basis.size(), dtype=jnp.float32), out_basis)
     )
     assert ct_a.basis == input_basis
     assert ct_b.basis == input_basis
@@ -127,9 +117,7 @@ def test_st_fma_derivative_mixed_depth(a_depth, b_depth, c_depth):
     t_c = make_shuffle(c_depth, 6)
 
     result = st_fma_derivative(a, b, c, t_a, t_b, t_c)
-    expected = t_a + rpj.st_mul_derivative(b, c, t_b, t_c).change_depth(
-        a_depth
-    )
+    expected = t_a + rpj.st_mul_derivative(b, c, t_b, t_c).change_depth(a_depth)
 
     assert result.basis == a.basis
     assert jnp.allclose(result.data, expected.data)
@@ -161,8 +149,9 @@ def test_st_fma_derivative_wrt_a(shuffle_deriv_trials):
     a = shuffle_deriv_trials.uniform_shuffle_tensor()
     b = shuffle_deriv_trials.uniform_shuffle_tensor()
     c = shuffle_deriv_trials.uniform_shuffle_tensor()
-    tangent = shuffle_deriv_trials.uniform_shuffle_tensor() * shuffle_deriv_trials.cond_dtype(
-        1e-3, 1e0
+    tangent = (
+        shuffle_deriv_trials.uniform_shuffle_tensor()
+        * shuffle_deriv_trials.cond_dtype(1e-3, 1e0)
     )
     zero_t = shuffle_deriv_trials.zero_shuffle_tensor()
 
@@ -187,8 +176,9 @@ def test_st_fma_derivative_wrt_b(shuffle_deriv_trials):
     a = shuffle_deriv_trials.uniform_shuffle_tensor()
     b = shuffle_deriv_trials.uniform_shuffle_tensor()
     c = shuffle_deriv_trials.uniform_shuffle_tensor()
-    tangent = shuffle_deriv_trials.uniform_shuffle_tensor() * shuffle_deriv_trials.cond_dtype(
-        1e-3, 1e0
+    tangent = (
+        shuffle_deriv_trials.uniform_shuffle_tensor()
+        * shuffle_deriv_trials.cond_dtype(1e-3, 1e0)
     )
     zero_t = shuffle_deriv_trials.zero_shuffle_tensor()
 
@@ -213,8 +203,9 @@ def test_st_fma_derivative_wrt_c(shuffle_deriv_trials):
     a = shuffle_deriv_trials.uniform_shuffle_tensor()
     b = shuffle_deriv_trials.uniform_shuffle_tensor()
     c = shuffle_deriv_trials.uniform_shuffle_tensor()
-    tangent = shuffle_deriv_trials.uniform_shuffle_tensor() * shuffle_deriv_trials.cond_dtype(
-        1e-3, 1e0
+    tangent = (
+        shuffle_deriv_trials.uniform_shuffle_tensor()
+        * shuffle_deriv_trials.cond_dtype(1e-3, 1e0)
     )
     zero_t = shuffle_deriv_trials.zero_shuffle_tensor()
 
@@ -239,8 +230,9 @@ def test_st_fma_adjoint_derivative_wrt_a(shuffle_deriv_trials):
     a = shuffle_deriv_trials.uniform_shuffle_tensor()
     b = shuffle_deriv_trials.uniform_shuffle_tensor()
     c = shuffle_deriv_trials.uniform_shuffle_tensor()
-    tangent = shuffle_deriv_trials.uniform_shuffle_tensor() * shuffle_deriv_trials.cond_dtype(
-        1e-3, 1e0
+    tangent = (
+        shuffle_deriv_trials.uniform_shuffle_tensor()
+        * shuffle_deriv_trials.cond_dtype(1e-3, 1e0)
     )
     cotangent = shuffle_deriv_trials.uniform_free_tensor()
 
@@ -268,8 +260,9 @@ def test_st_fma_adjoint_derivative_wrt_b(shuffle_deriv_trials):
     a = shuffle_deriv_trials.uniform_shuffle_tensor()
     b = shuffle_deriv_trials.uniform_shuffle_tensor()
     c = shuffle_deriv_trials.uniform_shuffle_tensor()
-    tangent = shuffle_deriv_trials.uniform_shuffle_tensor() * shuffle_deriv_trials.cond_dtype(
-        1e-3, 1e0
+    tangent = (
+        shuffle_deriv_trials.uniform_shuffle_tensor()
+        * shuffle_deriv_trials.cond_dtype(1e-3, 1e0)
     )
     cotangent = shuffle_deriv_trials.uniform_free_tensor()
 
@@ -297,8 +290,9 @@ def test_st_fma_adjoint_derivative_wrt_c(shuffle_deriv_trials):
     a = shuffle_deriv_trials.uniform_shuffle_tensor()
     b = shuffle_deriv_trials.uniform_shuffle_tensor()
     c = shuffle_deriv_trials.uniform_shuffle_tensor()
-    tangent = shuffle_deriv_trials.uniform_shuffle_tensor() * shuffle_deriv_trials.cond_dtype(
-        1e-3, 1e0
+    tangent = (
+        shuffle_deriv_trials.uniform_shuffle_tensor()
+        * shuffle_deriv_trials.cond_dtype(1e-3, 1e0)
     )
     cotangent = shuffle_deriv_trials.uniform_free_tensor()
 

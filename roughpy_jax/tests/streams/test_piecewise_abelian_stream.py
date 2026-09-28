@@ -3,6 +3,7 @@ import math
 import jax
 import jax.numpy as jnp
 import pytest
+
 import roughpy_jax as rpj
 from roughpy_jax.algebra import FreeTensor, ft_fmexp, lie_to_tensor, to_log_signature
 from roughpy_jax.intervals import IntervalType, Partition, RealInterval
@@ -117,11 +118,11 @@ class TestPiecewiseAbelianStream:
                 stream.group_basis,
             )
             result = candidate.log_signature(interval)
-            return jnp.sum(result.data ** 2)
+            return jnp.sum(result.data**2)
 
-        data_gradient, interval_gradient = jax.jit(
-            jax.grad(objective, argnums=(0, 1))
-        )(stream._data, query)
+        data_gradient, interval_gradient = jax.jit(jax.grad(objective, argnums=(0, 1)))(
+            stream._data, query
+        )
 
         assert jnp.all(jnp.isfinite(data_gradient))
         assert jnp.any(data_gradient != 0.0)

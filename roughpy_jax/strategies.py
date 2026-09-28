@@ -1,12 +1,14 @@
 "Hypothesis strategies for testing"
 
 import math
-import jax.numpy as jnp
-from hypothesis import strategies as st, settings, HealthCheck
-import hypothesis.extra.numpy as hnp
 
-from . import LieBasis, Lie, lie_to_tensor, ft_exp
-from .intervals import RealInterval, IntervalType
+import hypothesis.extra.numpy as hnp
+import jax.numpy as jnp
+from hypothesis import HealthCheck, settings
+from hypothesis import strategies as st
+
+from . import Lie, LieBasis, ft_exp, lie_to_tensor
+from .intervals import IntervalType, RealInterval
 
 # test case generation is slow, suppress warning
 settings.register_profile("roughpy_jax", suppress_health_check=[HealthCheck.too_slow])

@@ -3,8 +3,9 @@ from typing import Any
 
 import jax
 import jax.numpy as jnp
-import roughpy_jax as rpj
 from numpy.testing import assert_allclose
+
+import roughpy_jax as rpj
 
 
 class DerivativeTrialsHelper:

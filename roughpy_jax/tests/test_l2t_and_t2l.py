@@ -1,15 +1,16 @@
 import jax
 import jax.numpy as jnp
 import pytest
-import roughpy_jax as rpj
 from derivative_testing import (
     DerivativeTrialsHelper,
     assert_is_adjoint_derivative,
     assert_is_derivative,
+    assert_is_linear,
     assert_linear_map_adjoint_derivative,
     assert_linear_map_derivative,
-    assert_is_linear,
 )
+
+import roughpy_jax as rpj
 
 
 # Test fixture for batch of w=4, d=4 lie tensor
@@ -201,7 +202,7 @@ def test_t2l_scale_factor(rpj_batch, rpj_dtype, rpj_no_acceleration, scale_facto
 
 @pytest.mark.parametrize("scale_factor", [0.0, 0.5])
 def test_l2t_registered_vjp_supports_dynamic_scale_factor(
-        rpj_no_acceleration, scale_factor
+    rpj_no_acceleration, scale_factor
 ):
     lie_basis = rpj.LieBasis(2, 2)
     tensor_basis = rpj.to_tensor_basis(lie_basis)
@@ -209,19 +210,15 @@ def test_l2t_registered_vjp_supports_dynamic_scale_factor(
     weights = jnp.arange(tensor_basis.size(), dtype=jnp.float32) - 2.0
 
     def objective(arg_data, scale):
-        result = rpj.lie_to_tensor(
-            rpj.Lie(arg_data, lie_basis), scale_factor=scale
-        )
+        result = rpj.lie_to_tensor(rpj.Lie(arg_data, lie_basis), scale_factor=scale)
         return jnp.sum(result.data * weights)
 
-    grad_data, grad_scale = jax.jit(
-        jax.grad(objective, argnums=(0, 1))
-    )(data, jnp.asarray(scale_factor))
+    grad_data, grad_scale = jax.jit(jax.grad(objective, argnums=(0, 1)))(
+        data, jnp.asarray(scale_factor)
+    )
 
     images = jax.vmap(
-        lambda direction: rpj.lie_to_tensor(
-            rpj.Lie(direction, lie_basis)
-        ).data
+        lambda direction: rpj.lie_to_tensor(rpj.Lie(direction, lie_basis)).data
     )(jnp.eye(lie_basis.size(), dtype=data.dtype))
     unscaled_result = rpj.lie_to_tensor(rpj.Lie(data, lie_basis)).data
 
@@ -231,7 +228,7 @@ def test_l2t_registered_vjp_supports_dynamic_scale_factor(
 
 @pytest.mark.parametrize("scale_factor", [0.0, 0.5])
 def test_t2l_registered_vjp_supports_dynamic_scale_factor(
-        rpj_no_acceleration, scale_factor
+    rpj_no_acceleration, scale_factor
 ):
     tensor_basis = rpj.TensorBasis(2, 2)
     lie_basis = rpj.to_lie_basis(tensor_basis)
@@ -244,18 +241,16 @@ def test_t2l_registered_vjp_supports_dynamic_scale_factor(
         )
         return jnp.sum(result.data * weights)
 
-    grad_data, grad_scale = jax.jit(
-        jax.grad(objective, argnums=(0, 1))
-    )(data, jnp.asarray(scale_factor))
+    grad_data, grad_scale = jax.jit(jax.grad(objective, argnums=(0, 1)))(
+        data, jnp.asarray(scale_factor)
+    )
 
     images = jax.vmap(
-        lambda direction: rpj.tensor_to_lie(
-            rpj.FreeTensor(direction, tensor_basis)
-        ).data
+        lambda direction: (
+            rpj.tensor_to_lie(rpj.FreeTensor(direction, tensor_basis)).data
+        )
     )(jnp.eye(tensor_basis.size(), dtype=data.dtype))
-    unscaled_result = rpj.tensor_to_lie(
-        rpj.FreeTensor(data, tensor_basis)
-    ).data
+    unscaled_result = rpj.tensor_to_lie(rpj.FreeTensor(data, tensor_basis)).data
 
     assert jnp.allclose(grad_data, scale_factor * (images @ weights))
     assert jnp.allclose(grad_scale, jnp.sum(unscaled_result * weights))

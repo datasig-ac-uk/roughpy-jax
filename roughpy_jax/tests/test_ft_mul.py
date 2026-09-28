@@ -3,7 +3,6 @@ from functools import partial
 import jax
 import jax.numpy as jnp
 import pytest
-import roughpy_jax as rpj
 from derivative_testing import (
     DerivativeTrialsHelper,
     assert_is_adjoint_derivative,
@@ -11,6 +10,8 @@ from derivative_testing import (
     assert_is_linear,
 )
 from jax import test_util as jtu
+
+import roughpy_jax as rpj
 
 
 def test_ft_mul(rpj_dtype, rpj_batch, rpj_device, rpj_no_acceleration):
@@ -43,9 +44,7 @@ def test_ft_mul_mixed_depth(lhs_depth, rhs_depth):
     )
 
     result = rpj.ft_mul(lhs, rhs)
-    expected = rpj.ft_mul(
-        lhs.change_depth(out_depth), rhs.change_depth(out_depth)
-    )
+    expected = rpj.ft_mul(lhs.change_depth(out_depth), rhs.change_depth(out_depth))
 
     assert result.basis == expected.basis
     assert jnp.allclose(result.data, expected.data)
@@ -65,12 +64,8 @@ def test_ft_mul_explicit_out_basis(out_depth):
     t_rhs = rpj.FreeTensor(2 * jnp.ones(input_basis.size()), input_basis)
 
     result = rpj.ft_mul(lhs, rhs, out_basis=out_basis)
-    expected = rpj.ft_mul(
-        lhs.change_depth(out_depth), rhs.change_depth(out_depth)
-    )
-    derivative = rpj.ft_mul_derivative(
-        lhs, rhs, t_lhs, t_rhs, out_basis=out_basis
-    )
+    expected = rpj.ft_mul(lhs.change_depth(out_depth), rhs.change_depth(out_depth))
+    derivative = rpj.ft_mul_derivative(lhs, rhs, t_lhs, t_rhs, out_basis=out_basis)
     expected_derivative = rpj.ft_mul_derivative(
         lhs.change_depth(out_depth),
         rhs.change_depth(out_depth),
@@ -84,16 +79,12 @@ def test_ft_mul_explicit_out_basis(out_depth):
     assert jnp.allclose(derivative.data, expected_derivative.data)
 
     _, pullback = jax.vjp(
-        lambda left, right: rpj.ft_mul(
-            left, right, out_basis=out_basis
-        ),
+        lambda left, right: rpj.ft_mul(left, right, out_basis=out_basis),
         lhs,
         rhs,
     )
     ct_lhs, ct_rhs = pullback(
-        rpj.FreeTensor(
-            jnp.ones(out_basis.size(), dtype=jnp.float32), out_basis
-        )
+        rpj.FreeTensor(jnp.ones(out_basis.size(), dtype=jnp.float32), out_basis)
     )
     assert ct_lhs.basis == input_basis
     assert ct_rhs.basis == input_basis
@@ -137,9 +128,7 @@ def test_ft_mul_mixed_depth_adjoint(lhs_depth, rhs_depth):
     )
 
     _, pullback = jax.vjp(rpj.ft_mul, lhs, rhs)
-    jax_ct_lhs, jax_ct_rhs = pullback(
-        rpj.FreeTensor(ct_result.data, ct_result.basis)
-    )
+    jax_ct_lhs, jax_ct_rhs = pullback(rpj.FreeTensor(ct_result.data, ct_result.basis))
 
     assert jax_ct_lhs.basis == lhs_basis
     assert jax_ct_rhs.basis == rhs_basis

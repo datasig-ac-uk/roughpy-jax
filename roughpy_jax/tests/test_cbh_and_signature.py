@@ -71,7 +71,9 @@ def test_to_log_signature_supports_deeper_explicit_basis(rpj_dtype, rpj_batch):
     signature = rpj.FreeTensor(data, tensor_basis)
 
     result = rpj.to_log_signature(signature, lie_basis=output_basis)
-    expected = rpj.tensor_to_lie(rpj.ft_log(signature, out_basis=rpj.to_tensor_basis(output_basis)))
+    expected = rpj.tensor_to_lie(
+        rpj.ft_log(signature, out_basis=rpj.to_tensor_basis(output_basis))
+    )
 
     assert result.basis == output_basis
     assert jnp.allclose(result.data, expected.data, atol=_atol(rpj_dtype))
@@ -89,7 +91,9 @@ def test_to_signature_to_log_signature_roundtrip(rpj_dtype, rpj_batch):
     assert jnp.allclose(result.data, log_signature.data, atol=_atol(rpj_dtype))
 
 
-def test_to_signature_to_log_signature_roundtrip_with_explicit_bases(rpj_dtype, rpj_batch):
+def test_to_signature_to_log_signature_roundtrip_with_explicit_bases(
+    rpj_dtype, rpj_batch
+):
     lie_basis = rpj.LieBasis(2, 3)
     tensor_basis = rpj.TensorBasis(2, 2)
     output_lie_basis = rpj.LieBasis(2, 2)
