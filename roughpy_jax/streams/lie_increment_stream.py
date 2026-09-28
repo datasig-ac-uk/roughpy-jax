@@ -631,6 +631,8 @@ def _check_times_and_data_consistent_for_stream(
         raise ValueError("timestamps must be held in 1D arrays")
 
     time_len = timestamps.shape[0]
+    if time_len == 0:
+        raise ValueError(f"timestampa array at index {index} must not be empty")
 
     if data.ndim < 2:
         raise ValueError("data must have at least two dimensions")

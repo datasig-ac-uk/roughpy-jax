@@ -1072,6 +1072,40 @@ def test_from_increments_rejects_invalid_shapes(timestamps, data, match):
         )
 
 
+@pytest.mark.parametrize(
+    ("timestamps", "data", "empty_index"),
+    [
+        (
+            jnp.empty((0,), dtype=jnp.float32),
+            jnp.empty((0, 1), dtype=jnp.float32),
+            0,
+        ),
+        (
+            [
+                jnp.array([0.0, 1.0], dtype=jnp.float32),
+                jnp.empty((0,), dtype=jnp.float32),
+            ],
+            [
+                jnp.array([[1.0], [2.0]], dtype=jnp.float32),
+                jnp.empty((0, 1), dtype=jnp.float32),
+            ],
+            1,
+        ),
+    ],
+)
+def test_from_increments_rejects_empty_timestamp_arrays(timestamps, data, empty_index):
+    with pytest.raises(
+        ValueError, match=rf"timestamp array at index {empty_index} cannot be empty"
+    ):
+        LieIncrementStream.from_increments(
+            timestamps=timestamps,
+            data=data,
+            resolution=2,
+            input_data_basis=None,
+            lie_basis=LieBasis(width=1, depth=2),
+        )
+
+
 def test_from_increments_rejects_inconsistent_batch_dimensions():
     timestamps = [
         jnp.array([0.0, 1.0], dtype=jnp.float32),
