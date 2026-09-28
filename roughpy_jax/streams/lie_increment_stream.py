@@ -615,6 +615,43 @@ def _compute_increment_stream_support(
     return RealInterval(inf, sup, interval_type)
 
 
+
+def _check_times_and_data_consistent_for_stream(
+        index: int,
+        timestamps: jax.Array,
+        data: jax.Array,
+        input_data_basis_size: int | None,
+        data_dim: int | None,
+        batch_dims: list[int] | None
+):
+    if timestamps.ndim != 1:
+        raise ValueError("timestamps must be held in 1D arrays")
+
+    time_len = timestamps.shape[0]
+
+    if data.ndim < 2:
+        raise ValueError("data must have at least two dimensions")
+
+    time, *batch, payload = data.shape
+    if time != time_len:
+        raise ValueError(f"time dimension mismatch at index {index}: expected {time_len}, got {time}")
+
+    if batch_dims is not None and batch_dims != batch:
+        raise ValueError(
+            f"Batch dimension mismatch at index {index}: expected {batch_dims}, got {batch}"
+        )
+
+    if input_data_basis_size is not None and payload > input_data_basis_size:
+        raise ValueError(
+            f"data dimension {payload} is incompatible with the specified data basis with size {input_data_basis_size}"
+        )
+    elif data_dim is not None and payload != data_dim:
+        raise ValueError(
+            f"unable to determine appropriate data basis: inconsistent data dimensions at index {index}"
+        )
+
+
+
 @jax.tree_util.register_pytree_node_class
 class LieIncrementStream(Stream[Lie, FreeTensor]):
     """
@@ -841,66 +878,55 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
         if not time_arrays or not data_arrays:
             raise ValueError("timestamps and data cannot be empty")
 
-        if not len(time_arrays) == len(data_arrays):
+        num_sources = len(time_arrays)
+        if not len(data_arrays) == num_sources:
             raise ValueError("timestamps and data must be the same length")
-
-        time_lens = []
-        mins = []
-        maxs = []
-        for ts in time_arrays:
-            if ts.ndim != 1:
-                raise ValueError("timestamps must be held in 1D arrays")
-
-            time_lens.append(ts.shape[0])
-            mins.append(jnp.min(ts))
-            maxs.append(jnp.max(ts))
-
-        ds = data_arrays[0]
-        if ds.ndim < 2:
-            raise ValueError("data arrays must be at least 2D")
-
-        dt_dim, *batch_dims, lie_dim = ds.shape
-        if dt_dim != time_lens[0]:
-            raise ValueError(
-                f"Time dimension mismatch at index 0: expected {time_lens[0]}, got {dt_dim}"
-            )
 
         # TODO: Currently this check requires that all data arrays have the same batch dimensions
         # but this is perhaps not quite the behaviour we want. It makes sense to concatenate
         # along the initial batching dimension if all the trailing entries match.
-        dtypes = [ds.dtype]
-        for i, (ds, expected_dt) in enumerate(
-                zip(data_arrays[1:], time_lens[1:], strict=True), start=1
-        ):
-            if ds.ndim < 2:
-                raise ValueError("data arrays must be at least 2D")
+        ts = time_arrays[0]
+        ds = data_arrays[0]
+        if ts.ndim != 1:
+            raise ValueError("timestamps must be held in 1D arrays")
 
-            dt_dim, *b_dims, l_dim = ds.shape
-            if dt_dim != expected_dt:
-                raise ValueError(
-                    f"Time dimension mismatch at index {i}: expected {expected_dt}, got {dt_dim}"
-                )
+        min_timestamp = jnp.min(ts)
+        max_timestamp = jnp.max(ts)
 
-            if b_dims != batch_dims:
-                raise ValueError(
-                    f"Batch dimension mismatch at index {i}: expected {batch_dims}, got {b_dims}"
-                )
+        input_data_basis_size = None if input_data_basis is None else input_data_basis.size()
+        _check_times_and_data_consistent_for_stream(
+            0,
+            ts,
+            ds,
+            input_data_basis_size,
+            None,
+            None
+        )
+        _, *batch_dims, data_dim = ds.shape
+        data_array_dtype = ds.dtype
 
-            dtypes.append(ds.dtype)
+        for i in range(1, num_sources):
+            ts = time_arrays[i]
+            ds = data_arrays[i]
 
-            if input_data_basis is not None:
-                basis_size = input_data_basis.size()
-                if l_dim > basis_size:
-                    raise ValueError(
-                        f"data dimension {l_dim} is incompatible with the specified data basis with size {basis_size}"
-                    )
-            elif l_dim != lie_dim:
-                raise ValueError(
-                    f"unable to determine appropriate data basis: inconsistent data dimensions at index {i}"
-                )
+            _check_times_and_data_consistent_for_stream(
+                i,
+                ts,
+                ds,
+                input_data_basis_size,
+                data_dim,
+                batch_dims
+            )
 
-        dtype = data_dtype or jnp.result_type(*dtypes)
-        input_data_basis = input_data_basis or LieBasis(width=lie_dim, depth=1)
+            min_timestamp = jnp.minimum(min_timestamp, jnp.min(ts))
+            max_timestamp = jnp.maximum(max_timestamp, jnp.max(ts))
+            data_array_dtype = jnp.result_type(data_array_dtype, ds.dtype)
+
+        min_timestamp = min_timestamp.astype(time_dtype)
+        max_timestamp = max_timestamp.astype(time_dtype)
+
+        dtype = data_dtype or data_array_dtype
+        input_data_basis = input_data_basis or LieBasis(width=data_dim, depth=1)
         basis_size = input_data_basis.size()
 
         for i in range(len(time_arrays)):
@@ -917,9 +943,6 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
             lie_basis = LieBasis(width=input_data_basis.width, depth=2)
 
         # Now sort out the support and scale the data
-        max_timestamp = max(maxs)
-        min_timestamp = min(mins)
-
         if resolution is None:
             resolution = compute_separating_resolution(time_arrays,
                                                        min_timestamp,
