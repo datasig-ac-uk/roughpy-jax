@@ -408,6 +408,20 @@ def concatenate(
 
 
 def reshape(algebra: AlgebraT, new_shape: tuple[int, ...]) -> AlgebraT:
+    """Reshape the batch dimensions of an algebra.
+
+    ``new_shape`` describes only the new batch shape. The trailing coefficient
+    dimension is appended internally and is never combined with, split across,
+    or otherwise manipulated as a batch dimension. The concrete algebra type,
+    basis, and coefficient ordering are preserved.
+
+    Shape validation, including inference of a single ``-1`` dimension, follows
+    :func:`jax.numpy.reshape`.
+
+    :param algebra: Algebra whose batch dimensions will be reshaped.
+    :param new_shape: Complete new shape of the batch dimensions.
+    :return: Algebra of the same type and basis with the requested batch shape.
+    """
     new_shape = new_shape + (algebra.data.shape[-1],)
     new_data = jnp.reshape(algebra.data, new_shape)
 
@@ -420,6 +434,22 @@ def _normalise_batch_axes(
         *,
         insertion: bool = False,
 ) -> tuple[int, ...]:
+    """Normalize axes in the algebra's batch-axis coordinate system.
+
+    The returned axes are always nonnegative indices into batch dimensions;
+    they can therefore be passed to JAX without exposing the trailing
+    coefficient dimension. For insertion operations, axes are interpreted in
+    the resulting batch shape.
+
+    :param batch_shape: Existing batch shape of the algebra. This excludes the
+        trailing coefficient dimension.
+    :param axis: Batch axis or axes to normalize.
+    :param insertion: Whether the axes describe positions in the batch shape
+        produced after inserting the requested axes.
+    :return: Nonnegative axis indices in the applicable batch shape.
+    :raises ValueError: If an axis is outside the batch dimensions or an axis
+        is repeated.
+    """
     axes = (axis,) if isinstance(axis, int) else tuple(axis)
 
     batch_ndim = len(batch_shape) + (len(axes) if insertion else 0)
@@ -437,6 +467,17 @@ def _normalise_batch_axes(
 
 
 def expand_dims(algebra: AlgebraT, axis: int | Sequence[int]) -> AlgebraT:
+    """Insert one or more size-one batch dimensions.
+
+    Axes refer exclusively to positions in the resulting batch shape. Negative
+    axes are relative to that batch shape, so ``-1`` inserts the final batch
+    dimension immediately before the protected coefficient dimension. The
+    coefficient dimension itself is never expanded or repositioned.
+
+    :param algebra: Algebra into whose batch shape dimensions will be inserted.
+    :param axis: Batch-axis position or positions in the resulting batch shape.
+    :return: Algebra of the same type and basis with expanded batch dimensions.
+    """
     norm_axis = _normalise_batch_axes(
         algebra.batch_shape, axis, insertion=True
     )
@@ -447,6 +488,18 @@ def expand_dims(algebra: AlgebraT, axis: int | Sequence[int]) -> AlgebraT:
 def squeeze(
         algebra: AlgebraT, axis: int | Sequence[int] | None = None
 ) -> AlgebraT:
+    """Remove size-one batch dimensions from an algebra.
+
+    Explicit axes refer exclusively to the existing batch dimensions. If
+    ``axis`` is ``None``, every size-one batch dimension is removed. The
+    trailing coefficient dimension is never considered, even when its size is
+    one, so the algebra representation always remains intact.
+
+    :param algebra: Algebra whose unit batch dimensions will be removed.
+    :param axis: Unit batch axis or axes to remove, or ``None`` for all unit
+        batch axes.
+    :return: Algebra of the same type and basis with squeezed batch dimensions.
+    """
     if axis is None:
         norm_axes = tuple(
             i for i, size in enumerate(algebra.batch_shape) if size == 1
@@ -459,6 +512,18 @@ def squeeze(
 
 
 def moveaxis(algebra: AlgebraT, source: int | Sequence[int], destination: int | Sequence[int]) -> AlgebraT:
+    """Move batch axes to new positions.
+
+    ``source`` and ``destination`` are interpreted solely within
+    :attr:`~roughpy_jax.dense_algebra.DenseAlgebra.batch_shape`. Negative axes
+    are relative to the batch rank. The trailing coefficient dimension cannot
+    be selected or moved and remains the final dimension of the result.
+
+    :param algebra: Algebra whose batch axes will be moved.
+    :param source: Batch axis or axes to move.
+    :param destination: Destination position or positions among batch axes.
+    :return: Algebra of the same type and basis with reordered batch axes.
+    """
 
     batch_shape = algebra.batch_shape
     norm_source = _normalise_batch_axes(batch_shape, source)
@@ -469,6 +534,17 @@ def moveaxis(algebra: AlgebraT, source: int | Sequence[int], destination: int | 
 
 
 def swapaxes(algebra: AlgebraT, axis1: int, axis2: int) -> AlgebraT:
+    """Exchange two batch axes of an algebra.
+
+    Both axes are interpreted relative to the batch shape, including negative
+    indices. The trailing coefficient dimension is not part of this axis
+    coordinate system and therefore cannot be exchanged with a batch axis.
+
+    :param algebra: Algebra whose batch axes will be exchanged.
+    :param axis1: First batch axis.
+    :param axis2: Second batch axis.
+    :return: Algebra of the same type and basis with the two batch axes swapped.
+    """
 
     batch_shape = algebra.batch_shape
     norm_axis1 = _normalise_batch_axes(batch_shape, axis1)[0]
