@@ -631,6 +631,8 @@ def _check_times_and_data_consistent_for_stream(
         raise ValueError("timestamps must be held in 1D arrays")
 
     time_len = timestamps.shape[0]
+    if time_len == 0:
+        raise ValueError(f"timestamp array at index {index} must not be empty")
 
     if data.ndim < 2:
         raise ValueError("data must have at least two dimensions")
@@ -890,15 +892,16 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
         if ts.ndim != 1:
             raise ValueError("timestamps must be held in 1D arrays")
 
-        min_timestamp = jnp.min(ts)
-        max_timestamp = jnp.max(ts)
-
         input_data_basis_size = (
             None if input_data_basis is None else input_data_basis.size()
         )
         _check_times_and_data_consistent_for_stream(
             0, ts, ds, input_data_basis_size, None, None
         )
+
+        min_timestamp = jnp.min(ts)
+        max_timestamp = jnp.max(ts)
+
         _, *batch_dims, data_dim = ds.shape
         data_array_dtype = ds.dtype
 
