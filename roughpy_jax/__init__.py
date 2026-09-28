@@ -3,6 +3,7 @@ import os
 import roughpy_jax.ops
 from roughpy_jax._plugins import load_plugins as _load_plugins
 from roughpy_jax.algebra import (
+    DegreeView,
     DenseFreeTensor,
     DenseLie,
     DenseShuffleTensor,
@@ -17,6 +18,7 @@ from roughpy_jax.algebra import (
     astype,
     cbh,
     concatenate,
+    degree_view,
     ft_adjoint_left_mul,
     ft_adjoint_left_mul_adjoint_derivative,
     ft_adjoint_left_mul_derivative,
@@ -97,6 +99,7 @@ if os.environ.get("ROUGHPY_JAX_DISABLE_PLUGIN_AUTOLOAD") != "1":
     _load_plugins()
 
 __all__ = [
+    "DegreeView",
     "DenseFreeTensor",
     "DenseLie",
     "DenseShuffleTensor",
@@ -120,6 +123,7 @@ __all__ = [
     "check_basis_compat",
     "compute_separating_resolution",
     "concatenate",
+    "degree_view",
     "dyadic_query",
     "ft_adjoint_left_mul",
     "ft_adjoint_left_mul_adjoint_derivative",
