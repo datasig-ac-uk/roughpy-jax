@@ -407,6 +407,77 @@ def concatenate(
     return typ.concatenate(algebras, axis, dtype)
 
 
+def reshape(algebra: AlgebraT, new_shape: tuple[int, ...]) -> AlgebraT:
+    new_shape = new_shape + (algebra.data.shape[-1],)
+    new_data = jnp.reshape(algebra.data, new_shape)
+
+    return type(algebra)(new_data, algebra.basis)
+
+
+def _normalise_batch_axes(
+        batch_shape: tuple[int, ...],
+        axis: int | Sequence[int],
+        *,
+        insertion: bool = False,
+) -> tuple[int, ...]:
+    axes = (axis,) if isinstance(axis, int) else tuple(axis)
+
+    batch_ndim = len(batch_shape) + (len(axes) if insertion else 0)
+
+    adj_axis = tuple(ax if ax >= 0 else ax + batch_ndim for ax in axes)
+
+    if any(ax < 0 or ax >= batch_ndim for ax in adj_axis):
+        raise ValueError(
+            f"axis is out of bounds for a batch with {len(batch_shape)} dimensions"
+        )
+    if len(set(adj_axis)) != len(adj_axis):
+        raise ValueError("repeated axis")
+
+    return adj_axis
+
+
+def expand_dims(algebra: AlgebraT, axis: int | Sequence[int]) -> AlgebraT:
+    norm_axis = _normalise_batch_axes(
+        algebra.batch_shape, axis, insertion=True
+    )
+    new_data = jnp.expand_dims(algebra.data, norm_axis)
+    return type(algebra)(new_data, algebra.basis)
+
+
+def squeeze(
+        algebra: AlgebraT, axis: int | Sequence[int] | None = None
+) -> AlgebraT:
+    if axis is None:
+        norm_axes = tuple(
+            i for i, size in enumerate(algebra.batch_shape) if size == 1
+        )
+    else:
+        norm_axes = _normalise_batch_axes(algebra.batch_shape, axis)
+
+    new_data = jnp.squeeze(algebra.data, norm_axes)
+    return type(algebra)(new_data, algebra.basis)
+
+
+def moveaxis(algebra: AlgebraT, source: int | Sequence[int], destination: int | Sequence[int]) -> AlgebraT:
+
+    batch_shape = algebra.batch_shape
+    norm_source = _normalise_batch_axes(batch_shape, source)
+    norm_dest = _normalise_batch_axes(batch_shape, destination)
+    new_data = jnp.moveaxis(algebra.data, norm_source, norm_dest)
+
+    return type(algebra)(new_data, algebra.basis)
+
+
+def swapaxes(algebra: AlgebraT, axis1: int, axis2: int) -> AlgebraT:
+
+    batch_shape = algebra.batch_shape
+    norm_axis1 = _normalise_batch_axes(batch_shape, axis1)[0]
+    norm_axis2 = _normalise_batch_axes(batch_shape, axis2)[0]
+
+    new_data = jnp.swapaxes(algebra.data, norm_axis1, norm_axis2)
+    return type(algebra)(new_data, algebra.basis)
+
+
 @jax.custom_vjp
 def ft_fma(
         a: DenseFreeTensor,

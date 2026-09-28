@@ -612,6 +612,161 @@ def test_concatenate_rejects_different_algebra_types():
         rpj.concatenate((free_tensor, shuffle_tensor))
 
 
+@pytest.mark.parametrize(
+    ("algebra_cls", "basis"),
+    [
+        (rpj.DenseFreeTensor, rpj.TensorBasis(2, 2)),
+        (rpj.DenseShuffleTensor, rpj.TensorBasis(2, 2)),
+        (rpj.DenseLie, rpj.LieBasis(2, 2)),
+    ],
+)
+def test_reshape_changes_only_batch_shape(algebra_cls, basis):
+    data = jnp.arange(2 * 3 * basis.size()).reshape(2, 3, basis.size())
+    algebra = algebra_cls(data, basis)
+
+    result = rpj.reshape(algebra, (3, -1))
+
+    assert type(result) is algebra_cls
+    assert result.basis == basis
+    assert result.batch_shape == (3, 2)
+    assert result.dimension == basis.size()
+    np.testing.assert_array_equal(result.data, data.reshape(3, 2, basis.size()))
+
+
+def test_reshape_rejects_incompatible_batch_shape():
+    basis = rpj.TensorBasis(2, 1)
+    algebra = rpj.DenseFreeTensor(jnp.ones((2, 3, basis.size())), basis)
+
+    with pytest.raises(TypeError, match="cannot reshape"):
+        rpj.reshape(algebra, (5,))
+
+
+def test_expand_dims_uses_result_batch_axes():
+    basis = rpj.LieBasis(2, 2)
+    data = jnp.arange(2 * 3 * basis.size()).reshape(2, 3, basis.size())
+    algebra = rpj.DenseLie(data, basis)
+
+    trailing = rpj.expand_dims(algebra, -1)
+    multiple = rpj.expand_dims(algebra, (0, -1))
+
+    assert trailing.batch_shape == (2, 3, 1)
+    assert multiple.batch_shape == (1, 2, 3, 1)
+    np.testing.assert_array_equal(trailing.data, jnp.expand_dims(data, 2))
+    np.testing.assert_array_equal(
+        multiple.data, jnp.expand_dims(data, (0, 3))
+    )
+
+
+@pytest.mark.parametrize("axis", [-4, 3, (0, 0)])
+def test_expand_dims_rejects_invalid_batch_axes(axis):
+    basis = rpj.LieBasis(2, 1)
+    algebra = rpj.DenseLie(jnp.ones((2, basis.size())), basis)
+
+    with pytest.raises(ValueError):
+        rpj.expand_dims(algebra, axis)
+
+
+def test_squeeze_removes_only_unit_batch_axes():
+    basis = rpj.TensorBasis(2, 1)
+    data = jnp.arange(2 * basis.size()).reshape(1, 2, 1, basis.size())
+    algebra = rpj.DenseFreeTensor(data, basis)
+
+    all_unit = rpj.squeeze(algebra)
+    trailing = rpj.squeeze(algebra, -1)
+
+    assert all_unit.batch_shape == (2,)
+    assert trailing.batch_shape == (1, 2)
+    np.testing.assert_array_equal(all_unit.data, jnp.squeeze(data, (0, 2)))
+    np.testing.assert_array_equal(trailing.data, jnp.squeeze(data, 2))
+
+
+def test_squeeze_preserves_size_one_coefficient_dimension():
+    basis = rpj.LieBasis(1, 1)
+    algebra = rpj.DenseLie(jnp.ones((1, basis.size())), basis)
+
+    result = rpj.squeeze(algebra)
+
+    assert result.batch_shape == ()
+    assert result.data.shape == (1,)
+    assert result.dimension == basis.size()
+
+
+def test_squeeze_rejects_nonunit_or_nonbatch_axes():
+    basis = rpj.LieBasis(2, 1)
+    algebra = rpj.DenseLie(jnp.ones((2, 1, basis.size())), basis)
+
+    with pytest.raises(ValueError):
+        rpj.squeeze(algebra, 0)
+    with pytest.raises(ValueError, match="out of bounds"):
+        rpj.squeeze(algebra, 2)
+
+
+def test_moveaxis_supports_negative_and_multiple_batch_axes():
+    basis = rpj.TensorBasis(2, 1)
+    data = jnp.arange(2 * 3 * 4 * basis.size()).reshape(
+        2, 3, 4, basis.size()
+    )
+    algebra = rpj.DenseShuffleTensor(data, basis)
+
+    single = rpj.moveaxis(algebra, -1, 0)
+    multiple = rpj.moveaxis(algebra, (0, -1), (-1, 0))
+
+    assert single.batch_shape == (4, 2, 3)
+    assert multiple.batch_shape == (4, 3, 2)
+    np.testing.assert_array_equal(single.data, jnp.moveaxis(data, 2, 0))
+    np.testing.assert_array_equal(
+        multiple.data, jnp.moveaxis(data, (0, 2), (2, 0))
+    )
+
+
+def test_swapaxes_uses_batch_relative_negative_axes():
+    basis = rpj.TensorBasis(2, 1)
+    data = jnp.arange(2 * 3 * 4 * basis.size()).reshape(
+        2, 3, 4, basis.size()
+    )
+    algebra = rpj.DenseFreeTensor(data, basis)
+
+    result = rpj.swapaxes(algebra, 0, -1)
+
+    assert result.batch_shape == (4, 3, 2)
+    assert result.dimension == basis.size()
+    np.testing.assert_array_equal(result.data, jnp.swapaxes(data, 0, 2))
+
+
+@pytest.mark.parametrize("operation", [rpj.moveaxis, rpj.swapaxes])
+def test_axis_movement_cannot_address_coefficient_dimension(operation):
+    basis = rpj.TensorBasis(2, 1)
+    algebra = rpj.DenseFreeTensor(jnp.ones((2, 3, basis.size())), basis)
+
+    with pytest.raises(ValueError, match="out of bounds"):
+        operation(algebra, 0, 2)
+
+
+def test_batch_shape_operations_are_jittable_and_differentiable():
+    basis = rpj.LieBasis(2, 1)
+    data = jnp.arange(6 * basis.size(), dtype=jnp.float32).reshape(
+        2, 3, basis.size()
+    )
+    algebra = rpj.DenseLie(data, basis)
+
+    transformed = jax.jit(
+        lambda value: rpj.squeeze(
+            rpj.expand_dims(rpj.reshape(value, (3, 2)), -1), -1
+        )
+    )(algebra)
+    gradient = jax.grad(
+        lambda values: jnp.sum(
+            rpj.moveaxis(rpj.DenseLie(values, basis), 0, 1).data
+        )
+    )(data)
+
+    assert transformed.batch_shape == (3, 2)
+    np.testing.assert_array_equal(
+        transformed.data, data.reshape(3, 2, basis.size())
+    )
+    np.testing.assert_array_equal(gradient, jnp.ones_like(data))
+
+
 def test_dense_algebra_scalar_multiplication_and_division_preserve_basis():
     basis = rpj.TensorBasis(2, 2)
     tensor = DenseTensor(jnp.arange(basis.size(), dtype=jnp.float32), basis)
