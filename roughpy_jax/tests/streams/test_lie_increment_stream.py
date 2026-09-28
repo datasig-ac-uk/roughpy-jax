@@ -846,6 +846,39 @@ def test_from_increments_timestamps_are_not_differentiable():
     assert jnp.all(gradient == 0.0)
 
 
+def test_from_increments_accepts_multiple_traced_timestamp_arrays():
+    timestamps = [
+        jnp.asarray([0.1, 0.4], dtype=jnp.float32),
+        jnp.asarray([0.2, 0.7], dtype=jnp.float32),
+    ]
+    data = [
+        jnp.asarray([[0.2], [0.3]], dtype=jnp.float32),
+        jnp.asarray([[0.4], [0.5]], dtype=jnp.float32),
+    ]
+    lie_basis = LieBasis(width=1, depth=1)
+
+    @jax.jit
+    def build_cache_and_support(ts0, ts1, data0, data1):
+        stream = LieIncrementStream.from_increments(
+            [ts0, ts1],
+            [data0, data1],
+            resolution=2,
+            input_data_basis=lie_basis,
+            lie_basis=lie_basis,
+        )
+        return stream._cache, stream.support.inf, stream.support.sup
+
+    cache, support_inf, support_sup = build_cache_and_support(
+        timestamps[0], timestamps[1], data[0], data[1]
+    )
+
+    assert cache.shape == (8, 2, lie_basis.size())
+    assert support_inf.shape == ()
+    assert support_sup.shape == ()
+    assert support_inf == jnp.min(jnp.stack(timestamps))
+    assert support_sup > jnp.max(jnp.stack(timestamps))
+
+
 def test_from_increments_supports_multiple_batched_input_streams():
     timestamps = [
         jnp.array([0.0, 0.5, 1.0], dtype=jnp.float32),
@@ -1030,7 +1063,7 @@ def test_from_increments_rejects_opencl_cache():
         (
             jnp.array([0.0, 1.0], dtype=jnp.float32),
             jnp.array([[1.0]], dtype=jnp.float32),
-            "Time dimension mismatch",
+            "time dimension mismatch",
         ),
         (
             jnp.array([[0.0, 1.0]], dtype=jnp.float32),
