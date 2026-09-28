@@ -32,6 +32,25 @@ def test_real_interval_pytree_has_dynamic_endpoint_leaves(interval_type):
     assert jnp.array_equal(rebuilt.sup, interval.sup)
 
 
+def test_real_interval_stores_endpoints_with_same_broadcast_shape(interval_type):
+    interval = RealInterval(
+        jnp.asarray([[0.0], [1.0]]),
+        jnp.asarray([[2.0, 3.0, 4.0]]),
+        interval_type,
+    )
+
+    assert interval.inf.shape == (2, 3)
+    assert interval.sup.shape == (2, 3)
+    assert jnp.array_equal(
+        interval.inf,
+        jnp.asarray([[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]]),
+    )
+    assert jnp.array_equal(
+        interval.sup,
+        jnp.asarray([[2.0, 3.0, 4.0], [2.0, 3.0, 4.0]]),
+    )
+
+
 @pytest.mark.parametrize("interval_type", list(IntervalType))
 def test_partition_pytree_has_dynamic_endpoint_leaf(interval_type):
     partition = Partition(
@@ -346,6 +365,46 @@ class TestPartitionMergeAndTruncate:
         assert merged.sup == pytest.approx(1.0)
         assert len(merged) == 4
         assert merged.interval_type is interval_type
+
+    def test_partition_merge_matching_batches(self, interval_type):
+        left = Partition(
+            [[0.0, 0.5, 1.0], [10.0, 11.0, 12.0]], interval_type
+        )
+        right = Partition(
+            [[0.25, 0.75], [10.5, 11.5]], interval_type
+        )
+
+        merged = left.merge(right)
+
+        assert merged.batch_dims == (2,)
+        assert jnp.array_equal(
+            merged.endpoints,
+            jnp.asarray(
+                [
+                    [0.0, 0.25, 0.5, 0.75, 1.0],
+                    [10.0, 10.5, 11.0, 11.5, 12.0],
+                ]
+            ),
+        )
+
+    @pytest.mark.parametrize(
+        ("left_endpoints", "right_endpoints"),
+        [
+            ([0.0, 0.5, 1.0], [[0.0, 0.5, 1.0]]),
+            (
+                [[[0.0, 0.5, 1.0]], [[1.0, 1.5, 2.0]]],
+                [[[0.0, 0.5, 1.0], [1.0, 1.5, 2.0]]],
+            ),
+        ],
+    )
+    def test_partition_merge_rejects_different_batch_shapes(
+            self, interval_type, left_endpoints, right_endpoints
+    ):
+        left = Partition(left_endpoints, interval_type)
+        right = Partition(right_endpoints, interval_type)
+
+        with pytest.raises(ValueError, match="different batch dimensions"):
+            left.merge(right)
         
     def test_partition_truncate(self, partition, interval_type):
         p = partition
@@ -356,6 +415,80 @@ class TestPartitionMergeAndTruncate:
         assert truncated.sup == pytest.approx(0.75)
         assert len(truncated) == 2
         assert truncated.interval_type is interval_type
+
+    def test_unbatched_partition_truncate_by_batched_interval(
+            self, partition, interval_type
+    ):
+        interval = RealInterval(
+            jnp.asarray([0.25, -0.5]),
+            jnp.asarray([0.75, 0.5]),
+            interval_type,
+        )
+
+        truncated = partition.truncate(interval)
+
+        assert truncated.batch_dims == (2,)
+        assert jnp.array_equal(
+            truncated.endpoints,
+            jnp.asarray(
+                [[0.25, 0.5, 0.75], [0.0, 0.5, 0.5]]
+            ),
+        )
+
+    def test_partition_truncate_broadcasts_compatible_batch_shapes(
+            self, interval_type
+    ):
+        partition = Partition(
+            [
+                [[0.0, 0.5, 1.0]],
+                [[10.0, 10.5, 11.0]],
+            ],
+            interval_type,
+        )
+        interval = RealInterval(
+            jnp.asarray([0.25, 0.0, 0.75]),
+            jnp.asarray([0.75, 1.0, 2.0]),
+            interval_type,
+        )
+
+        truncated = partition.truncate(interval)
+
+        assert truncated.batch_dims == (2, 3)
+        assert jnp.array_equal(
+            truncated.endpoints[0],
+            jnp.asarray(
+                [
+                    [0.25, 0.5, 0.75],
+                    [0.0, 0.5, 1.0],
+                    [0.75, 0.75, 1.0],
+                ]
+            ),
+        )
+        assert jnp.array_equal(
+            truncated.endpoints[1],
+            jnp.asarray(
+                [
+                    [0.75, 0.75, 0.75],
+                    [1.0, 1.0, 1.0],
+                    [2.0, 2.0, 2.0],
+                ]
+            ),
+        )
+
+    def test_partition_truncate_rejects_incompatible_batch_shapes(
+            self, interval_type
+    ):
+        partition = Partition(
+            [[0.0, 0.5, 1.0], [1.0, 1.5, 2.0]], interval_type
+        )
+        interval = RealInterval(
+            jnp.asarray([0.0, 0.5, 1.0]),
+            jnp.asarray([1.0, 1.5, 2.0]),
+            interval_type,
+        )
+
+        with pytest.raises(TypeError, match="incompatible shapes for broadcasting"):
+            partition.truncate(interval)
 
 class TestPartitionIntersection:
     def test_partition_intersection_interval(self, interval_type):

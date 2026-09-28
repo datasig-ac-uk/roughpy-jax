@@ -270,10 +270,11 @@ jax.tree_util.register_pytree_node(
 class RealInterval:
     """A interval in the real line or collection thereof.
 
-    The lower and upper endpoints are arrays with broadcast-compatible shapes.
-    Scalar arrays represent a single interval, while non-scalar arrays represent
-    a batch of intervals whose batch shape is the broadcast shape of the two
-    endpoints. A single endpoint convention applies to the entire batch.
+    The lower and upper endpoint inputs must have broadcast-compatible shapes.
+    They are broadcast when the interval is constructed and stored as arrays
+    with the same shape. Scalar arrays represent a single interval, while
+    non-scalar arrays represent a batch of intervals. A single endpoint
+    convention applies to the entire batch.
 
     ``RealInterval`` is a pytree with the endpoint arrays as dynamic leaves and
     the interval type as static metadata.
@@ -293,8 +294,9 @@ class RealInterval:
             _sup: ArrayLike,
             _interval_type: IntervalType,
     ) -> None:
-        object.__setattr__(self, "_inf", jnp.asarray(_inf))
-        object.__setattr__(self, "_sup", jnp.asarray(_sup))
+        inf, sup = jnp.broadcast_arrays(jnp.asarray(_inf), jnp.asarray(_sup))
+        object.__setattr__(self, "_inf", inf)
+        object.__setattr__(self, "_sup", sup)
         object.__setattr__(self, "_interval_type", _interval_type)
 
     def __str__(self) -> str:
@@ -437,26 +439,40 @@ class Partition:
         Clip every endpoint to the bounds of ``other``.
 
         This does not change the size of the array, so any endpoints that
-        lie outside the other interval are repeated.
+        lie outside the other interval are repeated. The partition batch shape
+        and the broadcasted shape of the interval endpoints are broadcast
+        together. In particular, truncating an unbatched partition by a batched
+        interval produces a partition with the interval's batch shape.
 
         The interval types of the partition and the interval must match.
         """
         if self.interval_type != other.interval_type:
             raise ValueError("Cannot truncate partitions with different interval type")
-        return Partition(jnp.clip(self.endpoints, other.inf, other.sup), self.interval_type)
+
+        endpoints = jnp.clip(
+            self.endpoints, other.inf[..., None], other.sup[..., None]
+        )
+        return Partition(endpoints, self.interval_type)
 
     def merge(self, other: Partition) -> Partition:
         """
         Interleave the endpoints from two partitions.
 
-        This performans an interval union of the two domains spanned by the
-        arguments, and with the now contained inf and sup end points becoming new
-        interior endpoints
+        This performs an interval union of the two domains spanned by the
+        arguments, with contained infimum and supremum endpoints becoming new
+        interior endpoints. The partitions must have identical batch shapes;
+        merging does not broadcast batches because each pair of partitions must
+        define one unambiguous combined subdivision.
 
         Duplicate endpoints are preserved.
         """
         if self.interval_type != other.interval_type:
             raise ValueError("Cannot merge partitions with different interval types")
+        if self.batch_dims != other.batch_dims:
+            raise ValueError(
+                "Cannot merge partitions with different batch dimensions: "
+                f"{self.batch_dims} and {other.batch_dims}"
+            )
 
         # The constructor will sort the endpoints
         endpoints = jnp.concatenate((self.endpoints, other.endpoints), axis=-1)
