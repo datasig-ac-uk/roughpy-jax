@@ -4,13 +4,14 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
-import roughpy_jax as rpj
 from derivative_testing import (
     DerivativeTrialsHelper,
     assert_is_adjoint_derivative,
     assert_is_derivative,
 )
 from jax import test_util as jtu
+
+import roughpy_jax as rpj
 
 
 def test_dense_ft_fma_array_mismatch(rpj_test_fixture_type_mismatch):
@@ -52,7 +53,9 @@ def test_dense_ft_fma(rpj_dtype, rpj_batch, rpj_device, rpj_no_acceleration):
     assert jnp.allclose(d.data, expected_data)
 
 
-def test_dense_ft_fma_construction(rpj_dtype, rpj_batch, rpj_device, rpj_no_acceleration):
+def test_dense_ft_fma_construction(
+    rpj_dtype, rpj_batch, rpj_device, rpj_no_acceleration
+):
     basis = rpj.TensorBasis(2, 2)
 
     def _create_rng_uniform_ft():
@@ -101,9 +104,7 @@ def test_ft_fma_mixed_depth(a_depth, b_depth, c_depth):
     c = make_free_tensor(c_depth, 3)
 
     result = rpj.ft_fma(a, b, c)
-    expected = a + rpj.ft_mul(
-        b.change_depth(a_depth), c.change_depth(a_depth)
-    )
+    expected = a + rpj.ft_mul(b.change_depth(a_depth), c.change_depth(a_depth))
 
     assert result.basis == a.basis
     assert jnp.allclose(result.data, expected.data)
@@ -115,9 +116,7 @@ def test_ft_fma_explicit_out_basis(out_depth):
     out_basis = rpj.TensorBasis(2, out_depth)
 
     def make_tensor(offset):
-        data = jnp.arange(
-            offset, offset + input_basis.size(), dtype=jnp.float32
-        )
+        data = jnp.arange(offset, offset + input_basis.size(), dtype=jnp.float32)
         return rpj.FreeTensor(data, input_basis)
 
     a, b, c = make_tensor(1), make_tensor(2), make_tensor(3)
@@ -129,9 +128,7 @@ def test_ft_fma_explicit_out_basis(out_depth):
         b.change_depth(out_depth),
         c.change_depth(out_depth),
     )
-    derivative = rpj.ft_fma_derivative(
-        a, b, c, t_a, t_b, t_c, out_basis=out_basis
-    )
+    derivative = rpj.ft_fma_derivative(a, b, c, t_a, t_b, t_c, out_basis=out_basis)
     expected_derivative = rpj.ft_fma_derivative(
         a.change_depth(out_depth),
         b.change_depth(out_depth),
@@ -147,17 +144,13 @@ def test_ft_fma_explicit_out_basis(out_depth):
     assert jnp.allclose(derivative.data, expected_derivative.data)
 
     _, pullback = jax.vjp(
-        lambda add, left, right: rpj.ft_fma(
-            add, left, right, out_basis=out_basis
-        ),
+        lambda add, left, right: rpj.ft_fma(add, left, right, out_basis=out_basis),
         a,
         b,
         c,
     )
     ct_a, ct_b, ct_c = pullback(
-        rpj.FreeTensor(
-            jnp.ones(out_basis.size(), dtype=jnp.float32), out_basis
-        )
+        rpj.FreeTensor(jnp.ones(out_basis.size(), dtype=jnp.float32), out_basis)
     )
     assert ct_a.basis == input_basis
     assert ct_b.basis == input_basis
@@ -182,9 +175,7 @@ def test_ft_fma_derivative_mixed_depth(a_depth, b_depth, c_depth):
     t_c = make_free_tensor(c_depth, 6)
 
     result = rpj.ft_fma_derivative(a, b, c, t_a, t_b, t_c)
-    expected = t_a + rpj.ft_mul_derivative(b, c, t_b, t_c).change_depth(
-        a_depth
-    )
+    expected = t_a + rpj.ft_mul_derivative(b, c, t_b, t_c).change_depth(a_depth)
 
     assert result.basis == a.basis
     assert jnp.allclose(result.data, expected.data)

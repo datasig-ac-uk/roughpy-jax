@@ -1,13 +1,14 @@
 import jax
 import jax.numpy as jnp
 import pytest
-import roughpy_jax as rpj
 from derivative_testing import (
     DerivativeTrialsHelper,
     assert_is_adjoint_derivative,
     assert_is_derivative,
     assert_is_linear,
 )
+
+import roughpy_jax as rpj
 
 
 @pytest.fixture(params=[jnp.float32, jnp.float64])

@@ -2,15 +2,15 @@ from functools import partial
 
 import jax
 import jax.numpy as jnp
-from jax import test_util as jtu
 import pytest
-import roughpy_jax as rpj
 from derivative_testing import (
     DerivativeTrialsHelper,
     assert_is_adjoint_derivative,
     assert_is_derivative,
     assert_is_linear,
 )
+from jax import test_util as jtu
+
 import roughpy_jax as rpj
 
 
@@ -126,9 +126,7 @@ def test_dense_ft_fmexp(rpj_dtype, rpj_batch, rpj_no_acceleration):
     assert jnp.allclose(b.data, expected.data)
 
 
-@pytest.mark.parametrize(
-    ("multiplier_depth", "exponent_depth"), [(1, 2), (2, 1)]
-)
+@pytest.mark.parametrize(("multiplier_depth", "exponent_depth"), [(1, 2), (2, 1)])
 def test_ft_fmexp_mixed_depth(multiplier_depth, exponent_depth):
     multiplier_basis = rpj.TensorBasis(2, multiplier_depth)
     exponent_basis = rpj.TensorBasis(2, exponent_depth)
@@ -137,9 +135,7 @@ def test_ft_fmexp_mixed_depth(multiplier_depth, exponent_depth):
         jnp.arange(1, multiplier_basis.size() + 1, dtype=jnp.float32),
         multiplier_basis,
     )
-    exponent_data = jnp.arange(
-        exponent_basis.size(), dtype=jnp.float32
-    ).at[0].set(0)
+    exponent_data = jnp.arange(exponent_basis.size(), dtype=jnp.float32).at[0].set(0)
     exponent = rpj.FreeTensor(exponent_data, exponent_basis)
 
     result = rpj.ft_fmexp(multiplier, exponent)
@@ -150,9 +146,7 @@ def test_ft_fmexp_mixed_depth(multiplier_depth, exponent_depth):
     assert result.basis == multiplier_basis
     assert jnp.allclose(result.data, expected.data)
 
-    derivative = rpj.ft_fmexp_derivative(
-        multiplier, exponent, multiplier, exponent
-    )
+    derivative = rpj.ft_fmexp_derivative(multiplier, exponent, multiplier, exponent)
     assert derivative.basis == multiplier_basis
 
     ct_result = rpj.ShuffleTensor(jnp.ones_like(result.data), result.basis)
@@ -186,9 +180,7 @@ def test_ft_fmexp_derivatives_with_explicit_out_basis(out_depth):
         2 * jnp.ones(input_basis.size()).at[0].set(0), input_basis
     )
 
-    result = rpj.ft_fmexp(
-        multiplier, exponent, out_basis=out_basis
-    )
+    result = rpj.ft_fmexp(multiplier, exponent, out_basis=out_basis)
     derivative = rpj.ft_fmexp_derivative(
         multiplier,
         exponent,
@@ -210,20 +202,19 @@ def test_ft_fmexp_derivatives_with_explicit_out_basis(out_depth):
     ct_result = rpj.ShuffleTensor(
         jnp.ones(out_basis.size(), dtype=jnp.float32), out_basis
     )
-    explicit_cts = rpj.ft_fmexp_adjoint_derivative(
-        multiplier, exponent, ct_result
-    )
+    explicit_cts = rpj.ft_fmexp_adjoint_derivative(multiplier, exponent, ct_result)
     _, pullback = jax.vjp(
-        lambda mul, exp: rpj.ft_fmexp(
-            mul, exp, out_basis=out_basis
-        ),
+        lambda mul, exp: rpj.ft_fmexp(mul, exp, out_basis=out_basis),
         multiplier,
         exponent,
     )
     jax_cts = pullback(rpj.FreeTensor(ct_result.data, out_basis))
 
     for explicit_ct, jax_ct, basis in zip(
-        explicit_cts, jax_cts, (multiplier.basis, exponent.basis)
+        explicit_cts,
+        jax_cts,
+        (multiplier.basis, exponent.basis),
+        strict=True,
     ):
         assert explicit_ct.basis == basis
         assert jax_ct.basis == basis
@@ -248,22 +239,14 @@ def test_ft_exp_log_vjp_with_different_output_depth(
 ):
     input_basis = rpj.TensorBasis(2, input_depth)
     output_basis = rpj.TensorBasis(2, output_depth)
-    data = jnp.arange(input_basis.size(), dtype=jnp.float32).at[0].set(
-        unit_value
-    )
+    data = jnp.arange(input_basis.size(), dtype=jnp.float32).at[0].set(unit_value)
     argument = rpj.FreeTensor(data, input_basis)
 
-    result, pullback = jax.vjp(
-        lambda arg: fn(arg, out_basis=output_basis), argument
-    )
-    (ct_argument,) = pullback(
-        rpj.FreeTensor(jnp.ones_like(result.data), result.basis)
-    )
+    result, pullback = jax.vjp(lambda arg: fn(arg, out_basis=output_basis), argument)
+    (ct_argument,) = pullback(rpj.FreeTensor(jnp.ones_like(result.data), result.basis))
 
     tangent = rpj.FreeTensor(jnp.ones_like(argument.data), input_basis)
-    derivative = derivative_fn(
-        argument, tangent, out_basis=output_basis
-    )
+    derivative = derivative_fn(argument, tangent, out_basis=output_basis)
     expected_derivative = derivative_fn(
         argument.change_depth(output_depth),
         tangent.change_depth(output_depth),
@@ -288,16 +271,10 @@ def test_out_basis_must_have_compatible_width():
 
     calls = (
         lambda: rpj.ft_exp(argument, out_basis=incompatible_basis),
-        lambda: rpj.ft_exp_derivative(
-            argument, tangent, out_basis=incompatible_basis
-        ),
+        lambda: rpj.ft_exp_derivative(argument, tangent, out_basis=incompatible_basis),
         lambda: rpj.ft_log(argument, out_basis=incompatible_basis),
-        lambda: rpj.ft_log_derivative(
-            argument, tangent, out_basis=incompatible_basis
-        ),
-        lambda: rpj.ft_fmexp(
-            argument, argument, out_basis=incompatible_basis
-        ),
+        lambda: rpj.ft_log_derivative(argument, tangent, out_basis=incompatible_basis),
+        lambda: rpj.ft_fmexp(argument, argument, out_basis=incompatible_basis),
     )
 
     for call in calls:
@@ -561,6 +538,7 @@ def test_ft_fmexp_adjoint_derivative_satisfies_derivative_condition(exp_trials):
         rel_tol=exp_trials.cond_dtype(5.0e-2, 1.0e-6),
     )
 
+
 def test_ft_log_derivative_linear_in_tangent(exp_trials):
     x = _scaled_group_like_tensor(exp_trials, scale=0.05)
     t_x = _scaled_free_tensor(exp_trials, scale=0.05)
@@ -596,7 +574,9 @@ def test_ft_log_adjoint_derivative_linear_in_cotangent(exp_trials):
     alpha = float(vals[0])
     beta = float(vals[1])
 
-    fn = lambda ct_result: rpj.ft_log_adjoint_derivative(x, ct_result)[0]
+    def fn(ct_result):
+        return rpj.ft_log_adjoint_derivative(x, ct_result)[0]
+
     assert_is_linear(fn, ct_x, ct_y, alpha, beta)
 
 
@@ -625,9 +605,7 @@ def test_ft_log_registered_vjp_ignores_unit_coordinate(rpj_no_acceleration):
 
     gradient = jax.jit(
         jax.grad(
-            lambda arg_data: jnp.sum(
-                rpj.ft_log(rpj.FreeTensor(arg_data, basis)).data
-            )
+            lambda arg_data: jnp.sum(rpj.ft_log(rpj.FreeTensor(arg_data, basis)).data)
         )
     )(data)
 

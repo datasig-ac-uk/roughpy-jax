@@ -5,8 +5,8 @@ import jax.numpy as jnp
 import numpy as np
 import numpy.typing as npt
 import pytest
-import roughpy_jax as rpj
 
+import roughpy_jax as rpj
 from roughpy_jax.dense_algebra import (
     DenseAlgebra,
     DenseTensor,
@@ -233,9 +233,7 @@ def test_algebra_equal_compares_type_basis_shape_and_coefficients():
         jnp.asarray([True, True]),
     )
     np.testing.assert_array_equal(
-        rpj.algebra_equal(
-            left, rpj.DenseLie(data.at[0, 0].add(1), basis)
-        ),
+        rpj.algebra_equal(left, rpj.DenseLie(data.at[0, 0].add(1), basis)),
         jnp.asarray([False, True]),
     )
     np.testing.assert_array_equal(
@@ -245,9 +243,7 @@ def test_algebra_equal_compares_type_basis_shape_and_coefficients():
     assert not rpj.algebra_equal(
         left, rpj.DenseLie(jnp.arange(rpj.LieBasis(2, 3).size()), rpj.LieBasis(2, 3))
     )
-    assert not rpj.algebra_equal(
-        left, rpj.DenseFreeTensor(data, rpj.TensorBasis(2, 1))
-    )
+    assert not rpj.algebra_equal(left, rpj.DenseFreeTensor(data, rpj.TensorBasis(2, 1)))
 
 
 def test_algebra_equal_supports_equal_nan():
@@ -347,9 +343,7 @@ def test_algebra_allclose_rejects_structural_mismatch():
 def test_astype_converts_coefficients_and_preserves_algebra_structure(
     algebra_cls, basis
 ):
-    data = jnp.arange(2 * basis.size(), dtype=jnp.int32).reshape(
-        2, basis.size()
-    )
+    data = jnp.arange(2 * basis.size(), dtype=jnp.int32).reshape(2, basis.size())
     algebra = algebra_cls(data, basis)
 
     result = rpj.astype(algebra, jnp.float32)
@@ -427,16 +421,22 @@ def test_dense_algebra_addition_promotes_to_deeper_basis(lhs_is_deeper):
 
     if lhs_is_deeper:
         lhs = DenseTensor(jnp.ones(deep_basis.size(), dtype=jnp.float32), deep_basis)
-        rhs = DenseTensor(jnp.ones(shallow_basis.size(), dtype=jnp.float32), shallow_basis)
+        rhs = DenseTensor(
+            jnp.ones(shallow_basis.size(), dtype=jnp.float32), shallow_basis
+        )
     else:
-        lhs = DenseTensor(jnp.ones(shallow_basis.size(), dtype=jnp.float32), shallow_basis)
+        lhs = DenseTensor(
+            jnp.ones(shallow_basis.size(), dtype=jnp.float32), shallow_basis
+        )
         rhs = DenseTensor(jnp.ones(deep_basis.size(), dtype=jnp.float32), deep_basis)
 
     result = lhs + rhs
 
     assert isinstance(result, DenseTensor)
     assert result.basis == deep_basis
-    expected = jnp.ones(deep_basis.size(), dtype=jnp.float32).at[: shallow_basis.size()].add(1)
+    expected = (
+        jnp.ones(deep_basis.size(), dtype=jnp.float32).at[: shallow_basis.size()].add(1)
+    )
     np.testing.assert_array_equal(result.data, expected)
 
 
@@ -446,12 +446,18 @@ def test_dense_algebra_subtraction_promotes_to_deeper_basis(lhs_is_deeper):
     deep_basis = rpj.TensorBasis(2, 3)
 
     if lhs_is_deeper:
-        lhs = DenseTensor(2 * jnp.ones(deep_basis.size(), dtype=jnp.float32), deep_basis)
-        rhs = DenseTensor(jnp.ones(shallow_basis.size(), dtype=jnp.float32), shallow_basis)
+        lhs = DenseTensor(
+            2 * jnp.ones(deep_basis.size(), dtype=jnp.float32), deep_basis
+        )
+        rhs = DenseTensor(
+            jnp.ones(shallow_basis.size(), dtype=jnp.float32), shallow_basis
+        )
         expected = 2 * jnp.ones(deep_basis.size(), dtype=jnp.float32)
         expected = expected.at[: shallow_basis.size()].add(-1)
     else:
-        lhs = DenseTensor(2 * jnp.ones(shallow_basis.size(), dtype=jnp.float32), shallow_basis)
+        lhs = DenseTensor(
+            2 * jnp.ones(shallow_basis.size(), dtype=jnp.float32), shallow_basis
+        )
         rhs = DenseTensor(jnp.ones(deep_basis.size(), dtype=jnp.float32), deep_basis)
         expected = (-1) * jnp.ones(deep_basis.size(), dtype=jnp.float32)
         expected = expected.at[: shallow_basis.size()].add(2)
@@ -490,9 +496,7 @@ def test_stack_promotes_to_deeper_basis():
     assert isinstance(result, rpj.DenseFreeTensor)
     assert result.basis == deep_basis
     assert result.batch_shape == (2,)
-    np.testing.assert_array_equal(
-        result.data[0, : shallow_basis.size()], shallow.data
-    )
+    np.testing.assert_array_equal(result.data[0, : shallow_basis.size()], shallow.data)
     np.testing.assert_array_equal(result.data[0, shallow_basis.size() :], 0)
     np.testing.assert_array_equal(result.data[1], deep.data)
 
@@ -562,18 +566,14 @@ def test_concatenate_promotes_to_deeper_basis():
     assert isinstance(result, rpj.DenseFreeTensor)
     assert result.basis == deep_basis
     assert result.batch_shape == (5,)
-    np.testing.assert_array_equal(
-        result.data[:2, : shallow_basis.size()], shallow.data
-    )
+    np.testing.assert_array_equal(result.data[:2, : shallow_basis.size()], shallow.data)
     np.testing.assert_array_equal(result.data[:2, shallow_basis.size() :], 0)
     np.testing.assert_array_equal(result.data[2:], deep.data)
 
 
 def test_concatenate_accepts_negative_batch_axis_and_dtype():
     basis = rpj.TensorBasis(2, 1)
-    first = rpj.DenseFreeTensor(
-        jnp.ones((2, 1, basis.size()), dtype=jnp.int32), basis
-    )
+    first = rpj.DenseFreeTensor(jnp.ones((2, 1, basis.size()), dtype=jnp.int32), basis)
     second = rpj.DenseFreeTensor(
         2 * jnp.ones((2, 3, basis.size()), dtype=jnp.int32), basis
     )
@@ -652,9 +652,7 @@ def test_expand_dims_uses_result_batch_axes():
     assert trailing.batch_shape == (2, 3, 1)
     assert multiple.batch_shape == (1, 2, 3, 1)
     np.testing.assert_array_equal(trailing.data, jnp.expand_dims(data, 2))
-    np.testing.assert_array_equal(
-        multiple.data, jnp.expand_dims(data, (0, 3))
-    )
+    np.testing.assert_array_equal(multiple.data, jnp.expand_dims(data, (0, 3)))
 
 
 @pytest.mark.parametrize("axis", [-4, 3, (0, 0)])
@@ -703,9 +701,7 @@ def test_squeeze_rejects_nonunit_or_nonbatch_axes():
 
 def test_moveaxis_supports_negative_and_multiple_batch_axes():
     basis = rpj.TensorBasis(2, 1)
-    data = jnp.arange(2 * 3 * 4 * basis.size()).reshape(
-        2, 3, 4, basis.size()
-    )
+    data = jnp.arange(2 * 3 * 4 * basis.size()).reshape(2, 3, 4, basis.size())
     algebra = rpj.DenseShuffleTensor(data, basis)
 
     single = rpj.moveaxis(algebra, -1, 0)
@@ -714,16 +710,12 @@ def test_moveaxis_supports_negative_and_multiple_batch_axes():
     assert single.batch_shape == (4, 2, 3)
     assert multiple.batch_shape == (4, 3, 2)
     np.testing.assert_array_equal(single.data, jnp.moveaxis(data, 2, 0))
-    np.testing.assert_array_equal(
-        multiple.data, jnp.moveaxis(data, (0, 2), (2, 0))
-    )
+    np.testing.assert_array_equal(multiple.data, jnp.moveaxis(data, (0, 2), (2, 0)))
 
 
 def test_swapaxes_uses_batch_relative_negative_axes():
     basis = rpj.TensorBasis(2, 1)
-    data = jnp.arange(2 * 3 * 4 * basis.size()).reshape(
-        2, 3, 4, basis.size()
-    )
+    data = jnp.arange(2 * 3 * 4 * basis.size()).reshape(2, 3, 4, basis.size())
     algebra = rpj.DenseFreeTensor(data, basis)
 
     result = rpj.swapaxes(algebra, 0, -1)
@@ -744,26 +736,18 @@ def test_axis_movement_cannot_address_coefficient_dimension(operation):
 
 def test_batch_shape_operations_are_jittable_and_differentiable():
     basis = rpj.LieBasis(2, 1)
-    data = jnp.arange(6 * basis.size(), dtype=jnp.float32).reshape(
-        2, 3, basis.size()
-    )
+    data = jnp.arange(6 * basis.size(), dtype=jnp.float32).reshape(2, 3, basis.size())
     algebra = rpj.DenseLie(data, basis)
 
     transformed = jax.jit(
-        lambda value: rpj.squeeze(
-            rpj.expand_dims(rpj.reshape(value, (3, 2)), -1), -1
-        )
+        lambda value: rpj.squeeze(rpj.expand_dims(rpj.reshape(value, (3, 2)), -1), -1)
     )(algebra)
     gradient = jax.grad(
-        lambda values: jnp.sum(
-            rpj.moveaxis(rpj.DenseLie(values, basis), 0, 1).data
-        )
+        lambda values: jnp.sum(rpj.moveaxis(rpj.DenseLie(values, basis), 0, 1).data)
     )(data)
 
     assert transformed.batch_shape == (3, 2)
-    np.testing.assert_array_equal(
-        transformed.data, data.reshape(3, 2, basis.size())
-    )
+    np.testing.assert_array_equal(transformed.data, data.reshape(3, 2, basis.size()))
     np.testing.assert_array_equal(gradient, jnp.ones_like(data))
 
 

@@ -8,6 +8,7 @@ confirm that both rpc and rpj tensor basis behave the same.
 
 import numpy as np
 import pytest
+
 import roughpy_jax as rpj
 
 sample_width_depth_degree_begin = [

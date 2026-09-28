@@ -1,8 +1,8 @@
 "Property-based tests for ft_exp and ft_log"
 
-from numpy.testing import assert_array_almost_equal
-from hypothesis import given
 import pytest
+from hypothesis import given
+from numpy.testing import assert_array_almost_equal
 
 import roughpy_jax as rpj
 from roughpy_jax.strategies import lie_increment
@@ -12,6 +12,7 @@ from roughpy_jax.strategies import lie_increment
 @given(L=lie_increment())
 def test_first_index_is_zero(L):
     assert L.data[0] == 0
+
 
 @pytest.mark.extra
 @given(L=lie_increment())

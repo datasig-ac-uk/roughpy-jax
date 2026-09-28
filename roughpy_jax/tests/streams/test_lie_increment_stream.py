@@ -86,12 +86,15 @@ def test_compute_separating_resolution_uses_all_timestamp_arrays():
 def test_compute_separating_resolution_accepts_precomputed_extents():
     timestamps = [jnp.array([2.0, 3.0])]
 
-    assert compute_separating_resolution(
-        timestamps,
-        min_ts=0.0,
-        max_ts=4.0,
-        sorted_arrays=True,
-    ) == 3
+    assert (
+        compute_separating_resolution(
+            timestamps,
+            min_ts=0.0,
+            max_ts=4.0,
+            sorted_arrays=True,
+        )
+        == 3
+    )
 
 
 @pytest.mark.parametrize(
@@ -258,9 +261,7 @@ def test_from_stream_rejects_nonpositive_resolution():
             pass
 
     with pytest.raises(ValueError, match="resolution must be positive"):
-        LieIncrementStream.from_stream(
-            cast(Any, DummyStream()), resolution=0
-        )
+        LieIncrementStream.from_stream(cast(Any, DummyStream()), resolution=0)
 
 
 def test_from_stream_uses_stream_dyadic_cache_provider():
@@ -436,9 +437,7 @@ def test_batched_log_signature_and_signature_match_individual_queries():
         assert jnp.allclose(
             batched_log.data[i], stream.log_signature(scalar_query).data
         )
-        assert jnp.allclose(
-            batched_sig.data[i], stream.signature(scalar_query).data
-        )
+        assert jnp.allclose(batched_sig.data[i], stream.signature(scalar_query).data)
 
 
 def test_query_batch_dimensions_precede_stream_batch_dimensions():
@@ -601,9 +600,7 @@ def test_log_signature_of_short_interval_uses_contained_endpoint(
         (RealInterval(0.125, 0.875, IntervalType.ClOpen), True),
     ],
 )
-def test_zero_cache_sentinel_does_not_receive_cotangents(
-        query, expect_cache_gradient
-):
+def test_zero_cache_sentinel_does_not_receive_cotangents(query, expect_cache_gradient):
     lie_basis = LieBasis(width=1, depth=1)
     cache = jnp.asarray(
         [[1.0], [2.0], [3.0], [4.0], [3.0], [7.0], [10.0], [0.0]],
@@ -632,9 +629,7 @@ def test_opencl_query_excludes_aligned_clopen_cache_endpoint():
         resolution=3,
     )
 
-    result = stream.log_signature(
-        RealInterval(0.25, 0.5, IntervalType.OpenCl)
-    )
+    result = stream.log_signature(RealInterval(0.25, 0.5, IntervalType.OpenCl))
 
     assert jnp.allclose(result.data, jnp.asarray([-1.25], dtype=jnp.float32))
 
@@ -650,9 +645,7 @@ def test_opencl_query_does_not_nudge_unaligned_endpoint():
         resolution=3,
     )
 
-    result = stream.log_signature(
-        RealInterval(0.249, 0.251, IntervalType.OpenCl)
-    )
+    result = stream.log_signature(RealInterval(0.249, 0.251, IntervalType.OpenCl))
 
     assert jnp.allclose(result.data, jnp.asarray([2.5], dtype=jnp.float32))
 
@@ -692,7 +685,7 @@ def _build_l_shape_stream(t0, t1, increments):
     Timestamps are a linspace over ``[t0, t1]`` with a trailing zero increment.
     """
     lie_basis = LieBasis(width=2, depth=2)
-    rows = list(increments) + [[0.0, 0.0]]
+    rows = [*list(increments), [0.0, 0.0]]
     ts = jnp.linspace(t0, t1, len(rows), dtype=jnp.float64)
     data = jnp.asarray(rows, dtype=jnp.float64)
     return LieIncrementStream.from_increments(
@@ -775,15 +768,9 @@ def test_from_increments_subinterval_satisfies_chen_identity():
     inf = stream.support.inf + 0.13 * support_length
     split = stream.support.inf + 0.53 * support_length
     sup = stream.support.inf + 0.89 * support_length
-    whole = stream.log_signature(
-        RealInterval(inf, sup, IntervalType.ClOpen)
-    )
-    left = stream.log_signature(
-        RealInterval(inf, split, IntervalType.ClOpen)
-    )
-    right = stream.log_signature(
-        RealInterval(split, sup, IntervalType.ClOpen)
-    )
+    whole = stream.log_signature(RealInterval(inf, sup, IntervalType.ClOpen))
+    left = stream.log_signature(RealInterval(inf, split, IntervalType.ClOpen))
+    right = stream.log_signature(RealInterval(split, sup, IntervalType.ClOpen))
 
     combined = rpj.cbh(left, right, lie_basis=lie_basis)
 
@@ -794,7 +781,7 @@ def test_from_increments_is_invariant_to_timestamp_rescaling():
     """The signature depends on increment order, not the timestamp scale/offset.
 
     Building the same L-path over ``[0, 1]``, ``[0, 2]`` and an offset span
-    ``[5, 9]`` must give an identical log-signature. 
+    ``[5, 9]`` must give an identical log-signature.
     """
     reference = _build_l_shape_stream(0.0, 1.0, [[1.0, 0.0], [0.0, 1.0]])
     ref_data = reference.log_signature(reference.support).data
@@ -959,13 +946,9 @@ def test_from_increments_sorts_each_input_by_timestamp():
     # bucket. A stable sort by bucket alone would preserve the shuffled input
     # order and reverse these noncommuting increments.
     ordered_timestamps = jnp.array([0.0, 0.1, 1.0], dtype=jnp.float32)
-    ordered_data = jnp.array(
-        [[1.0, 0.0], [0.0, 1.0], [0.0, 0.0]], dtype=jnp.float32
-    )
+    ordered_data = jnp.array([[1.0, 0.0], [0.0, 1.0], [0.0, 0.0]], dtype=jnp.float32)
     shuffled_timestamps = jnp.array([0.1, 0.0, 1.0], dtype=jnp.float32)
-    shuffled_data = jnp.array(
-        [[0.0, 1.0], [1.0, 0.0], [0.0, 0.0]], dtype=jnp.float32
-    )
+    shuffled_data = jnp.array([[0.0, 1.0], [1.0, 0.0], [0.0, 0.0]], dtype=jnp.float32)
 
     ordered = LieIncrementStream.from_increments(
         timestamps=ordered_timestamps,
@@ -992,9 +975,7 @@ def test_from_increments_sorts_each_input_by_timestamp():
 def test_from_increments_preserves_order_for_increments_in_one_bucket():
     basis = LieBasis(width=2, depth=2)
     timestamps = jnp.array([0.0, 0.0, 1.0], dtype=jnp.float32)
-    data = jnp.array(
-        [[1.0, 0.0], [0.0, 1.0], [0.0, 0.0]], dtype=jnp.float32
-    )
+    data = jnp.array([[1.0, 0.0], [0.0, 1.0], [0.0, 0.0]], dtype=jnp.float32)
 
     stream = LieIncrementStream.from_increments(
         timestamps=timestamps,

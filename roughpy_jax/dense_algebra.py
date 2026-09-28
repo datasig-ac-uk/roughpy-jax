@@ -1,4 +1,5 @@
-from typing import Any, TypeVar, Callable, Generic, ClassVar, Type, Sequence
+from collections.abc import Callable, Sequence
+from typing import Any, ClassVar, Generic, TypeVar
 
 import jax
 import jax.numpy as jnp
@@ -58,10 +59,10 @@ def get_common_batch_shape(*operands) -> tuple[int, ...]:
 
 
 def broadcast_to_batch_shape(
-        data: jax.typing.ArrayLike,
-        batch_shape: tuple[int, ...],
-        *,
-        core_dims: int = 1,
+    data: jax.typing.ArrayLike,
+    batch_shape: tuple[int, ...],
+    *,
+    core_dims: int = 1,
 ) -> jax.Array:
     """
     Reshape data for broadcasting over a target batch shape and core dimensions.
@@ -115,7 +116,7 @@ def _pad_final_dim(data: jax.Array, size: int) -> jax.Array:
 
 
 def _algebra_add(
-        a: AlgebraT, b: AlgebraT, *, impl: Callable[[jax.Array, jax.Array], jax.Array]
+    a: AlgebraT, b: AlgebraT, *, impl: Callable[[jax.Array, jax.Array], jax.Array]
 ) -> AlgebraT:
     """
     Apply a pointwise binary operation to two compatible dense algebra objects.
@@ -285,7 +286,7 @@ class DenseAlgebra(Generic[BasisT]):
         :raises ValueError: If the index would produce an empty batch.
         """
         batch_index = index if isinstance(index, tuple) else (index,)
-        new_data = self.data[batch_index + (slice(None),)]
+        new_data = self.data[*batch_index, slice(None)]
         new_batch_shape = new_data.shape[:-1]
 
         if 0 in new_batch_shape:
@@ -295,31 +296,29 @@ class DenseAlgebra(Generic[BasisT]):
 
     @classmethod
     def _equal(
-            cls,
-            left: AlgebraT,
-            right: AlgebraT,
-            *,
-            equal_nan: bool = False,
+        cls,
+        left: AlgebraT,
+        right: AlgebraT,
+        *,
+        equal_nan: bool = False,
     ) -> jax.Array:
         """Compare dense coefficient arrays for exact equality."""
         left_data, right_data = jnp.broadcast_arrays(left.data, right.data)
         matches = left_data == right_data
         matches = matches | (
-            jnp.asarray(equal_nan)
-            & jnp.isnan(left_data)
-            & jnp.isnan(right_data)
+            jnp.asarray(equal_nan) & jnp.isnan(left_data) & jnp.isnan(right_data)
         )
         return jnp.all(matches, axis=-1)
 
     @classmethod
     def _allclose(
-            cls,
-            left: AlgebraT,
-            right: AlgebraT,
-            *,
-            rtol: jax.typing.ArrayLike = 1e-5,
-            atol: jax.typing.ArrayLike = 1e-8,
-            equal_nan: bool = False,
+        cls,
+        left: AlgebraT,
+        right: AlgebraT,
+        *,
+        rtol: jax.typing.ArrayLike = 1e-5,
+        atol: jax.typing.ArrayLike = 1e-8,
+        equal_nan: bool = False,
     ) -> jax.Array:
         """Compare dense coefficient arrays using relative and absolute tolerances."""
         left_data, right_data = jnp.broadcast_arrays(left.data, right.data)
@@ -331,17 +330,15 @@ class DenseAlgebra(Generic[BasisT]):
             equal_nan=False,
         )
         matches = matches | (
-            jnp.asarray(equal_nan)
-            & jnp.isnan(left_data)
-            & jnp.isnan(right_data)
+            jnp.asarray(equal_nan) & jnp.isnan(left_data) & jnp.isnan(right_data)
         )
         return jnp.all(matches, axis=-1)
 
     @classmethod
     def _astype(
-            cls: type[AlgebraT],
-            algebra: AlgebraT,
-            dtype: jax.typing.DTypeLike,
+        cls: type[AlgebraT],
+        algebra: AlgebraT,
+        dtype: jax.typing.DTypeLike,
     ) -> AlgebraT:
         """Convert dense coefficient storage to a new dtype."""
         return cls(algebra.data.astype(dtype), algebra.basis)
@@ -383,11 +380,11 @@ class DenseAlgebra(Generic[BasisT]):
 
     @classmethod
     def zero(
-            cls: type[AlgebraT],
-            basis: BasisT,
-            dtype: jax.typing.DTypeLike = jnp.dtype("float32"),
-            batch_dims: tuple[int, ...] = tuple(),
-            device: jax.Device | None = None,
+        cls: type[AlgebraT],
+        basis: BasisT,
+        dtype: jax.typing.DTypeLike = jnp.float32,
+        batch_dims: tuple[int, ...] = tuple(),
+        device: jax.Device | None = None,
     ) -> AlgebraT:
         """
         Construct the additive identity in the given basis.
@@ -403,13 +400,17 @@ class DenseAlgebra(Generic[BasisT]):
         :param device: The device on which the object should be resident
         :return: A zero element of ``cls`` in ``basis``.
         """
-        shape = batch_dims + (basis.size(),)
+        shape = (*batch_dims, basis.size())
         zero_data = jnp.zeros(dtype=jnp.dtype(dtype), shape=shape, device=device)
         return cls(zero_data, basis)
 
     @classmethod
-    def stack(cls: type[AlgebraT], algebras: Sequence[AlgebraT], axis: int = 0,
-              dtype: jax.typing.DTypeLike | None = None) -> AlgebraT:
+    def stack(
+        cls: type[AlgebraT],
+        algebras: Sequence[AlgebraT],
+        axis: int = 0,
+        dtype: jax.typing.DTypeLike | None = None,
+    ) -> AlgebraT:
         """
         Implement representation-specific storage for :func:`algebra.stack`.
 
@@ -429,15 +430,19 @@ class DenseAlgebra(Generic[BasisT]):
         basis = result_basis(*bases, strategy="max_depth")
 
         basis_size = basis.size()
-        new_data = jnp.stack([_redepth_data(algebra.data, basis_size) for algebra in algebras], axis=axis, dtype=dtype)
+        new_data = jnp.stack(
+            [_redepth_data(algebra.data, basis_size) for algebra in algebras],
+            axis=axis,
+            dtype=dtype,
+        )
         return cls(new_data, basis)
 
     @classmethod
     def concatenate(
-            cls: type[AlgebraT],
-            algebras: Sequence[AlgebraT],
-            axis: int = 0,
-            dtype: jax.typing.DTypeLike | None = None,
+        cls: type[AlgebraT],
+        algebras: Sequence[AlgebraT],
+        axis: int = 0,
+        dtype: jax.typing.DTypeLike | None = None,
     ) -> AlgebraT:
         """
         Implement representation-specific storage for :func:`algebra.concatenate`.
@@ -476,11 +481,11 @@ class DenseTensor(DenseAlgebra[TensorBasis]):
 
     @classmethod
     def identity(
-            cls: Type[AlgebraT],
-            basis: TensorBasis,
-            dtype: jax.typing.DTypeLike = jnp.dtype("float32"),
-            batch_dims: tuple[int, ...] = tuple(),
-            device: jax.Device | None = None,
+        cls: type[AlgebraT],
+        basis: TensorBasis,
+        dtype: jax.typing.DTypeLike = jnp.float32,
+        batch_dims: tuple[int, ...] = tuple(),
+        device: jax.Device | None = None,
     ) -> AlgebraT:
         """
             Construct the multiplicative identity in a tensor basis.
@@ -497,7 +502,7 @@ class DenseTensor(DenseAlgebra[TensorBasis]):
             :param device: The device on which the object should be resident
             :return: The identity element of ``cls`` in ``basis``.
         """
-        shape = batch_dims + (basis.size(),)
+        shape = (*batch_dims, basis.size())
         data = jnp.zeros(dtype=jnp.dtype(dtype), shape=shape, device=device)
         data = data.at[..., 0].set(1)
         return cls(data, basis)
@@ -523,7 +528,9 @@ def zero_like(algebra: AlgebraT, dtype: jax.typing.DTypeLike | None = None) -> A
     return type(algebra)(data, algebra.basis)
 
 
-def identity_like(tensor: AlgebraT, dtype: jax.typing.DTypeLike | None = None) -> AlgebraT:
+def identity_like(
+    tensor: AlgebraT, dtype: jax.typing.DTypeLike | None = None
+) -> AlgebraT:
     """
     Creates an identity-like object based on the structure and type of the provided tensor. The resulting object retains
     the basis of the input tensor but modifies its data to follow an identity pattern. The primary element indicating

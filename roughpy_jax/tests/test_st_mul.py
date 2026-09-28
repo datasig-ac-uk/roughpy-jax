@@ -1,19 +1,19 @@
-from typing import Callable
+from collections.abc import Callable
 from functools import partial
 
 import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
-import roughpy_jax as rpj
-from jax import test_util as jtu
-
 from derivative_testing import (
     DerivativeTrialsHelper,
     assert_is_adjoint_derivative,
     assert_is_derivative,
     assert_is_linear,
 )
+from jax import test_util as jtu
+
+import roughpy_jax as rpj
 from roughpy_jax.algebra import st_mul_adjoint_derivative, st_mul_derivative
 
 
@@ -73,12 +73,8 @@ def test_shuffle_product_evaluates_multiplicatively_on_signatures(
     tensor_basis = rpj.TensorBasis(2, 3)
     lie_basis = rpj.LieBasis(2, 3)
 
-    lhs_data = rpj_batch.rng_uniform(
-        -1.0, 1.0, tensor_basis.size(), rpj_dtype
-    )
-    rhs_data = rpj_batch.rng_uniform(
-        -1.0, 1.0, tensor_basis.size(), rpj_dtype
-    )
+    lhs_data = rpj_batch.rng_uniform(-1.0, 1.0, tensor_basis.size(), rpj_dtype)
+    rhs_data = rpj_batch.rng_uniform(-1.0, 1.0, tensor_basis.size(), rpj_dtype)
 
     # Keep all products within the truncation depth: lhs has degree at most
     # one and rhs has degree at most two.
@@ -88,17 +84,15 @@ def test_shuffle_product_evaluates_multiplicatively_on_signatures(
     rhs = rpj.ShuffleTensor(rhs_data, tensor_basis)
 
     log_signature = rpj.Lie(
-        rpj_batch.rng_uniform(
-            -0.2, 0.2, lie_basis.size(), rpj_dtype
-        ),
+        rpj_batch.rng_uniform(-0.2, 0.2, lie_basis.size(), rpj_dtype),
         lie_basis,
     )
     signature = rpj.to_signature(log_signature)
 
     paired_product = rpj.tensor_pairing(rpj.st_mul(lhs, rhs), signature)
-    product_of_pairings = rpj.tensor_pairing(
-        lhs, signature
-    ) * rpj.tensor_pairing(rhs, signature)
+    product_of_pairings = rpj.tensor_pairing(lhs, signature) * rpj.tensor_pairing(
+        rhs, signature
+    )
 
     atol = 1e-5 if rpj_dtype == jnp.float32 else 1e-10
     assert jnp.allclose(paired_product, product_of_pairings, atol=atol)
@@ -118,9 +112,7 @@ def test_st_mul_mixed_depth(lhs_depth, rhs_depth):
     )
 
     result = rpj.st_mul(lhs, rhs)
-    expected = rpj.st_mul(
-        lhs.change_depth(out_depth), rhs.change_depth(out_depth)
-    )
+    expected = rpj.st_mul(lhs.change_depth(out_depth), rhs.change_depth(out_depth))
 
     assert result.basis == expected.basis
     assert jnp.allclose(result.data, expected.data)
@@ -140,12 +132,8 @@ def test_st_mul_explicit_out_basis(out_depth):
     t_rhs = rpj.ShuffleTensor(2 * jnp.ones(input_basis.size()), input_basis)
 
     result = rpj.st_mul(lhs, rhs, out_basis=out_basis)
-    expected = rpj.st_mul(
-        lhs.change_depth(out_depth), rhs.change_depth(out_depth)
-    )
-    derivative = rpj.st_mul_derivative(
-        lhs, rhs, t_lhs, t_rhs, out_basis=out_basis
-    )
+    expected = rpj.st_mul(lhs.change_depth(out_depth), rhs.change_depth(out_depth))
+    derivative = rpj.st_mul_derivative(lhs, rhs, t_lhs, t_rhs, out_basis=out_basis)
     expected_derivative = rpj.st_mul_derivative(
         lhs.change_depth(out_depth),
         rhs.change_depth(out_depth),
@@ -159,16 +147,12 @@ def test_st_mul_explicit_out_basis(out_depth):
     assert jnp.allclose(derivative.data, expected_derivative.data)
 
     _, pullback = jax.vjp(
-        lambda left, right: rpj.st_mul(
-            left, right, out_basis=out_basis
-        ),
+        lambda left, right: rpj.st_mul(left, right, out_basis=out_basis),
         lhs,
         rhs,
     )
     ct_lhs, ct_rhs = pullback(
-        rpj.ShuffleTensor(
-            jnp.ones(out_basis.size(), dtype=jnp.float32), out_basis
-        )
+        rpj.ShuffleTensor(jnp.ones(out_basis.size(), dtype=jnp.float32), out_basis)
     )
     assert ct_lhs.basis == input_basis
     assert ct_rhs.basis == input_basis
@@ -322,8 +306,9 @@ def test_st_mul_derivative_linear_in_t_rhs(shuffle_deriv_trials):
 def test_st_mul_derivative_wrt_lhs(shuffle_deriv_trials):
     lhs = shuffle_deriv_trials.uniform_shuffle_tensor()
     rhs = shuffle_deriv_trials.uniform_shuffle_tensor()
-    tangent = shuffle_deriv_trials.uniform_shuffle_tensor() * shuffle_deriv_trials.cond_dtype(
-        1e-3, 1e0
+    tangent = (
+        shuffle_deriv_trials.uniform_shuffle_tensor()
+        * shuffle_deriv_trials.cond_dtype(1e-3, 1e0)
     )
     zero_t_rhs = shuffle_deriv_trials.zero_shuffle_tensor()
 
@@ -347,8 +332,9 @@ def test_st_mul_derivative_wrt_lhs(shuffle_deriv_trials):
 def test_st_mul_derivative_wrt_rhs(shuffle_deriv_trials):
     lhs = shuffle_deriv_trials.uniform_shuffle_tensor()
     rhs = shuffle_deriv_trials.uniform_shuffle_tensor()
-    tangent = shuffle_deriv_trials.uniform_shuffle_tensor() * shuffle_deriv_trials.cond_dtype(
-        1e-3, 1e0
+    tangent = (
+        shuffle_deriv_trials.uniform_shuffle_tensor()
+        * shuffle_deriv_trials.cond_dtype(1e-3, 1e0)
     )
     zero_t_lhs = shuffle_deriv_trials.zero_shuffle_tensor()
 
@@ -372,8 +358,9 @@ def test_st_mul_derivative_wrt_rhs(shuffle_deriv_trials):
 def test_st_mul_adjoint_derivative_wrt_lhs(shuffle_deriv_trials):
     lhs = shuffle_deriv_trials.uniform_shuffle_tensor()
     rhs = shuffle_deriv_trials.uniform_shuffle_tensor()
-    tangent = shuffle_deriv_trials.uniform_shuffle_tensor() * shuffle_deriv_trials.cond_dtype(
-        1e-3, 1e0
+    tangent = (
+        shuffle_deriv_trials.uniform_shuffle_tensor()
+        * shuffle_deriv_trials.cond_dtype(1e-3, 1e0)
     )
     cotangent = shuffle_deriv_trials.uniform_free_tensor()
 
@@ -400,8 +387,9 @@ def test_st_mul_adjoint_derivative_wrt_lhs(shuffle_deriv_trials):
 def test_st_mul_adjoint_derivative_wrt_rhs(shuffle_deriv_trials):
     lhs = shuffle_deriv_trials.uniform_shuffle_tensor()
     rhs = shuffle_deriv_trials.uniform_shuffle_tensor()
-    tangent = shuffle_deriv_trials.uniform_shuffle_tensor() * shuffle_deriv_trials.cond_dtype(
-        1e-3, 1e0
+    tangent = (
+        shuffle_deriv_trials.uniform_shuffle_tensor()
+        * shuffle_deriv_trials.cond_dtype(1e-3, 1e0)
     )
     cotangent = shuffle_deriv_trials.uniform_free_tensor()
 

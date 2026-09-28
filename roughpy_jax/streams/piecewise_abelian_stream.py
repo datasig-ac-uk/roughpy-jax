@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from functools import partial
-from typing import Self, Sequence
+from typing import Self
 
 import jax
 import jax.numpy as jnp
@@ -14,7 +14,13 @@ from roughpy_jax.algebra import (
     to_log_signature,
     to_signature,
 )
-from roughpy_jax.bases import Basis, LieBasis, TensorBasis, check_basis_compat, to_tensor_basis
+from roughpy_jax.bases import (
+    Basis,
+    LieBasis,
+    TensorBasis,
+    check_basis_compat,
+    to_tensor_basis,
+)
 from roughpy_jax.intervals import Interval, Partition, RealInterval
 
 from .concepts import Stream
@@ -152,10 +158,10 @@ class PiecewiseAbelianStream(Stream[DenseLie, DenseFreeTensor]):
         partition_intervals = self._partition.to_intervals()
         query_dims = (1,) * inf.ndim
         partition_inf = jax.lax.stop_gradient(partition_intervals.inf).reshape(
-            (P,) + query_dims
+            (P, *query_dims)
         )
         partition_sup = jax.lax.stop_gradient(partition_intervals.sup).reshape(
-            (P,) + query_dims
+            (P, *query_dims)
         )
 
         query_inf = inf[None, ...]
@@ -170,9 +176,7 @@ class PiecewiseAbelianStream(Stream[DenseLie, DenseFreeTensor]):
         length = jnp.where(pos_length, length, 1.0)
 
         data = self._data
-        scale_factors = jnp.where(pos_length, overlap / length, 0.0).astype(
-            data.dtype
-        )
+        scale_factors = jnp.where(pos_length, overlap / length, 0.0).astype(data.dtype)
 
         # The batch dimensions on the path data to be CBH should be
         #   (P, Q1, ..., Qk, D1, ..., Dm, L)
@@ -182,12 +186,16 @@ class PiecewiseAbelianStream(Stream[DenseLie, DenseFreeTensor]):
         scale_factors_extra_dims = (1,) * (data.ndim - 1)
         data_extra_dims = (1,) * (scale_factors.ndim - 1)
 
-        scale_factors = scale_factors.reshape(scale_factors.shape + scale_factors_extra_dims)
-        data = data.reshape((P,) + data_extra_dims + data.shape[1:])
+        scale_factors = scale_factors.reshape(
+            scale_factors.shape + scale_factors_extra_dims
+        )
+        data = data.reshape((P, *data_extra_dims, *data.shape[1:]))
 
         path_data = scale_factors * data
 
-        initial = FreeTensor.identity(self._group_basis, dtype=data.dtype, batch_dims=path_data.shape[1:-1])
+        initial = FreeTensor.identity(
+            self._group_basis, dtype=data.dtype, batch_dims=path_data.shape[1:-1]
+        )
 
         def combine(carry, piece_data):
             piece = DenseLie(piece_data, self._lie_basis)
@@ -219,7 +227,7 @@ class PiecewiseAbelianStream(Stream[DenseLie, DenseFreeTensor]):
 
 
 def to_piecewise_abelian_stream(
-        stream: Stream[DenseLie, DenseFreeTensor], partition: Partition
+    stream: Stream[DenseLie, DenseFreeTensor], partition: Partition
 ) -> PiecewiseAbelianStream:
     """Approximate a stream by a piecewise abelian stream on a partition.
 
@@ -249,7 +257,9 @@ def to_piecewise_abelian_stream(
         ValueError: If ``partition`` has batch dimensions.
     """
     if len(partition.batch_dims) > 0:
-        raise ValueError("batched partitions for piecewise abelian streams are not supported")
+        raise ValueError(
+            "batched partitions for piecewise abelian streams are not supported"
+        )
 
     intervals = partition.to_intervals()
     log_sigs = stream.log_signature(intervals)
@@ -297,7 +307,6 @@ def piecewise_abelian_stream_from_data(
 
         lie_data = jnp.stack([item.data for item in data])
     elif isinstance(data, DenseLie):
-
         lie_basis = data.basis
         lie_data = data.data
     else:

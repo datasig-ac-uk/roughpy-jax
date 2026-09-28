@@ -1,7 +1,6 @@
 import jax
 import jax.numpy as jnp
 import pytest
-import roughpy_jax as rpj
 from derivative_testing import (
     DerivativeTrialsHelper,
     assert_is_adjoint_derivative,
@@ -10,12 +9,18 @@ from derivative_testing import (
 )
 from jax.test_util import check_vjp
 
+import roughpy_jax as rpj
+
 
 # Antipode test fixture for batch of w=4, d=3 free tensors
 @pytest.fixture(params=[jnp.float32, jnp.float64])
 def trials(request, rpj_device):
     yield DerivativeTrialsHelper(
-        request.param, width=4, depth=3, default_tensor_type=rpj.FreeTensor, device=rpj_device
+        request.param,
+        width=4,
+        depth=3,
+        default_tensor_type=rpj.FreeTensor,
+        device=rpj_device,
     )
 
 

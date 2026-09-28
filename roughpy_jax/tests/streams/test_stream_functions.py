@@ -2,7 +2,6 @@ import jax.numpy as jnp
 import pytest
 
 import roughpy_jax as rpj
-import roughpy_jax.streams as streams
 from roughpy_jax.intervals import IntervalType, Partition, RealInterval
 
 
@@ -50,4 +49,3 @@ def test_stream_function_converts_partition_to_batched_interval(function_name):
     assert jnp.array_equal(query.inf, expected.inf)
     assert jnp.array_equal(query.sup, expected.sup)
     assert query.interval_type == expected.interval_type
-

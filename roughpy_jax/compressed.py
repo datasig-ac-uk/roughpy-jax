@@ -28,9 +28,7 @@ def csc_matvec(data, indices, indptr, n_rows, x):
     """
     n_cols = indptr.shape[0] - 1
     if x.shape[-1] != n_cols:
-        raise ValueError(
-            f"expected an input with {n_cols} columns, got {x.shape[-1]}"
-        )
+        raise ValueError(f"expected an input with {n_cols} columns, got {x.shape[-1]}")
 
     # Generate a compact array of which non-zero cells to update
     cols = expand_indptr(indptr)
@@ -65,9 +63,7 @@ def csr_matvec(data, indices, indptr, n_cols, x):
     returns: (*batch_dims, n_rows) result of A @ x
     """
     if x.shape[-1] != n_cols:
-        raise ValueError(
-            f"expected an input with {n_cols} columns, got {x.shape[-1]}"
-        )
+        raise ValueError(f"expected an input with {n_cols} columns, got {x.shape[-1]}")
 
     # Compact array of cells to update
     rows = expand_indptr(indptr)

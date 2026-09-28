@@ -129,14 +129,13 @@ def _normalise_dtype_for_resolution(dtype: jnp.dtype) -> jnp.dtype:
 
     name = dtype.name
     if (
-            name.startswith("float4_")
-            or name.startswith("float6_")
-            or name.startswith("float8_")
+        name.startswith("float4_")
+        or name.startswith("float6_")
+        or name.startswith("float8_")
     ):
         return jnp.dtype("float16")
 
     return dtype
-
 
 
 _RPJ_TO_JAX_FFI_PLATFORM_MAPPING: dict[str, str] = {
@@ -144,7 +143,6 @@ _RPJ_TO_JAX_FFI_PLATFORM_MAPPING: dict[str, str] = {
     "gpu": "gpu",
     "cuda": "gpu",
 }
-
 
 
 class Operation(Generic[BasisT]):
@@ -225,9 +223,7 @@ class Operation(Generic[BasisT]):
     # when deriving from this class.
     #
     # Users should not interact with this directly
-    __all_operations: ClassVar[
-        dict[tuple[str, str], type["Operation[Any]"]]
-    ] = {}
+    __all_operations: ClassVar[dict[tuple[str, str], type["Operation[Any]"]]] = {}
 
     # The supported layout for data for algebra objects. At the moment all
     # operations only support densely represented objects. In the future,
@@ -288,12 +284,12 @@ class Operation(Generic[BasisT]):
 
     @classmethod
     def register(
-            cls,
-            platform: str,
-            name: str,
-            fn_ptr: Any,
-            supported_dtypes: set[jnp.dtype],
-            ffi_register_kwargs: dict[str, Any],
+        cls,
+        platform: str,
+        name: str,
+        fn_ptr: Any,
+        supported_dtypes: set[jnp.dtype],
+        ffi_register_kwargs: dict[str, Any],
     ):
         global _all_supported_platforms
         ffi_platform = _RPJ_TO_JAX_FFI_PLATFORM_MAPPING[platform]
@@ -315,11 +311,11 @@ class Operation(Generic[BasisT]):
 
     @classmethod
     def register_all(
-            cls,
-            platform: str,
-            ops: dict[str, Any],
-            supported_dtypes: set[str],
-            ffi_register_kwargs: dict[str, Any],
+        cls,
+        platform: str,
+        ops: dict[str, Any],
+        supported_dtypes: set[str],
+        ffi_register_kwargs: dict[str, Any],
     ):
         dtypes = {jnp.dtype(tp) for tp in supported_dtypes}
         for op_cls in Operation.__all_operations.values():
@@ -329,7 +325,7 @@ class Operation(Generic[BasisT]):
 
     @classmethod
     def get_operation(
-            cls, fn_name: str, layout: str = "dense"
+        cls, fn_name: str, layout: str = "dense"
     ) -> type["Operation[Any]"]:
         """
         Retrieves a registered operation class based on the function name and layout.
@@ -350,8 +346,9 @@ class Operation(Generic[BasisT]):
         if (op := Operation.__all_operations.get(key, None)) is not None:
             return op
 
-        raise RuntimeError(f"No operation with name \"{fn_name}\" for layout \"{layout}\" "
-                           f"has been defined")
+        raise RuntimeError(
+            f'No operation with name "{fn_name}" for layout "{layout}" has been defined'
+        )
 
     @classmethod
     def make_result_dtypes(cls, basis: BasisT, dtype, batch_dims):
@@ -383,9 +380,9 @@ class Operation(Generic[BasisT]):
 
     @classmethod
     def get_result_basis(
-            cls,
-            bases: tuple[Basis, ...],
-            preferred_basis: BasisT | None,
+        cls,
+        bases: tuple[Basis, ...],
+        preferred_basis: BasisT | None,
     ) -> BasisT:
         """
         Determines the appropriate basis from a list of bases, considering an optional
@@ -428,13 +425,13 @@ class Operation(Generic[BasisT]):
         Operation.__all_operations[cls.fn_name, cls.data_layout] = cls
 
     def __init__(
-            self,
-            bases: tuple[Basis, ...],
-            dtype,
-            batch_dims,
-            ffi_call_args: dict[str, Any] | None = None,
-            specific_basis: BasisT | None = None,
-            **kwargs,
+        self,
+        bases: tuple[Basis, ...],
+        dtype,
+        batch_dims,
+        ffi_call_args: dict[str, Any] | None = None,
+        specific_basis: BasisT | None = None,
+        **kwargs,
     ):
         self.basis = basis = self.get_result_basis(bases, specific_basis)
         self.bases = bases
@@ -461,7 +458,7 @@ class Operation(Generic[BasisT]):
         return self.StaticArgs(**static_args)
 
     def get_min_supported_cpu_dtype(
-            self, target_dtype: jnp.dtype
+        self, target_dtype: jnp.dtype
     ) -> tuple[jnp.dtype, str]:
         if jnp.issubdtype(target_dtype, jnp.complexfloating):
             raise TypeError(f"Complex dtypes are not supported, got {target_dtype}")
@@ -630,14 +627,14 @@ class DenseOperation:
 
 ## Basic operations
 def _dense_ft_mul_level_accumulator(
-        lhs_data: Array,
-        rhs_data: Array,
-        out_degree: int,
-        degree_begin: DegreeBeginArray,
-        lhs_max_degree: int,
-        rhs_max_degree: int,
-        lhs_min_degree: int,
-        rhs_min_degree: int,
+    lhs_data: Array,
+    rhs_data: Array,
+    out_degree: int,
+    degree_begin: DegreeBeginArray,
+    lhs_max_degree: int,
+    rhs_max_degree: int,
+    lhs_min_degree: int,
+    rhs_min_degree: int,
 ):
     """
     Compute the accumulated multiplication for a level of the free tensor at out_degree
@@ -675,14 +672,14 @@ def _dense_ft_mul_level_accumulator(
 
 
 def _fallback_dense_ft_mul(
-        lhs_data: Array,
-        rhs_data: Array,
-        degree_begin: DegreeBeginArray,
-        lhs_max_degree: int | np.int32,
-        rhs_max_degree: int | np.int32,
-        out_max_degree: int | np.int32,
-        lhs_min_degree: int | np.int32,
-        rhs_min_degree: int | np.int32,
+    lhs_data: Array,
+    rhs_data: Array,
+    degree_begin: DegreeBeginArray,
+    lhs_max_degree: int | np.int32,
+    rhs_max_degree: int | np.int32,
+    out_max_degree: int | np.int32,
+    lhs_min_degree: int | np.int32,
+    rhs_min_degree: int | np.int32,
 ):
     """
     Multiply two dense free tensors with given data and degree
@@ -710,9 +707,9 @@ def _fallback_dense_ft_mul(
 
 
 def _fallback_dense_ft_exp(
-        arg_data: Array,
-        degree_begin: DegreeBeginArray,
-        arg_max_deg: int | np.int32,
+    arg_data: Array,
+    degree_begin: DegreeBeginArray,
+    arg_max_deg: int | np.int32,
 ):
     # Use Horner's method to compute exp(x) = Σ((x^n) / n!)
     arg_max_deg = int(arg_max_deg)
@@ -739,18 +736,18 @@ def _fallback_dense_ft_exp(
 
 
 def _fallback_dense_antipode(
-        arg_data: Array,
-        width: int | np.int32,
-        depth: int | np.int32,
-        degree_begin: DegreeBeginArray,
-        no_sign: bool,
+    arg_data: Array,
+    width: int | np.int32,
+    depth: int | np.int32,
+    degree_begin: DegreeBeginArray,
+    no_sign: bool,
 ):
     width = int(width)
     depth = int(depth)
 
     def transpose_level(i):
         sign = 1 if (no_sign or i % 2 == 0) else -1
-        level_data = arg_data[degree_begin[i]: degree_begin[i + 1]].reshape(
+        level_data = arg_data[degree_begin[i] : degree_begin[i + 1]].reshape(
             (width,) * i
         )
         return sign * jnp.transpose(level_data).reshape(-1)
@@ -761,14 +758,14 @@ def _fallback_dense_antipode(
 
 
 def _fallback_ft_adj_lmul(
-        op_data: Array,
-        arg_data: Array,
-        depth: int | np.int32,
-        degree_begin: DegreeBeginArray,
-        op_max_deg: int | np.int32,
-        arg_max_deg: int | np.int32,
-        op_min_deg: int | np.int32,
-        arg_min_deg: int | np.int32,
+    op_data: Array,
+    arg_data: Array,
+    depth: int | np.int32,
+    degree_begin: DegreeBeginArray,
+    op_max_deg: int | np.int32,
+    arg_max_deg: int | np.int32,
+    op_min_deg: int | np.int32,
+    arg_min_deg: int | np.int32,
 ):
     depth = int(depth)
     op_max_deg = int(op_max_deg)
@@ -826,7 +823,7 @@ class DenseFTFma(Operation[TensorBasis], DenseOperation):
 
     @classmethod
     def get_result_basis(
-            cls, bases: tuple[Basis, ...], preferred_basis: TensorBasis | None
+        cls, bases: tuple[Basis, ...], preferred_basis: TensorBasis | None
     ) -> TensorBasis:
         if preferred_basis is not None:
             return cast(
@@ -838,23 +835,21 @@ class DenseFTFma(Operation[TensorBasis], DenseOperation):
     def prepare_args(self, *data_args: Array) -> tuple[Array, ...]:
         converted_args = super().prepare_args(*data_args)
         basis_size = self.basis.size()
-        return tuple(
-            _redepth_data(arg, basis_size) for arg in converted_args
-        )
+        return tuple(_redepth_data(arg, basis_size) for arg in converted_args)
 
     @staticmethod
     def fallback(
-            a_data: Array,
-            b_data: Array,
-            c_data: Array,
-            width: np.int32,
-            depth: np.int32,
-            degree_begin: DegreeBeginArray,
-            a_max_deg: np.int32,
-            b_max_deg: np.int32,
-            c_max_deg: np.int32,
-            b_min_deg: np.int32,
-            c_min_deg: np.int32,
+        a_data: Array,
+        b_data: Array,
+        c_data: Array,
+        width: np.int32,
+        depth: np.int32,
+        degree_begin: DegreeBeginArray,
+        a_max_deg: np.int32,
+        b_max_deg: np.int32,
+        c_max_deg: np.int32,
+        b_min_deg: np.int32,
+        c_min_deg: np.int32,
     ) -> tuple[Array, ...]:
         # Width/depth are part of the operation fallback interface.
         _ = width, depth
@@ -883,15 +878,15 @@ class DenseFTMul(Operation[TensorBasis], DenseOperation):
 
     @staticmethod
     def fallback(
-            lhs_data: Array,
-            rhs_data: Array,
-            width: np.int32,
-            depth: np.int32,
-            degree_begin: DegreeBeginArray,
-            lhs_max_deg: np.int32,
-            rhs_max_deg: np.int32,
-            lhs_min_deg: np.int32,
-            rhs_min_deg: np.int32,
+        lhs_data: Array,
+        rhs_data: Array,
+        width: np.int32,
+        depth: np.int32,
+        degree_begin: DegreeBeginArray,
+        lhs_max_deg: np.int32,
+        rhs_max_deg: np.int32,
+        lhs_min_deg: np.int32,
+        rhs_min_deg: np.int32,
     ) -> tuple[Array]:
         # Width is part of the operation fallback interface.
         _ = width
@@ -917,12 +912,12 @@ class DenseAntipode(Operation[TensorBasis], DenseOperation):
 
     @staticmethod
     def fallback(
-            arg_data: Array,
-            width: np.int32,
-            depth: np.int32,
-            degree_begin: DegreeBeginArray,
-            arg_max_deg: np.int32,
-            no_sign: bool,
+        arg_data: Array,
+        width: np.int32,
+        depth: np.int32,
+        degree_begin: DegreeBeginArray,
+        arg_max_deg: np.int32,
+        no_sign: bool,
     ) -> tuple[Array]:
         # arg_max_deg is part of the operation fallback interface.
         _ = arg_max_deg
@@ -945,7 +940,7 @@ class DenseSTFma(Operation[TensorBasis], DenseOperation):
 
     @classmethod
     def get_result_basis(
-            cls, bases: tuple[Basis, ...], preferred_basis: TensorBasis | None
+        cls, bases: tuple[Basis, ...], preferred_basis: TensorBasis | None
     ) -> TensorBasis:
         if preferred_basis is not None:
             return cast(
@@ -973,17 +968,17 @@ class DenseSTFma(Operation[TensorBasis], DenseOperation):
 
     @staticmethod
     def fallback(
-            a_data: Array,
-            b_data: Array,
-            c_data: Array,
-            width: np.int32,
-            depth: np.int32,
-            degree_begin: DegreeBeginArray,
-            a_max_deg: np.int32,
-            b_max_deg: np.int32,
-            c_max_deg: np.int32,
-            b_min_deg: np.int32,
-            c_min_deg: np.int32,
+        a_data: Array,
+        b_data: Array,
+        c_data: Array,
+        width: np.int32,
+        depth: np.int32,
+        degree_begin: DegreeBeginArray,
+        a_max_deg: np.int32,
+        b_max_deg: np.int32,
+        c_max_deg: np.int32,
+        b_min_deg: np.int32,
+        c_min_deg: np.int32,
     ) -> tuple[Array]:
         raise NotImplementedError(
             "st_fma is not implemented for native JAX, use CPU backend"
@@ -1022,13 +1017,13 @@ class DenseFTAdjLeftMul(Operation[TensorBasis], DenseOperation):
 
     @staticmethod
     def fallback(
-            op_data: Array,
-            arg_data: Array,
-            width: np.int32,
-            depth: np.int32,
-            degree_begin: DegreeBeginArray,
-            op_max_deg: np.int32,
-            arg_max_deg: np.int32,
+        op_data: Array,
+        arg_data: Array,
+        width: np.int32,
+        depth: np.int32,
+        degree_begin: DegreeBeginArray,
+        op_max_deg: np.int32,
+        arg_max_deg: np.int32,
     ) -> tuple[Array]:
         # Width is part of the operation fallback interface.
         _ = width
@@ -1054,13 +1049,13 @@ class DenseFTAdjRightMul(Operation[TensorBasis], DenseOperation):
 
     @staticmethod
     def fallback(
-            op_data: Array,
-            arg_data: Array,
-            width: np.int32,
-            depth: np.int32,
-            degree_begin: DegreeBeginArray,
-            op_max_deg: np.int32,
-            arg_max_deg: np.int32,
+        op_data: Array,
+        arg_data: Array,
+        width: np.int32,
+        depth: np.int32,
+        degree_begin: DegreeBeginArray,
+        op_max_deg: np.int32,
+        arg_max_deg: np.int32,
     ) -> tuple[Array]:
         op_antipode = _fallback_dense_antipode(
             op_data, width, depth, degree_begin, False
@@ -1093,11 +1088,11 @@ class DenseLieToTensor(Operation[TensorBasis], DenseOperation):
         l2t_indices: npt.NDArray[np.int64]
         l2t_indptr: npt.NDArray[np.int64]
         l2t_size: np.int32
-        scale_factor: None | np.float64
+        scale_factor: np.float64 | None
 
     @classmethod
     def get_result_basis(
-            cls, bases: tuple[Basis, ...], preferred_basis: TensorBasis | None
+        cls, bases: tuple[Basis, ...], preferred_basis: TensorBasis | None
     ) -> TensorBasis:
         basis = to_tensor_basis(bases[0])
 
@@ -1125,21 +1120,19 @@ class DenseLieToTensor(Operation[TensorBasis], DenseOperation):
 
     @staticmethod
     def fallback(
-            arg_data: Array,
-            width: np.int32,
-            depth: np.int32,
-            degree_begin: DegreeBeginArray,
-            l2t_data: npt.NDArray[np.float32],
-            l2t_indices: npt.NDArray[np.int64],
-            l2t_indptr: npt.NDArray[np.int64],
-            l2t_size: np.int32,
-            scale_factor: None | np.float64,
+        arg_data: Array,
+        width: np.int32,
+        depth: np.int32,
+        degree_begin: DegreeBeginArray,
+        l2t_data: npt.NDArray[np.float32],
+        l2t_indices: npt.NDArray[np.int64],
+        l2t_indptr: npt.NDArray[np.int64],
+        l2t_size: np.int32,
+        scale_factor: np.float64 | None,
     ) -> tuple[Array]:
         # These are part of the operation fallback interface.
         _ = width, depth, degree_begin
-        result = csc_matvec(
-            l2t_data, l2t_indices, l2t_indptr, int(l2t_size), arg_data
-        )
+        result = csc_matvec(l2t_data, l2t_indices, l2t_indptr, int(l2t_size), arg_data)
         if scale_factor is not None:
             result = result * scale_factor
 
@@ -1154,11 +1147,11 @@ class DenseTensorToLie(Operation[LieBasis], DenseOperation):
         t2l_indices: npt.NDArray[np.int64]
         t2l_indptr: npt.NDArray[np.int64]
         t2l_size: np.int32
-        scale_factor: None | np.float64
+        scale_factor: np.float64 | None
 
     @classmethod
     def get_result_basis(
-            cls, bases: tuple[Basis, ...], preferred_basis: LieBasis | None
+        cls, bases: tuple[Basis, ...], preferred_basis: LieBasis | None
     ) -> LieBasis:
         basis = to_lie_basis(bases[0])
 
@@ -1185,21 +1178,19 @@ class DenseTensorToLie(Operation[LieBasis], DenseOperation):
 
     @staticmethod
     def fallback(
-            arg_data: Array,
-            width: np.int32,
-            depth: np.int32,
-            degree_begin: DegreeBeginArray,
-            t2l_data: npt.NDArray[np.float32] | npt.NDArray[np.float64],
-            t2l_indices: npt.NDArray[np.int64],
-            t2l_indptr: npt.NDArray[np.int64],
-            t2l_size: np.int32,
-            scale_factor: None | np.float64,
+        arg_data: Array,
+        width: np.int32,
+        depth: np.int32,
+        degree_begin: DegreeBeginArray,
+        t2l_data: npt.NDArray[np.float32] | npt.NDArray[np.float64],
+        t2l_indices: npt.NDArray[np.int64],
+        t2l_indptr: npt.NDArray[np.int64],
+        t2l_size: np.int32,
+        scale_factor: np.float64 | None,
     ) -> tuple[Array]:
         # These are part of the operation fallback interface.
         _ = width, depth, degree_begin
-        result = csc_matvec(
-            t2l_data, t2l_indices, t2l_indptr, int(t2l_size), arg_data
-        )
+        result = csc_matvec(t2l_data, t2l_indices, t2l_indptr, int(t2l_size), arg_data)
         if scale_factor is not None:
             result = result * scale_factor
 
@@ -1215,7 +1206,7 @@ class DenseFTExp(Operation[TensorBasis], DenseOperation):
 
     @classmethod
     def get_result_basis(
-            cls, bases: tuple[Basis, ...], preferred_basis: TensorBasis | None
+        cls, bases: tuple[Basis, ...], preferred_basis: TensorBasis | None
     ) -> TensorBasis:
         basis = cast(TensorBasis, bases[0])
         if preferred_basis is not None:
@@ -1225,11 +1216,11 @@ class DenseFTExp(Operation[TensorBasis], DenseOperation):
 
     @staticmethod
     def fallback(
-            arg_data: Array,
-            width: np.int32,
-            depth: np.int32,
-            degree_begin: DegreeBeginArray,
-            arg_max_deg: np.int32,
+        arg_data: Array,
+        width: np.int32,
+        depth: np.int32,
+        degree_begin: DegreeBeginArray,
+        arg_max_deg: np.int32,
     ) -> tuple[Array]:
         # Width/depth are part of the operation fallback interface.
         _ = width, depth
@@ -1248,7 +1239,7 @@ class DenseFTFMExp(Operation[TensorBasis], DenseOperation):
 
     @classmethod
     def get_result_basis(
-            cls, bases: tuple[Basis, ...], preferred_basis: TensorBasis | None
+        cls, bases: tuple[Basis, ...], preferred_basis: TensorBasis | None
     ) -> TensorBasis:
         if preferred_basis is not None:
             return cast(
@@ -1259,15 +1250,15 @@ class DenseFTFMExp(Operation[TensorBasis], DenseOperation):
 
     @staticmethod
     def fallback(
-            multiplier: Array,
-            exponent: Array,
-            width: np.int32,
-            depth: np.int32,
-            degree_begin: DegreeBeginArray,
-            mul_max_deg: np.int32,
-            exp_max_deg: np.int32,
-            mul_min_deg: np.int32,
-            exp_min_deg: np.int32,
+        multiplier: Array,
+        exponent: Array,
+        width: np.int32,
+        depth: np.int32,
+        degree_begin: DegreeBeginArray,
+        mul_max_deg: np.int32,
+        exp_max_deg: np.int32,
+        mul_min_deg: np.int32,
+        exp_min_deg: np.int32,
     ) -> tuple[Array]:
         # Width is part of the operation fallback interface.
         _ = width
@@ -1295,7 +1286,7 @@ class DenseFTLog(Operation[TensorBasis], DenseOperation):
 
     @classmethod
     def get_result_basis(
-            cls, bases: tuple[Basis, ...], preferred_basis: TensorBasis | None
+        cls, bases: tuple[Basis, ...], preferred_basis: TensorBasis | None
     ) -> TensorBasis:
         basis = cast(TensorBasis, bases[0])
         if preferred_basis is not None:
@@ -1305,11 +1296,11 @@ class DenseFTLog(Operation[TensorBasis], DenseOperation):
 
     @staticmethod
     def fallback(
-            arg_data: Array,
-            width: np.int32,
-            depth: np.int32,
-            degree_begin: DegreeBeginArray,
-            arg_max_deg: np.int32,
+        arg_data: Array,
+        width: np.int32,
+        depth: np.int32,
+        degree_begin: DegreeBeginArray,
+        arg_max_deg: np.int32,
     ) -> tuple[Array]:
         # Width/depth are part of the operation fallback interface.
         _ = width, depth
@@ -1354,13 +1345,13 @@ class DenseTensorPairing(Operation[TensorBasis], DenseOperation):
 
     @staticmethod
     def fallback(
-            functional_data: Array,
-            argument_data: Array,
-            width: np.int32,
-            depth: np.int32,
-            degree_begin: DegreeBeginArray,
-            functional_max_degree: np.int32,
-            argument_max_degree: np.int32,
+        functional_data: Array,
+        argument_data: Array,
+        width: np.int32,
+        depth: np.int32,
+        degree_begin: DegreeBeginArray,
+        functional_max_degree: np.int32,
+        argument_max_degree: np.int32,
     ) -> tuple[Array]:
         # Width/depth are part of the operation fallback interface.
         _ = width, depth
@@ -1394,13 +1385,13 @@ class DenseLiePairing(Operation[LieBasis], DenseOperation):
 
     @staticmethod
     def fallback(
-            functional_data: Array,
-            argument_data: Array,
-            width: np.int32,
-            depth: np.int32,
-            degree_begin: DegreeBeginArray,
-            functional_max_degree: np.int32,
-            argument_max_degree: np.int32,
+        functional_data: Array,
+        argument_data: Array,
+        width: np.int32,
+        depth: np.int32,
+        degree_begin: DegreeBeginArray,
+        functional_max_degree: np.int32,
+        argument_max_degree: np.int32,
     ) -> tuple[Array]:
         # Width/depth are part of the operation fallback interface.
         _ = width, depth

@@ -1,13 +1,14 @@
 import jax
 import jax.numpy as jnp
 import pytest
-import roughpy_jax as rpj
 from derivative_testing import (
     DerivativeTrialsHelper,
     assert_is_adjoint_derivative,
     assert_is_derivative,
     assert_is_linear,
 )
+
+import roughpy_jax as rpj
 
 
 @pytest.fixture(params=[jnp.float32, jnp.float64])
@@ -117,7 +118,7 @@ def test_ft_adjoint_left_mul_derivative_linear_in_t_op(adj_mul_trials):
     def fn(t_op):
         return rpj.ft_adjoint_left_mul_derivative(op, arg, t_op, zero_t_arg)
 
-    assert_is_linear(fn, t_op_x, t_op_y, alpha, beta, abs_tol=2.5e-6, rel_tol=2.e-6)
+    assert_is_linear(fn, t_op_x, t_op_y, alpha, beta, abs_tol=2.5e-6, rel_tol=2.0e-6)
 
 
 def test_ft_adjoint_left_mul_derivative_linear_in_t_arg(adj_mul_trials):
@@ -139,7 +140,9 @@ def test_ft_adjoint_left_mul_derivative_linear_in_t_arg(adj_mul_trials):
 def test_ft_adjoint_left_mul_derivative_wrt_op(adj_mul_trials):
     op = adj_mul_trials.uniform_free_tensor()
     arg = adj_mul_trials.uniform_shuffle_tensor()
-    tangent = adj_mul_trials.uniform_free_tensor() * adj_mul_trials.cond_dtype(1e-3, 1e0)
+    tangent = adj_mul_trials.uniform_free_tensor() * adj_mul_trials.cond_dtype(
+        1e-3, 1e0
+    )
     zero_t_arg = adj_mul_trials.zero_shuffle_tensor()
 
     def fn(arg_op):
@@ -162,7 +165,9 @@ def test_ft_adjoint_left_mul_derivative_wrt_op(adj_mul_trials):
 def test_ft_adjoint_left_mul_derivative_wrt_arg(adj_mul_trials):
     op = adj_mul_trials.uniform_free_tensor()
     arg = adj_mul_trials.uniform_shuffle_tensor()
-    tangent = adj_mul_trials.uniform_shuffle_tensor() * adj_mul_trials.cond_dtype(1e-3, 1e0)
+    tangent = adj_mul_trials.uniform_shuffle_tensor() * adj_mul_trials.cond_dtype(
+        1e-3, 1e0
+    )
     zero_t_op = adj_mul_trials.zero_free_tensor()
 
     def fn(arg_arg):
@@ -281,7 +286,9 @@ def test_ft_adjoint_right_mul_derivative_linear_in_t_arg(adj_mul_trials):
 def test_ft_adjoint_right_mul_derivative_wrt_op(adj_mul_trials):
     op = adj_mul_trials.uniform_free_tensor()
     arg = adj_mul_trials.uniform_shuffle_tensor()
-    tangent = adj_mul_trials.uniform_free_tensor() * adj_mul_trials.cond_dtype(1e-3, 1e0)
+    tangent = adj_mul_trials.uniform_free_tensor() * adj_mul_trials.cond_dtype(
+        1e-3, 1e0
+    )
     zero_t_arg = adj_mul_trials.zero_shuffle_tensor()
 
     def fn(arg_op):
@@ -304,7 +311,9 @@ def test_ft_adjoint_right_mul_derivative_wrt_op(adj_mul_trials):
 def test_ft_adjoint_right_mul_derivative_wrt_arg(adj_mul_trials):
     op = adj_mul_trials.uniform_free_tensor()
     arg = adj_mul_trials.uniform_shuffle_tensor()
-    tangent = adj_mul_trials.uniform_shuffle_tensor() * adj_mul_trials.cond_dtype(1e-3, 1e0)
+    tangent = adj_mul_trials.uniform_shuffle_tensor() * adj_mul_trials.cond_dtype(
+        1e-3, 1e0
+    )
     zero_t_op = adj_mul_trials.zero_free_tensor()
 
     def fn(arg_arg):
@@ -399,9 +408,7 @@ def test_ft_adjoint_mul_mixed_depth_vjp(
 ):
     op_basis = rpj.TensorBasis(2, op_depth)
     arg_basis = rpj.TensorBasis(2, arg_depth)
-    op = rpj.FreeTensor(
-        jnp.arange(1, op_basis.size() + 1, dtype=jnp.float32), op_basis
-    )
+    op = rpj.FreeTensor(jnp.arange(1, op_basis.size() + 1, dtype=jnp.float32), op_basis)
     arg = rpj.ShuffleTensor(
         jnp.arange(1, arg_basis.size() + 1, dtype=jnp.float32), arg_basis
     )
@@ -409,9 +416,7 @@ def test_ft_adjoint_mul_mixed_depth_vjp(
     result, pullback = jax.vjp(adjoint_mul, op, arg)
     ct_result = rpj.FreeTensor(jnp.ones_like(result.data), result.basis)
     expected_op, expected_arg = adjoint_derivative(op, arg, ct_result)
-    ct_op, ct_arg = pullback(
-        rpj.ShuffleTensor(ct_result.data, ct_result.basis)
-    )
+    ct_op, ct_arg = pullback(rpj.ShuffleTensor(ct_result.data, ct_result.basis))
 
     assert expected_op.basis == op_basis
     assert expected_arg.basis == arg_basis
