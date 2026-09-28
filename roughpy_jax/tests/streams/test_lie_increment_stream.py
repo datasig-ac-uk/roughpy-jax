@@ -1095,7 +1095,7 @@ def test_from_increments_rejects_invalid_shapes(timestamps, data, match):
 )
 def test_from_increments_rejects_empty_timestamp_arrays(timestamps, data, empty_index):
     with pytest.raises(
-        ValueError, match=rf"timestamp array at index {empty_index} cannot be empty"
+        ValueError, match=rf"timestamp array at index {empty_index} must not be empty"
     ):
         LieIncrementStream.from_increments(
             timestamps=timestamps,
