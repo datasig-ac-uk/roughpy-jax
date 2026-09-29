@@ -1,3 +1,5 @@
+"""Basis protocols, concrete basis types, and compatibility utilities."""
+
 import typing
 from collections.abc import Iterable
 from typing import Literal, TypeVar, cast
@@ -12,25 +14,42 @@ DegreeBeginArray = npt.NDArray[np.intp]
 
 @typing.runtime_checkable
 class Basis(typing.Protocol):
-    """
-    Structural protocol shared by basis objects used in ``roughpy_jax``.
+    """Structural protocol shared by basis objects used in ``roughpy_jax``.
 
     Any object implementing this protocol provides the width, truncation depth,
     and degree offsets needed to construct compatible tensor or Lie bases.
     """
 
     @property
-    def width(self) -> int: ...
+    def width(self) -> int:
+        """Return the number of letters generating the algebra."""
+        ...
 
     @property
-    def depth(self) -> int: ...
+    def depth(self) -> int:
+        """Return the maximum homogeneous degree represented by the basis."""
+        ...
 
     @property
-    def degree_begin(self) -> DegreeBeginArray: ...
+    def degree_begin(self) -> DegreeBeginArray:
+        """Return the coordinate offset at which each degree begins."""
+        ...
 
-    def size(self) -> int: ...
-    def __hash__(self) -> int: ...
-    def __eq__(self, other: object) -> bool: ...
+    def size(self) -> int:
+        """Return the number of coordinates in the basis."""
+        ...
+
+    def __hash__(self) -> int:
+        """Return a hash derived from the basis definition."""
+        ...
+
+    def __eq__(self, other: object) -> bool:
+        """Compare two basis definitions for equality.
+
+        :param other: Object to compare with this basis.
+        :return: Whether ``other`` represents the same basis.
+        """
+        ...
 
 
 BasisT = TypeVar("BasisT", bound=Basis)
@@ -45,11 +64,13 @@ def _basis_tree_unflatten(aux_data, _children):
 
 
 class TensorBasis(rpc.TensorBasis):
-    """
-    Word basis for the tensor algebra and shuffle algebra.
+    """Represent the word basis of the tensor and shuffle algebras.
 
     Basis elements are indexed by words in the alphabet of ``width`` letters,
     truncated at words of length ``depth``.
+
+    :param width: Number of letters in the generating alphabet.
+    :param depth: Maximum word length represented by the basis.
     """
 
 
@@ -59,8 +80,7 @@ jax.tree_util.register_pytree_node(
 
 
 class LieBasis(rpc.LieBasis):
-    """
-    An instance of a Hall basis for the Lie algebra.
+    """Represent a Hall basis of the free Lie algebra.
 
     A Hall basis is indexed by integer keys k > 0. To each key there is an
     associated pair of parents (a, b) where a and b are both keys belonging
@@ -82,6 +102,9 @@ class LieBasis(rpc.LieBasis):
     must also be ordered by degree, so elements of degree k must appear
     sequentially and between elements of degree k - 1 and degree k + 1 (if such
     elements exist).
+
+    :param width: Number of letters generating the free Lie algebra.
+    :param depth: Maximum bracket degree represented by the basis.
     """
 
 
@@ -94,16 +117,17 @@ def check_basis_compat(
     exact: bool = False,
     same_type: bool = False,
 ) -> None:
-    """
-    Check that a collection of basis objects are width-compatible.
+    """Check that a collection of basis objects is compatible.
 
-    Basis compatibility in roughpy-jax is currently defined by equal width.
+    Width equality is always required. Setting ``exact`` additionally requires
+    equal depths, while ``same_type`` requires the same concrete basis type.
+    The two optional checks may be enabled independently or together.
 
-    :param same_type: Check if all the bases of the same type
-    :param exact: Check if all bases have the same width and depth
     :param first_basis: Reference basis used for compatibility checks.
     :param other_bases: Additional basis objects to validate against ``first_basis``.
-    :raises ValueError: If any basis has a different width to ``first_basis``.
+    :param exact: Whether to require equal depths as well as equal widths.
+    :param same_type: Whether to require identical concrete basis types.
+    :raises ValueError: If any requested compatibility condition fails.
     """
     for i, basis in enumerate(other_bases):
         if (
@@ -118,8 +142,7 @@ def result_basis(
     *bases: BasisT | Iterable[BasisT],
     strategy: Literal["first", "max_depth", "min_depth"] = "max_depth",
 ) -> BasisT:
-    """
-    Select a result basis from a compatible collection of same-type bases.
+    """Select a result basis from a compatible collection of same-type bases.
 
     This helper first checks that all supplied bases are compatible and of the
     same concrete basis type, then selects one of them using a built-in
@@ -129,7 +152,7 @@ def result_basis(
     The candidate bases may be supplied either as positional arguments or as a
     single iterable of bases.
 
-    :param bases: Candidate bases to select from.
+    :param bases: Candidate bases supplied positionally or as one iterable.
     :param strategy: Selection strategy used to choose the result basis.
     :return: The selected basis.
     :raises ValueError: If no bases are supplied, if the bases are incompatible,
@@ -163,8 +186,7 @@ def result_basis(
 
 
 def to_tensor_basis(basis: Basis) -> TensorBasis:
-    """
-    Construct the tensor basis corresponding to ``basis``.
+    """Construct the tensor basis corresponding to ``basis``.
 
     This helper accepts any basis-like object and returns the word basis for
     the tensor algebra and shuffle algebra with matching width and depth. It is
@@ -177,12 +199,11 @@ def to_tensor_basis(basis: Basis) -> TensorBasis:
 
 
 def to_lie_basis(basis: Basis) -> LieBasis:
-    """
-    Construct the Lie basis corresponding to ``basis``.
+    """Construct the Lie basis corresponding to ``basis``.
 
     This helper accepts any basis-like object and returns the Lie basis with
-    matching width and depth. It is used to construct a consistent
-    a algebra environment.
+    matching width and depth. It is used to construct a consistent algebra
+    environment.
 
     :param basis: Basis-like object providing ``width`` and ``depth``.
     :return: Lie basis with the same width and depth as ``basis``.
