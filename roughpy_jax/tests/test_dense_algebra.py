@@ -86,6 +86,32 @@ def test_dense_algebra_exposes_basic_shape_properties():
         (rpj.DenseLie, rpj.LieBasis(2, 2)),
     ],
 )
+def test_dense_algebra_supports_empty_batches(algebra_cls, basis):
+    algebra = algebra_cls.zero(basis, batch_dims=(2, 0))
+
+    assert algebra.batch_shape == (2, 0)
+    assert algebra.data.shape == (2, 0, basis.size())
+
+
+def test_dense_algebra_operations_support_empty_batches_under_jit():
+    basis = rpj.TensorBasis(2, 2)
+    left = rpj.DenseFreeTensor.zero(basis, batch_dims=(2, 0))
+    right = rpj.DenseFreeTensor.identity(basis, batch_dims=(2, 0))
+
+    result = jax.jit(rpj.ft_mul)(left, right)
+
+    assert result.batch_shape == (2, 0)
+    assert result.data.shape == (2, 0, basis.size())
+
+
+@pytest.mark.parametrize(
+    ("algebra_cls", "basis"),
+    [
+        (rpj.DenseFreeTensor, rpj.TensorBasis(2, 2)),
+        (rpj.DenseShuffleTensor, rpj.TensorBasis(2, 2)),
+        (rpj.DenseLie, rpj.LieBasis(2, 2)),
+    ],
+)
 def test_dense_algebra_getitem_selects_batch_dimensions(algebra_cls, basis):
     data = jnp.arange(2 * 3 * basis.size()).reshape(2, 3, basis.size())
     algebra = algebra_cls(data, basis)
@@ -175,12 +201,15 @@ def test_dense_algebra_getitem_is_jittable():
 
 
 @pytest.mark.parametrize("index", [slice(0, 0), slice(20, 30)])
-def test_dense_algebra_getitem_rejects_empty_batch(index):
+def test_dense_algebra_getitem_supports_empty_batch(index):
     basis = rpj.LieBasis(2, 2)
-    algebra = rpj.DenseLie(jnp.ones((3, basis.size())), basis)
+    data = jnp.ones((3, basis.size()))
+    algebra = rpj.DenseLie(data, basis)
 
-    with pytest.raises(ValueError, match="empty algebra"):
-        _ = algebra[index]
+    result = algebra[index]
+
+    assert result.batch_shape == (0,)
+    np.testing.assert_array_equal(result.data, data[index, :])
 
 
 @pytest.mark.parametrize("index", [3, -4])

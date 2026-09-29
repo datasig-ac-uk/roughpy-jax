@@ -52,6 +52,23 @@ def test_real_interval_stores_endpoints_with_same_broadcast_shape(interval_type)
     )
 
 
+@pytest.mark.parametrize("batch_shape", [(0,), (2, 0)])
+def test_real_interval_supports_empty_batches(interval_type, batch_shape):
+    interval = RealInterval(
+        jnp.zeros(batch_shape),
+        jnp.ones(batch_shape),
+        interval_type,
+    )
+
+    result = intersection(interval, interval)
+
+    assert interval.inf.shape == batch_shape
+    assert interval.sup.shape == batch_shape
+    assert interval.length.shape == batch_shape
+    assert result.inf.shape == batch_shape
+    assert result.sup.shape == batch_shape
+
+
 @pytest.mark.parametrize("interval_type", list(IntervalType))
 def test_partition_pytree_has_dynamic_endpoint_leaf(interval_type):
     partition = Partition(
@@ -128,6 +145,17 @@ class TestDyadicInterval:
         assert di.inf == pytest.approx(1.5)
         assert di.sup == pytest.approx(2.0)
         assert di.length == pytest.approx(0.5)
+
+    def test_dyadic_interval_supports_empty_batches(self, interval_type):
+        interval = DyadicInterval(
+            jnp.empty((2, 0), dtype=jnp.int32),
+            jnp.empty((2, 0), dtype=jnp.int32),
+            interval_type,
+        )
+
+        assert interval.inf.shape == (2, 0)
+        assert interval.sup.shape == (2, 0)
+        assert interval.length.shape == (2, 0)
 
     def test_dyadic_interval_opencl(self):
         di = DyadicInterval(3, 1, IntervalType.OpenCl)
@@ -326,6 +354,24 @@ class TestPartition:
         assert jnp.array_equal(intervals.inf, jnp.asarray([0.0, 0.5]))
         assert jnp.array_equal(intervals.sup, jnp.asarray([0.5, 1.0]))
         assert intervals.interval_type is interval_type
+
+    def test_partition_supports_empty_batches(self, interval_type):
+        partition = Partition(jnp.empty((2, 0, 3)), interval_type)
+
+        intervals = partition.to_intervals()
+        truncated = partition.truncate(
+            RealInterval(jnp.empty((2, 0)), jnp.empty((2, 0)), interval_type)
+        )
+        merged = partition.merge(partition)
+
+        assert partition.batch_dims == (2, 0)
+        assert partition.inf.shape == (2, 0)
+        assert partition.sup.shape == (2, 0)
+        assert partition.length.shape == (2, 0)
+        assert intervals.inf.shape == (2, 0, 2)
+        assert intervals.sup.shape == (2, 0, 2)
+        assert truncated.endpoints.shape == (2, 0, 3)
+        assert merged.endpoints.shape == (2, 0, 6)
 
     def test_partition_short_length(self, interval_type):
         with pytest.raises(ValueError, match="at least two endpoints"):
