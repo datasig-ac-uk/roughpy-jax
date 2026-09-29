@@ -650,8 +650,6 @@ def ft_fma_adjoint_derivative(
     identifies the result space of the primal operation.
     """
     check_basis_compat(a.basis, b.basis, c.basis, ct_result.basis)
-    get_common_batch_shape(a, b, c, ct_result)
-
     ct_a = ct_result.change_depth(a.basis.depth)
     ct_b, ct_c = ft_mul_adjoint_derivative(b, c, ct_result)
     return ct_a, ct_b, ct_c
@@ -772,8 +770,6 @@ def ft_mul_adjoint_derivative(
     identifies the result space of the primal operation.
     """
     check_basis_compat(lhs.basis, rhs.basis, ct_result.basis)
-    get_common_batch_shape(lhs, rhs, ct_result)
-
     ct_lhs = ft_adjoint_right_mul(rhs, ct_result).change_depth(lhs.basis.depth)
     ct_rhs = ft_adjoint_left_mul(lhs, ct_result).change_depth(rhs.basis.depth)
     return ct_lhs, ct_rhs
@@ -941,8 +937,6 @@ def st_fma_derivative(
     if out_basis is not None:
         check_basis_compat(a.basis, out_basis)
 
-    get_common_batch_shape(a, b, c, t_a, t_b, t_c)
-
     basis = a.basis if out_basis is None else out_basis
     return (t_a + st_mul_derivative(b, c, t_b, t_c, out_basis=basis)).change_depth(
         basis.depth
@@ -961,8 +955,6 @@ def st_fma_adjoint_derivative(
     identifies the result space of the primal operation.
     """
     check_basis_compat(a.basis, b.basis, c.basis, ct_result.basis)
-    get_common_batch_shape(a, b, c, ct_result)
-
     ct_a = ct_result.change_depth(a.basis.depth)
     ct_b, ct_c = st_mul_adjoint_derivative(b, c, ct_result)
 
@@ -1068,8 +1060,6 @@ def st_mul_derivative(
     if out_basis is not None:
         check_basis_compat(lhs.basis, out_basis)
 
-    get_common_batch_shape(lhs, rhs, t_lhs, t_rhs)
-
     basis = out_basis or result_basis(lhs.basis, rhs.basis)
     t_result = st_mul(lhs, t_rhs, out_basis=basis) + st_mul(t_lhs, rhs, out_basis=basis)
     return t_result.change_depth(basis.depth)
@@ -1084,8 +1074,6 @@ def st_mul_adjoint_derivative(
     identifies the result space of the primal operation.
     """
     check_basis_compat(lhs.basis, rhs.basis, ct_result.basis)
-    get_common_batch_shape(lhs, rhs, ct_result)
-
     ct_lhs = st_adjoint_mul(rhs, ct_result).change_depth(lhs.basis.depth)
     ct_rhs = st_adjoint_mul(lhs, ct_result).change_depth(rhs.basis.depth)
 
@@ -1468,8 +1456,6 @@ def ft_fmexp_derivative(
     if out_basis is not None:
         check_basis_compat(multiplier.basis, out_basis)
 
-    get_common_batch_shape(multiplier, exponent, t_multiplier, t_exponent)
-
     exponent = _remove_unit_term(exponent)
     t_exponent = _remove_unit_term(t_exponent)
 
@@ -1510,8 +1496,6 @@ def ft_fmexp_adjoint_derivative(
     identifies the result space of the primal operation.
     """
     check_basis_compat(multiplier.basis, exponent.basis, ct_result.basis)
-    get_common_batch_shape(multiplier, exponent, ct_result)
-
     # tensor_type = type(multiplier)
     ct_type = type(ct_result)
 
@@ -1901,8 +1885,6 @@ def ft_adjoint_left_mul_derivative(
 ) -> DenseShuffleTensor:
     """Compute the derivative of `ft_adjoint_left_mul`."""
     check_basis_compat(op.basis, arg.basis, t_op.basis, t_arg.basis)
-    get_common_batch_shape(op, arg, t_op, t_arg)
-
     t_result = ft_adjoint_left_mul(t_op, arg) + ft_adjoint_left_mul(op, t_arg)
 
     return t_result
@@ -1913,8 +1895,6 @@ def ft_adjoint_left_mul_adjoint_derivative(
 ) -> tuple[DenseShuffleTensor, DenseFreeTensor]:
     """Compute the mathematical cotangents for `ft_adjoint_left_mul`."""
     check_basis_compat(op.basis, arg.basis, ct_result.basis)
-    get_common_batch_shape(op, arg, ct_result)
-
     ct_op = ft_adjoint_right_mul(ct_result, arg)
     ct_arg = ft_mul(op, ct_result)
 
@@ -1986,8 +1966,6 @@ def ft_adjoint_right_mul_derivative(
 ) -> DenseShuffleTensor:
     """Compute the derivative of `ft_adjoint_right_mul`."""
     check_basis_compat(op.basis, arg.basis, t_op.basis, t_arg.basis)
-    get_common_batch_shape(op, arg, t_op, t_arg)
-
     t_result = ft_adjoint_right_mul(t_op, arg) + ft_adjoint_right_mul(op, t_arg)
     return t_result
 
@@ -1997,8 +1975,6 @@ def ft_adjoint_right_mul_adjoint_derivative(
 ) -> tuple[DenseShuffleTensor, DenseFreeTensor]:
     """Compute the mathematical cotangents for `ft_adjoint_right_mul`."""
     check_basis_compat(op.basis, arg.basis, ct_result.basis)
-    get_common_batch_shape(op, arg, ct_result)
-
     ct_op = ft_adjoint_left_mul(ct_result, arg)
     ct_arg = ft_mul(ct_result, op)
 
@@ -2077,8 +2053,6 @@ def tensor_pairing_derivative(
     check_basis_compat(
         functional.basis, argument.basis, t_functional.basis, t_argument.basis
     )
-    get_common_batch_shape(functional, t_functional, t_argument)
-
     x = tensor_pairing(functional, t_argument)
     y = tensor_pairing(t_functional, argument)
     return x + y
@@ -2177,8 +2151,6 @@ def lie_pairing_derivative(
     check_basis_compat(
         functional.basis, argument.basis, t_functional.basis, t_argument.basis
     )
-    get_common_batch_shape(functional, argument, t_functional, t_argument)
-
     x = lie_pairing(functional, t_argument)
     y = lie_pairing(t_functional, argument)
     return x + y
@@ -2256,8 +2228,6 @@ def st_adjoint_mul_derivative(
 ) -> DenseFreeTensor:
     """Compute the derivative of `st_adjoint_mul`."""
     check_basis_compat(op.basis, arg.basis, t_op.basis, t_arg.basis)
-    get_common_batch_shape(op, arg, t_op, t_arg)
-
     t_result = st_adjoint_mul(op, t_arg) + st_adjoint_mul(t_op, arg)
 
     return t_result
@@ -2268,8 +2238,6 @@ def st_adjoint_mul_adjoint_derivative(
 ) -> tuple[DenseFreeTensor, DenseShuffleTensor]:
     """Compute the mathematical cotangents for `st_adjoint_mul`."""
     check_basis_compat(op.basis, arg.basis, ct_result.basis)
-    get_common_batch_shape(op, arg, ct_result)
-
     ct_op = st_adjoint_mul(ct_result, arg)
     ct_arg = st_mul(op, ct_result)
 
