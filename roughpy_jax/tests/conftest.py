@@ -159,7 +159,7 @@ def rpj_nobatch(rpj_device):
 
 
 # Batching test fixture returns helper class for common operations
-@pytest.fixture(params=[(), (2,), (3, 2), (2, 2, 2)], ids=str)
+@pytest.fixture(params=[(), (0,), (2,), (3, 2), (2, 2, 2)], ids=str)
 def rpj_batch(request, rpj_device):
     return BatchFixtureHelper(request.param, rpj_device)
 

@@ -92,11 +92,19 @@ class TestPiecewiseAbelianStream:
         assert selected._data.shape[0] == stream._data.shape[0]
         assert jnp.array_equal(selected._data, expected)
 
-    def test_getitem_rejects_empty_batch(self):
+    def test_getitem_supports_empty_batch(self):
         stream = _batched_piecewise_abelian_stream((2, 3))
 
-        with pytest.raises(ValueError, match="empty stream"):
-            stream[0:0]
+        selected = stream[0:0]
+
+        assert selected.batch_dims == (0, 3)
+        assert selected._data.shape == (
+            len(stream._partition),
+            0,
+            3,
+            stream.lie_basis.size(),
+        )
+        assert jnp.array_equal(selected._data, stream._data[:, 0:0, :, :])
 
     def test_getitem_can_produce_unbatched_stream(self):
         stream = _batched_piecewise_abelian_stream((2, 3))
@@ -105,6 +113,27 @@ class TestPiecewiseAbelianStream:
 
         assert selected.batch_dims == ()
         assert jnp.array_equal(selected._data, stream._data[:, 0, 1, :])
+
+    def test_log_signature_supports_empty_intrinsic_batch(self):
+        stream = _batched_piecewise_abelian_stream((2, 0))
+
+        result = stream.log_signature(RealInterval(0.25, 1.5, IntervalType.ClOpen))
+
+        assert result.batch_shape == (2, 0)
+        assert result.data.shape == (2, 0, stream.lie_basis.size())
+
+    def test_log_signature_supports_empty_query_batch(self):
+        stream = _batched_piecewise_abelian_stream((2,))
+        query = RealInterval(
+            jnp.empty((0,), dtype=jnp.float32),
+            jnp.empty((0,), dtype=jnp.float32),
+            IntervalType.ClOpen,
+        )
+
+        result = stream.log_signature(query)
+
+        assert result.batch_shape == (0, 2)
+        assert result.data.shape == (0, 2, stream.lie_basis.size())
 
     def test_log_signature_differentiates_data_but_not_query_interval(self):
         stream = _batched_piecewise_abelian_stream((2,))

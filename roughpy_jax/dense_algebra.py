@@ -276,21 +276,15 @@ class DenseAlgebra(Generic[BasisT]):
         The index is interpreted exclusively against :attr:`batch_shape`; the
         trailing algebra-coordinate dimension is protected by an appended full
         slice. All other indexing behavior, including advanced indexing and
-        out-of-bounds handling, follows JAX array semantics. An index that would
-        produce a zero-length batch is rejected because empty algebra batches
-        are not valid algebra objects.
+        out-of-bounds handling, follows JAX array semantics. This includes
+        allowing selections that produce a zero-length batch dimension.
 
         :param index: JAX-compatible index into the algebra's batch dimensions.
         :return: An algebra of the same concrete type and basis containing the
             selected sub-batch.
-        :raises ValueError: If the index would produce an empty batch.
         """
         batch_index = index if isinstance(index, tuple) else (index,)
         new_data = self.data[*batch_index, slice(None)]
-        new_batch_shape = new_data.shape[:-1]
-
-        if 0 in new_batch_shape:
-            raise ValueError("batch index would produce an empty algebra")
 
         return type(self)(new_data, self.basis)
 

@@ -182,11 +182,19 @@ def test_getitem_preserves_structural_axes_with_advanced_indices():
     assert jnp.array_equal(selected._cache, expected)
 
 
-def test_getitem_rejects_empty_batch():
+def test_getitem_supports_empty_batch():
     stream = _batched_lie_increment_stream((2, 3))
 
-    with pytest.raises(ValueError, match="empty stream"):
-        stream[0:0]
+    selected = stream[0:0]
+
+    assert selected.batch_dims == (0, 3)
+    assert selected._cache.shape == (
+        stream._cache.shape[0],
+        0,
+        3,
+        stream.lie_basis.size(),
+    )
+    assert jnp.array_equal(selected._cache, stream._cache[:, 0:0, :, :])
 
 
 def test_getitem_can_produce_unbatched_stream():
@@ -196,6 +204,29 @@ def test_getitem_can_produce_unbatched_stream():
 
     assert selected.batch_dims == ()
     assert jnp.array_equal(selected._cache, stream._cache[:, 0, 1, :])
+
+
+def test_log_signature_supports_empty_intrinsic_batch():
+    stream = _batched_lie_increment_stream((2, 0))
+
+    result = stream.log_signature(RealInterval(2.0, 3.0, IntervalType.ClOpen))
+
+    assert result.batch_shape == (2, 0)
+    assert result.data.shape == (2, 0, stream.lie_basis.size())
+
+
+def test_log_signature_supports_empty_query_batch():
+    stream = _batched_lie_increment_stream((2,))
+    query = RealInterval(
+        jnp.empty((0,), dtype=jnp.float32),
+        jnp.empty((0,), dtype=jnp.float32),
+        IntervalType.ClOpen,
+    )
+
+    result = stream.log_signature(query)
+
+    assert result.batch_shape == (0, 2)
+    assert result.data.shape == (0, 2, stream.lie_basis.size())
 
 
 def test_pytree_round_trip_preserves_stream_data_and_metadata():

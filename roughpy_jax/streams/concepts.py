@@ -97,11 +97,10 @@ class Stream(Protocol[LieT, GroupT]):
         advanced indexing and the insertion of new axes.
 
         An index may remove all batch dimensions and produce an unbatched
-        stream, but it may not produce a stream with an empty batch dimension.
+        stream, or produce a stream with an empty batch dimension.
 
         :param index: A JAX-compatible index into the intrinsic batch dimensions.
         :return: A stream of the same type containing the selected batch data.
-        :raises ValueError: If the selection has an empty batch dimension.
         """
         ...
 
