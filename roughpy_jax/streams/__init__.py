@@ -1,3 +1,5 @@
+"""Public stream protocols, implementations, and query helpers."""
+
 from __future__ import annotations
 
 from roughpy_jax.algebra import DenseFreeTensor, DenseLie
@@ -31,15 +33,23 @@ __all__ = [
 
 
 def log_signature(stream: Stream[LieT, GroupT], query: Partition | Interval) -> LieT:
-    """
-    Compute the log-signature of a stream over an interval or partition.
+    """Compute a stream's log-signature over an interval or partition.
 
-    Essentially calls the `log_signature` method of the stream, but also handles
-    partition queries by converting these to a batch of intervals.
+    A partition is converted to its batch of consecutive intervals before
+    dispatching to :meth:`Stream.log_signature`.
 
-    :param stream: The stream for which to compute the log-signature.
-    :param query: The interval or partition over which to compute the log-signature.
-    :return: The log-signature of the stream over the given query.
+    Let ``Q`` be the batch shape obtained by broadcasting the query endpoints,
+    and let ``D`` be ``stream.batch_dims``. The returned Lie element has batch
+    shape ``Q + D``: query dimensions come first and intrinsic stream
+    dimensions follow. For a scalar interval, ``Q`` is empty and the output
+    retains only ``D``. For a partition with endpoint shape
+    ``(*B, n_endpoints)``, ``Q`` is ``(*B, n_endpoints - 1)`` because every
+    consecutive pair of endpoints forms a separate query. Empty dimensions in
+    either batch are preserved.
+
+    :param stream: Stream to query.
+    :param query: Interval or partition over which to compute the log-signature.
+    :return: Log-signature over ``query`` with batch shape ``Q + D``.
     """
     if isinstance(query, Partition):
         query = query.to_intervals()
@@ -48,15 +58,23 @@ def log_signature(stream: Stream[LieT, GroupT], query: Partition | Interval) -> 
 
 
 def signature(stream: Stream[LieT, GroupT], query: Partition | Interval) -> GroupT:
-    """
-    Compute the signature of a stream over an interval or partition.
+    """Compute a stream's signature over an interval or partition.
 
-    Essentially calls the `signature` method of the stream, but also handles
-    partition queries by converting these to a batch of intervals.
+    A partition is converted to its batch of consecutive intervals before
+    dispatching to :meth:`Stream.signature`.
 
-    :param stream: The stream for which to compute the signature.
-    :param query: The interval or partition over which to compute the signature.
-    :return: The signature of the stream over the given query.
+    Let ``Q`` be the batch shape obtained by broadcasting the query endpoints,
+    and let ``D`` be ``stream.batch_dims``. The returned group element has batch
+    shape ``Q + D``: query dimensions come first and intrinsic stream
+    dimensions follow. For a scalar interval, ``Q`` is empty and the output
+    retains only ``D``. For a partition with endpoint shape
+    ``(*B, n_endpoints)``, ``Q`` is ``(*B, n_endpoints - 1)`` because every
+    consecutive pair of endpoints forms a separate query. Empty dimensions in
+    either batch are preserved.
+
+    :param stream: Stream to query.
+    :param query: Interval or partition over which to compute the signature.
+    :return: Signature over ``query`` with batch shape ``Q + D``.
     """
     if isinstance(query, Partition):
         query = query.to_intervals()
@@ -67,13 +85,14 @@ def signature(stream: Stream[LieT, GroupT], query: Partition | Interval) -> Grou
 def simplify(
     stream: Stream[DenseLie, DenseFreeTensor], partition: Partition
 ) -> PiecewiseAbelianStream:
-    """
-    Simplify a stream into a piecewise abelian stream.
+    """Simplify a stream into a piecewise abelian stream.
 
-    Alias of the `to_piecewise_abelian_stream` function to match the naming from RoughPy.
+    This is the RoughPy-compatible name for
+    :func:`to_piecewise_abelian_stream`.
 
-    :param stream: The stream to simplify.
-    :param partition: The partition over which to simplify the stream.
-    :return: The simplified piecewise abelian stream.
+    :param stream: Stream to simplify.
+    :param partition: Unbatched partition on which to sample the stream.
+    :return: Piecewise abelian approximation over ``partition``.
+    :raises ValueError: If ``partition`` has batch dimensions.
     """
     return to_piecewise_abelian_stream(stream, partition)

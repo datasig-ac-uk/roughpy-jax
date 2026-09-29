@@ -1,3 +1,11 @@
+"""Dense tensor- and Lie-algebra types and operations.
+
+Algebra elements store coefficients in arrays whose final dimension is the
+basis coordinate and whose leading dimensions form the batch shape. The
+functions in this module preserve that convention and support empty batch
+dimensions unless a more specific contract says otherwise.
+"""
+
 from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 from typing import Any, Generic, TypeAlias, TypeVar, cast
@@ -29,7 +37,14 @@ TensorT = TypeVar("TensorT", bound=DenseTensor)
 
 @jax.tree_util.register_pytree_node_class
 class DenseFreeTensor(DenseTensor):
+    """Represent a batched free-tensor element in dense coordinates.
+
+    The coefficient array has shape ``(*batch_shape, basis.size())``. Matrix
+    multiplication with another free tensor computes the tensor product.
+    """
+
     def __matmul__(self, other):
+        """Return the tensor product with another free tensor."""
         if isinstance(other, FreeTensor):
             return ft_mul(self, other)
         return NotImplemented
@@ -37,7 +52,14 @@ class DenseFreeTensor(DenseTensor):
 
 @jax.tree_util.register_pytree_node_class
 class DenseShuffleTensor(DenseTensor):
+    """Represent a batched shuffle-tensor element in dense coordinates.
+
+    The coefficient array has shape ``(*batch_shape, basis.size())``. Matrix
+    multiplication with another shuffle tensor computes the shuffle product.
+    """
+
     def __matmul__(self, other):
+        """Return the shuffle product with another shuffle tensor."""
         if isinstance(other, ShuffleTensor):
             return st_mul(self, other)
         return NotImplemented
@@ -45,6 +67,8 @@ class DenseShuffleTensor(DenseTensor):
 
 @jax.tree_util.register_pytree_node_class
 class DenseLie(DenseAlgebra[LieBasis]):
+    """Represent a batched Lie element in dense Hall-basis coordinates."""
+
     pass
 
 
@@ -73,18 +97,22 @@ class DegreeView(Generic[AlgebraT]):
 
     @property
     def basis(self) -> Basis:
+        """Return the ambient basis of the underlying algebra."""
         return self.algebra.basis
 
     @property
     def data(self) -> jax.Array:
+        """Return the complete coefficient array of the underlying algebra."""
         return self.algebra.data
 
     @property
     def dtype(self):
+        """Return the coefficient dtype of the underlying algebra."""
         return self.algebra.dtype
 
     @property
     def batch_shape(self) -> tuple[int, ...]:
+        """Return the batch shape of the underlying algebra."""
         return self.algebra.batch_shape
 
 
@@ -140,12 +168,11 @@ def _remove_unit_term(tensor: TensorT) -> TensorT:
 
 
 def as_free_tensor(tensor: TensorT) -> FreeTensor:
-    """
-    Converts a given tensor to a FreeTensor instance if it is not already of that type.
+    """Convert a tensor to a free tensor.
 
-    :param tensor: The tensor to be converted. It can either be a FreeTensor or
-        a ShuffleTensor.
-    :return: A FreeTensor object derived from the input tensor.
+    :param tensor: Free tensor or shuffle tensor to reinterpret. An existing
+        free tensor is returned unchanged.
+    :return: Free tensor sharing the input coefficient data and basis.
     """
     if isinstance(tensor, FreeTensor):
         return tensor
@@ -153,19 +180,11 @@ def as_free_tensor(tensor: TensorT) -> FreeTensor:
 
 
 def as_shuffle_tensor(tensor: TensorT) -> ShuffleTensor:
-    """
-    Convert a tensor into a ShuffleTensor instance if it is not already of that type.
+    """Convert a tensor to a shuffle tensor.
 
-    This function ensures that a given tensor is returned as a `ShuffleTensor`
-    object. If the input tensor is already a `ShuffleTensor`, it is returned
-    directly. Otherwise, a new `ShuffleTensor` is created using the data and basis
-    of the input tensor.
-
-    :param tensor: The input tensor to be converted. Can be an instance of either
-        `FreeTensor` or `ShuffleTensor`.
-    :return: An instance of `ShuffleTensor`. If the input was already a
-        `ShuffleTensor`, it returns the same object. Otherwise, it constructs and
-        returns a new `ShuffleTensor`.
+    :param tensor: Free tensor or shuffle tensor to reinterpret. An existing
+        shuffle tensor is returned unchanged.
+    :return: Shuffle tensor sharing the input coefficient data and basis.
     """
     if isinstance(tensor, ShuffleTensor):
         return tensor
@@ -175,8 +194,7 @@ def as_shuffle_tensor(tensor: TensorT) -> ShuffleTensor:
 def to_jax_cotangent(
     primal_cls: type[DenseAlgebra], cotangent: DenseAlgebra
 ) -> DenseAlgebra:
-    """
-    Convert a mathematical cotangent into the pytree representation expected by JAX.
+    """Convert a mathematical cotangent into the pytree representation expected by JAX.
 
     JAX's ``custom_vjp`` interface does not model cotangents as arbitrary dual-space
     objects. Instead, a backward rule must return cotangents whose pytree structure
@@ -204,8 +222,7 @@ def to_jax_cotangent(
 def from_jax_cotangent(
     cls: type[AlgebraT], cotangent: DenseAlgebra | jax.Array, basis
 ) -> AlgebraT:
-    """
-    Convert a JAX cotangent representation back into the mathematically correct type.
+    """Convert a JAX cotangent representation back into the mathematically correct type.
 
     When JAX invokes a custom VJP backward rule, the cotangent argument may be
     reconstructed using the primal pytree structure rather than the true dual
@@ -330,8 +347,7 @@ def stack(
     axis: int = 0,
     dtype: jax.typing.DTypeLike | None = None,
 ) -> AlgebraT:
-    """
-    Stack a sequence of algebras along a new batch axis.
+    """Stack a sequence of algebras along a new batch axis.
 
     All operands must have the same concrete algebra type and the same batch
     shape. Their bases may have different depths; the representation-specific
@@ -376,8 +392,7 @@ def concatenate(
     axis: int = 0,
     dtype: jax.typing.DTypeLike | None = None,
 ) -> AlgebraT:
-    """
-    Concatenate a sequence of algebras along an existing batch axis.
+    """Concatenate a sequence of algebras along an existing batch axis.
 
     All operands must have the same concrete algebra type and compatible batch
     shapes. Their bases may have different depths; the representation-specific
@@ -523,7 +538,6 @@ def moveaxis(
     :param destination: Destination position or positions among batch axes.
     :return: Algebra of the same type and basis with reordered batch axes.
     """
-
     batch_shape = algebra.batch_shape
     norm_source = _normalise_batch_axes(batch_shape, source)
     norm_dest = _normalise_batch_axes(batch_shape, destination)
@@ -544,7 +558,6 @@ def swapaxes(algebra: AlgebraT, axis1: int, axis2: int) -> AlgebraT:
     :param axis2: Second batch axis.
     :return: Algebra of the same type and basis with the two batch axes swapped.
     """
-
     batch_shape = algebra.batch_shape
     norm_axis1 = _normalise_batch_axes(batch_shape, axis1)[0]
     norm_axis2 = _normalise_batch_axes(batch_shape, axis2)[0]
@@ -560,19 +573,18 @@ def ft_fma(
     c: DenseFreeTensor,
     out_basis: TensorBasis | None = None,
 ) -> DenseFreeTensor:
-    """
-    Free tensor fused multiply-add
+    """Compute a free-tensor fused multiply-add.
 
-    This function is equivalent to `b * c + a`.
-    Supports float 32 or 64 but all data buffers must have matching type.
+    This operation computes ``a + b @ c``. The operands must have compatible
+    bases and identical batch shapes; their coefficient dtypes are promoted.
 
-    :param a: addition operand
-    :param b: left-hand multiply operand
-    :param c: right-hand multiple operand
+    :param a: Additive operand.
+    :param b: Left tensor-product operand.
+    :param c: Right tensor-product operand.
     :param out_basis: Optional basis defining the result's truncation. If not
         specified, the basis of ``a`` is used. This argument should be passed
         by keyword.
-    :return: result
+    :return: Fused multiply-add result in ``out_basis``.
     """
     dtype = jnp.result_type(a.dtype, b.dtype, c.dtype)
     batch_dims = get_common_batch_shape(a, b, c)
@@ -607,19 +619,18 @@ def ft_fma_derivative(
     t_c: DenseFreeTensor,
     out_basis: TensorBasis | None = None,
 ) -> DenseFreeTensor:
-    """
-    Free tensor fused multiply-add derivative
+    """Compute the derivative of :func:`ft_fma`.
 
-    :param a: addition operand
-    :param b: left-hand multiply operand
-    :param c: right-hand multiple operand
-    :param t_a: tangent perturbation at a
-    :param t_b: tangent perturbation at b
-    :param t_c: tangent perturbation at c
+    :param a: Additive primal operand.
+    :param b: Left tensor-product primal operand.
+    :param c: Right tensor-product primal operand.
+    :param t_a: Tangent corresponding to ``a``.
+    :param t_b: Tangent corresponding to ``b``.
+    :param t_c: Tangent corresponding to ``c``.
     :param out_basis: Optional basis defining the result's truncation. If not
         specified, the basis of ``a`` is used. This argument should be passed
         by keyword.
-    :return: derivative in tangent direction (s_a, s_b, s_c)
+    :return: Directional derivative for ``(t_a, t_b, t_c)``.
     """
     check_basis_compat(a.basis, b.basis, c.basis, t_a.basis, t_b.basis, t_c.basis)
     if out_basis is not None:
@@ -637,14 +648,14 @@ def ft_fma_adjoint_derivative(
     c: DenseFreeTensor,
     ct_result: DenseShuffleTensor,
 ) -> tuple[DenseShuffleTensor, DenseShuffleTensor, DenseShuffleTensor]:
-    """
-    Free tensor fused multiply-add adjoint derivative
+    """Compute the mathematical cotangents for :func:`ft_fma`.
 
-    :param a: addition operand
-    :param b: left-hand multiply operand
-    :param c: right-hand multiple operand
-    :param ct_result: cotangent from the output
-    :return: (cotangent for a, cotangent for b, cotangent for c)
+    :param a: Additive primal operand.
+    :param b: Left tensor-product primal operand.
+    :param c: Right tensor-product primal operand.
+    :param ct_result: Cotangent of the fused multiply-add result.
+    :return: Cotangents corresponding to ``a``, ``b``, and ``c``, in that
+        order.
 
     An ``out_basis`` argument is not needed: ``ct_result.basis`` already
     identifies the result space of the primal operation.
@@ -686,18 +697,17 @@ def ft_mul(
     b: DenseFreeTensor,
     out_basis: TensorBasis | None = None,
 ) -> DenseFreeTensor:
-    """
-    Free tensor multiply
+    """Compute the free-tensor product.
 
-    This function is equivalent to `a * b`.
-    Supports float 32 or 64 but all data buffers must have matching type.
+    The operands must have compatible bases and identical batch shapes; their
+    coefficient dtypes are promoted.
 
-    :param a: left-hand multiply operand
-    :param b: right-hand multiple operand
+    :param a: Left tensor-product operand.
+    :param b: Right tensor-product operand.
     :param out_basis: Optional basis defining the result's truncation. If not
         specified, the deeper operand basis is used. This argument should be
         passed by keyword.
-    :return: result
+    :return: Tensor product of ``a`` and ``b``.
     """
     dtype = jnp.result_type(a.dtype, b.dtype)
     batch_dims = get_common_batch_shape(a, b)
@@ -728,19 +738,18 @@ def ft_mul_derivative(
     t_rhs: DenseFreeTensor,
     out_basis: TensorBasis | None = None,
 ) -> DenseFreeTensor:
-    """
-    Free tensor multiply derivative (product rule).
+    """Compute the derivative of :func:`ft_mul` using the product rule.
 
     Dm(a,b)[s,t] = s*b + a*t  where * is the tensor product.
 
-    :param lhs: left-hand operand
-    :param rhs: right-hand operand
-    :param t_lhs: tangent perturbation at lhs
-    :param t_rhs: tangent perturbation at rhs
+    :param lhs: Left primal operand.
+    :param rhs: Right primal operand.
+    :param t_lhs: Tangent corresponding to ``lhs``.
+    :param t_rhs: Tangent corresponding to ``rhs``.
     :param out_basis: Optional basis defining the result's truncation. If not
         specified, the deeper primal operand basis is used. This argument
         should be passed by keyword.
-    :return: derivative in tangent direction (s,t)
+    :return: Directional derivative for ``(t_lhs, t_rhs)``.
     """
     check_basis_compat(lhs.basis, rhs.basis, t_lhs.basis, t_rhs.basis)
     if out_basis is not None:
@@ -755,16 +764,15 @@ def ft_mul_derivative(
 def ft_mul_adjoint_derivative(
     lhs: DenseFreeTensor, rhs: DenseFreeTensor, ct_result: DenseShuffleTensor
 ) -> tuple[DenseShuffleTensor, DenseShuffleTensor]:
-    """
-    Free tensor multiply adjoint derivative.
+    """Compute the mathematical cotangents for :func:`ft_mul`.
 
     [Dm(a,b)*]φ = (R_b* φ, L_a* φ) where L_a and R_b are the left
     and right multiplication operators respectively.
 
-    :param lhs: left-hand operand
-    :param rhs: right-hand operand
-    :param ct_result: cotangent from the output
-    :return: (cotangent for lhs, cotangent for rhs)
+    :param lhs: Left primal operand.
+    :param rhs: Right primal operand.
+    :param ct_result: Cotangent of the tensor-product result.
+    :return: Cotangents corresponding to ``lhs`` and ``rhs``, in that order.
 
     An ``out_basis`` argument is not needed: ``ct_result.basis`` already
     identifies the result space of the primal operation.
@@ -800,11 +808,14 @@ ft_mul.defvjp(_ft_mul_vjp_fwd, _ft_mul_vjp_bwd)
 
 @jax.custom_vjp
 def antipode(a: TensorT) -> TensorT:
-    """
-    Antipode of a free tensor
+    """Compute the antipode of a dense tensor algebra element.
 
-    :param a: argument
-    :return: new tensor with antipode of `a`
+    This operation accepts either a free tensor or a shuffle tensor and returns
+    an element of the same concrete type, with its basis and batch shape
+    preserved.
+
+    :param a: Free tensor or shuffle tensor whose antipode is required.
+    :return: The antipode of ``a``.
     """
     op_cls = Operation.get_operation("ft_antipode", "dense")
     batch_dims = get_common_batch_shape(a)
@@ -826,8 +837,7 @@ def antipode(a: TensorT) -> TensorT:
 
 
 def antipode_derivative(a: TensorT, t_a: TensorT) -> TensorT:
-    """
-    Antipode derivative of free tensor perturbation `t_a` at `a`
+    """Compute the antipode derivative in the direction ``t_a`` at ``a``.
 
     This operation is linear, with the derivative being independent of
     the argument, computed as the antipode of the tangent. This is
@@ -837,25 +847,26 @@ def antipode_derivative(a: TensorT, t_a: TensorT) -> TensorT:
     and higher levels are similar but more complex variants of this.
     So the derivative is simply flipped through this transpose.
 
-    :param a: argument
-    :param t_a: tangent pertubation at `a`
-    :return: derivative of `t_a` at `a`
+    :param a: Primal free tensor or shuffle tensor. Its value does not affect
+        the derivative.
+    :param t_a: Tangent perturbation at ``a`` of the same tensor type.
+    :return: The antipode of ``t_a``.
     """
     _ = a  # required by interface
     return antipode(t_a)
 
 
 def antipode_adjoint_derivative(a: DenseTensor, ct_result: DenseTensor) -> DenseTensor:
-    """
-    Antipode adjoint derivative of a free tensor
+    """Compute the adjoint derivative of the antipode.
 
-    As with the antipode derivative, this is a linear operation which
-    is independent of the position a, but instead operates in dual
-    space to free tensor, hence shuffle tensor cotangents.
+    As with the forward derivative, this operation is independent of the
+    primal value. It applies the antipode in the tensor space dual to ``a``:
+    shuffle tensors are dual to free tensors, and vice versa.
 
-    :param a: argument
-    :param ct_result: cotangent perturbation at `a`
-    :return: adjoint derivative of `ct_result` at `a`
+    :param a: Primal tensor. Its value does not affect the adjoint derivative.
+    :param ct_result: Cotangent of the result, represented in the dual tensor
+        space.
+    :return: The antipode of ``ct_result``.
     """
     return antipode(ct_result)
 
@@ -882,19 +893,19 @@ def st_fma(
     c: DenseShuffleTensor,
     out_basis: TensorBasis | None = None,
 ) -> DenseShuffleTensor:
-    """
-    Shuffle tensor fused multiply-add
+    """Compute a shuffle-tensor fused multiply-add.
 
-    This function is equivalent to `b * c + a`.
-    Supports float 32 or 64 but all data buffers must have matching type.
+    This operation computes ``a + st_mul(b, c)``. The operands must have
+    compatible bases and identical batch shapes; their coefficient dtypes are
+    promoted.
 
-    :param a: input and first operand
-    :param b: left-hand operand
-    :param c: right-hand operand
+    :param a: Additive operand.
+    :param b: Left shuffle-product operand.
+    :param c: Right shuffle-product operand.
     :param out_basis: Optional basis defining the result's truncation. If not
         specified, the basis of ``a`` is used. This argument should be passed
         by keyword.
-    :return: shuffle fused multiply-add
+    :return: Fused multiply-add result in ``out_basis``.
     """
     batch_dims = get_common_batch_shape(a, b, c)
     dtype = jnp.result_type(a.dtype, b.dtype, c.dtype)
@@ -927,11 +938,18 @@ def st_fma_derivative(
     t_c: DenseShuffleTensor,
     out_basis: TensorBasis | None = None,
 ) -> DenseShuffleTensor:
-    """Compute the derivative of `st_fma` in the supplied tangent direction.
+    """Compute the derivative of :func:`st_fma`.
 
+    :param a: Additive primal operand.
+    :param b: Left shuffle-product primal operand.
+    :param c: Right shuffle-product primal operand.
+    :param t_a: Tangent corresponding to ``a``.
+    :param t_b: Tangent corresponding to ``b``.
+    :param t_c: Tangent corresponding to ``c``.
     :param out_basis: Optional basis defining the result's truncation. If not
         specified, the basis of ``a`` is used. This argument should be passed
         by keyword.
+    :return: Directional derivative for ``(t_a, t_b, t_c)``.
     """
     check_basis_compat(a.basis, b.basis, c.basis, t_a.basis, t_b.basis, t_c.basis)
     if out_basis is not None:
@@ -949,10 +967,17 @@ def st_fma_adjoint_derivative(
     c: DenseShuffleTensor,
     ct_result: DenseFreeTensor,
 ) -> tuple[DenseFreeTensor, DenseFreeTensor, DenseFreeTensor]:
-    """Compute the JAX-facing cotangents for `st_fma`.
+    """Compute the mathematical cotangents for :func:`st_fma`.
 
     An ``out_basis`` argument is not needed: ``ct_result.basis`` already
     identifies the result space of the primal operation.
+
+    :param a: Additive primal operand.
+    :param b: Left shuffle-product primal operand.
+    :param c: Right shuffle-product primal operand.
+    :param ct_result: Cotangent of the fused multiply-add result.
+    :return: Cotangents corresponding to ``a``, ``b``, and ``c``, in that
+        order.
     """
     check_basis_compat(a.basis, b.basis, c.basis, ct_result.basis)
     ct_a = ct_result.change_depth(a.basis.depth)
@@ -1009,18 +1034,17 @@ def st_mul(
     rhs: DenseShuffleTensor,
     out_basis: TensorBasis | None = None,
 ) -> DenseShuffleTensor:
-    """
-    Shuffle tensor product
+    """Compute the shuffle product.
 
-    This function is equivalent to `lhs & rhs`.
-    Supports float 32 or 64 but all data buffers must have matching type.
+    The operands must have compatible bases and identical batch shapes; their
+    coefficient dtypes are promoted.
 
-    :param lhs: left-hand operand
-    :param rhs: right-hand operand
+    :param lhs: Left shuffle-product operand.
+    :param rhs: Right shuffle-product operand.
     :param out_basis: Optional basis defining the result's truncation. If not
         specified, the deeper operand basis is used. This argument should be
         passed by keyword.
-    :return: the shuffle product of lhs and rhs
+    :return: Shuffle product of ``lhs`` and ``rhs``.
     """
     dtype = jnp.result_type(lhs.dtype, rhs.dtype)
     batch_dims = get_common_batch_shape(lhs, rhs)
@@ -1050,11 +1074,16 @@ def st_mul_derivative(
     t_rhs: DenseShuffleTensor,
     out_basis: TensorBasis | None = None,
 ) -> DenseShuffleTensor:
-    """Compute the derivative of `st_mul` in the supplied tangent direction.
+    """Compute the derivative of :func:`st_mul`.
 
+    :param lhs: Left primal operand.
+    :param rhs: Right primal operand.
+    :param t_lhs: Tangent corresponding to ``lhs``.
+    :param t_rhs: Tangent corresponding to ``rhs``.
     :param out_basis: Optional basis defining the result's truncation. If not
         specified, the deeper primal operand basis is used. This argument
         should be passed by keyword.
+    :return: Directional derivative for ``(t_lhs, t_rhs)``.
     """
     check_basis_compat(lhs.basis, rhs.basis, t_lhs.basis, t_rhs.basis)
     if out_basis is not None:
@@ -1068,10 +1097,15 @@ def st_mul_derivative(
 def st_mul_adjoint_derivative(
     lhs: DenseShuffleTensor, rhs: DenseShuffleTensor, ct_result: DenseFreeTensor
 ) -> tuple[DenseFreeTensor, DenseFreeTensor]:
-    """Compute the JAX-facing cotangents for `st_mul`.
+    """Compute the mathematical cotangents for :func:`st_mul`.
 
     An ``out_basis`` argument is not needed: ``ct_result.basis`` already
     identifies the result space of the primal operation.
+
+    :param lhs: Left primal operand.
+    :param rhs: Right primal operand.
+    :param ct_result: Cotangent of the shuffle-product result.
+    :return: Cotangents corresponding to ``lhs`` and ``rhs``, in that order.
     """
     check_basis_compat(lhs.basis, rhs.basis, ct_result.basis)
     ct_lhs = st_adjoint_mul(rhs, ct_result).change_depth(lhs.basis.depth)
@@ -1106,16 +1140,14 @@ st_mul.defvjp(_st_mul_vjp_fwd, _st_mul_vjp_bwd)
 # @partial(jax.custom_vjp, nondiff_argnums=(1,))
 @jax.custom_vjp
 def ft_exp(x: DenseFreeTensor, out_basis: TensorBasis | None = None) -> DenseFreeTensor:
-    """
-    Free tensor exponent
+    """Compute the truncated free-tensor exponential.
 
-    This function is equivalent to `e ^ x`.
-    If `out_basis` is not specified, the same basis as `x` is used.
+    The unit coordinate of ``x`` is ignored. If ``out_basis`` is omitted, the
+    basis of ``x`` is used.
 
-    :param x: argument
-    :param out_basis: Optional output basis. This argument should be passed by
-        keyword.
-    :return: tensor exponential of `x`
+    :param x: Free tensor to exponentiate.
+    :param out_basis: Optional basis defining the result's truncation.
+    :return: Truncated tensor exponential of ``x``.
     """
     dtype = x.dtype
 
@@ -1139,13 +1171,14 @@ def ft_exp_derivative(
     t_x: DenseFreeTensor,
     out_basis: TensorBasis | None = None,
 ) -> DenseFreeTensor:
-    """Compute the derivative of `ft_exp` in the supplied tangent direction.
+    """Compute the derivative of :func:`ft_exp`.
 
     :param x: Argument at which to evaluate the derivative.
     :param t_x: Tangent direction at ``x``.
     :param out_basis: Optional basis for the result space. If not specified,
         the same basis as ``x`` is used. This argument should be passed by
         keyword.
+    :return: Directional derivative corresponding to ``t_x``.
     """
     check_basis_compat(x.basis, t_x.basis)
     if out_basis is not None:
@@ -1185,11 +1218,15 @@ def ft_exp_adjoint_derivative(
     x: DenseFreeTensor,
     ct_result: DenseShuffleTensor,
 ) -> tuple[DenseShuffleTensor]:
-    """Compute the JAX-facing cotangent for `ft_exp`.
+    """Compute the mathematical cotangent for :func:`ft_exp`.
 
     An ``out_basis`` argument is not needed here: ``ct_result`` belongs to the
     dual of the result space, so its basis already determines the output basis
     of the primal operation.
+
+    :param x: Free tensor at which the exponential was evaluated.
+    :param ct_result: Cotangent of the exponential result.
+    :return: One-tuple containing the cotangent corresponding to ``x``.
     """
     check_basis_compat(x.basis, ct_result.basis)
     batch_dims = get_common_batch_shape(x, ct_result)
@@ -1251,23 +1288,18 @@ ft_exp.defvjp(_ft_exp_vjp_fwd, _ft_exp_vjp_bwd)
 
 @jax.custom_vjp
 def ft_log(x: DenseFreeTensor, out_basis: TensorBasis | None = None) -> DenseFreeTensor:
-    """
-    Free tensor logarithm
+    """Compute the truncated free-tensor logarithm.
 
-    This function computes `log(1 + x)` through the (truncated) power series
-    expansion in `x`. This function assumes that `x` is actually of the form `1 + x`, and
-    the power series computation simply ignores the unit coefficient if it is present. This
-    means that the result of `ft_log(x)` where `x` has a unit term different from 1 might
-    be different than expected. The intention is that this function should only be applied
-    to tensors that are known to be of the form `1 + x`, such as group-like elements such as
-    those computed using `ft_exp`.
+    This function computes ``log(1 + x)`` through its truncated power series.
+    The unit coefficient of the input is ignored, so callers should use this
+    operation for tensors known to have unit coefficient one, such as
+    group-like outputs of :func:`ft_exp`.
 
-    If `out_basis` is not specified, the same basis as `x` is used.
+    If ``out_basis`` is omitted, the basis of ``x`` is used.
 
-    :param x: argument
-    :param out_basis: Optional output basis. This argument should be passed by
-        keyword.
-    :return: tensor logarithm of `x`
+    :param x: Free tensor whose logarithm is required.
+    :param out_basis: Optional basis defining the result's truncation.
+    :return: Truncated tensor logarithm of ``x``.
     """
     dtype = x.dtype
 
@@ -1291,13 +1323,14 @@ def ft_log_derivative(
     t_x: DenseFreeTensor,
     out_basis: TensorBasis | None = None,
 ) -> DenseFreeTensor:
-    """Compute the derivative of `ft_log` in the supplied tangent direction.
+    """Compute the derivative of :func:`ft_log`.
 
     :param x: Argument at which to evaluate the derivative.
     :param t_x: Tangent direction at ``x``.
     :param out_basis: Optional basis for the result space. If not specified,
         the same basis as ``x`` is used. This argument should be passed by
         keyword.
+    :return: Directional derivative corresponding to ``t_x``.
     """
     check_basis_compat(x.basis, t_x.basis)
     if out_basis is not None:
@@ -1332,11 +1365,15 @@ def ft_log_adjoint_derivative(
     x: DenseFreeTensor,
     ct_result: DenseShuffleTensor,
 ) -> tuple[DenseShuffleTensor]:
-    """Compute the JAX-facing cotangent for `ft_log`.
+    """Compute the mathematical cotangent for :func:`ft_log`.
 
     An ``out_basis`` argument is not needed here: ``ct_result`` belongs to the
     dual of the result space, so its basis already determines the output basis
     of the primal operation.
+
+    :param x: Free tensor at which the logarithm was evaluated.
+    :param ct_result: Cotangent of the logarithm result.
+    :return: One-tuple containing the cotangent corresponding to ``x``.
     """
     check_basis_compat(x.basis, ct_result.basis)
     batch_dims = get_common_batch_shape(x, ct_result)
@@ -1401,17 +1438,16 @@ def ft_fmexp(
     exponent: DenseFreeTensor,
     out_basis: TensorBasis | None = None,
 ) -> DenseFreeTensor:
-    """
-    Free tensor fused multiply-exponential
+    """Compute a free-tensor fused multiply-exponential.
 
-    This function is equivalent to `a * exp(x)` where `a` is `multiplier` and `x` is `exponent`.
-    If `out_basis` is not specified, the same basis as `multiplier` is used.
+    This operation computes ``multiplier @ ft_exp(exponent)``. If
+    ``out_basis`` is omitted, the basis of ``multiplier`` is used.
 
-    :param multiplier: Multiplier free tensor
-    :param exponent: Free tensor to exponential
+    :param multiplier: Left tensor-product operand.
+    :param exponent: Free tensor to exponentiate.
     :param out_basis: Optional output basis. If not specified, the same basis
         as ``multiplier`` is used. This argument should be passed by keyword.
-    :return: Resulting fused multiply-exponential of `multiplier` and `exponent`
+    :return: Fused multiply-exponential result.
     """
     dtype = jnp.result_type(multiplier.dtype, exponent.dtype)
     batch_dims = get_common_batch_shape(multiplier, exponent)
@@ -1444,11 +1480,16 @@ def ft_fmexp_derivative(
     t_exponent: DenseFreeTensor,
     out_basis: TensorBasis | None = None,
 ) -> DenseFreeTensor:
-    """Compute the derivative of `ft_fmexp` in the supplied tangent direction.
+    """Compute the derivative of :func:`ft_fmexp`.
 
+    :param multiplier: Primal multiplier.
+    :param exponent: Primal exponent.
+    :param t_multiplier: Tangent corresponding to ``multiplier``.
+    :param t_exponent: Tangent corresponding to ``exponent``.
     :param out_basis: Optional basis defining the result's truncation. If not
         specified, the basis of ``multiplier`` is used. This argument should
         be passed by keyword.
+    :return: Directional derivative for ``(t_multiplier, t_exponent)``.
     """
     check_basis_compat(
         multiplier.basis, exponent.basis, t_multiplier.basis, t_exponent.basis
@@ -1490,10 +1531,16 @@ def ft_fmexp_adjoint_derivative(
     exponent: DenseFreeTensor,
     ct_result: DenseShuffleTensor,
 ) -> tuple[DenseShuffleTensor, DenseShuffleTensor]:
-    """Compute the JAX-facing cotangents for `ft_fmexp`.
+    """Compute the mathematical cotangents for :func:`ft_fmexp`.
 
     An ``out_basis`` argument is not needed: ``ct_result.basis`` already
     identifies the result space of the primal operation.
+
+    :param multiplier: Primal multiplier.
+    :param exponent: Primal exponent.
+    :param ct_result: Cotangent of the fused multiply-exponential result.
+    :return: Cotangents corresponding to ``multiplier`` and ``exponent``, in
+        that order.
     """
     check_basis_compat(multiplier.basis, exponent.basis, ct_result.basis)
     # tensor_type = type(multiplier)
@@ -1571,8 +1618,7 @@ ft_fmexp.defvjp(_ft_fmexp_vjp_fwd, _ft_fmexp_vjp_bwd)
 
 @jax.custom_vjp
 def lie_to_tensor(arg: DenseLie, scale_factor=None) -> DenseFreeTensor:
-    """
-    Compute the embedding of a Lie algebra element as a free tensor.
+    """Compute the embedding of a Lie algebra element as a free tensor.
 
     :param arg: Lie to embed into the tensor algebra.
     :param scale_factor: Optional scalar multiplier applied to the embedded tensor.
@@ -1603,8 +1649,7 @@ def lie_to_tensor_derivative(
     scale_factor=None,
     t_scale_factor=None,
 ) -> DenseFreeTensor:
-    """
-    Compute the derivative of :func:`lie_to_tensor` in a tangent direction.
+    """Compute the derivative of :func:`lie_to_tensor` in a tangent direction.
 
     Writing the Lie-to-tensor embedding as ``L2T``, the scaled operation is
     ``F(x, s) = s * L2T(x)``. Its derivative is
@@ -1638,8 +1683,7 @@ def lie_to_tensor_adjoint_derivative(
     ct_result: DenseFreeTensor,
     scale_factor=None,
 ) -> tuple[DenseLie, jax.Array | None]:
-    """
-    Compute the adjoint derivative of :func:`lie_to_tensor`.
+    """Compute the adjoint derivative of :func:`lie_to_tensor`.
 
     Writing the Lie-to-tensor embedding as ``L2T`` and the output cotangent as
     ``ct``, the adjoint derivative of ``F(x, s) = s * L2T(x)`` is
@@ -1706,8 +1750,7 @@ lie_to_tensor.defvjp(_lie_to_tensor_vjp_fwd, _lie_to_tensor_vjp_bwd)
 
 @jax.custom_vjp
 def tensor_to_lie(arg: DenseFreeTensor, scale_factor=None) -> DenseLie:
-    """
-    Project a free tensor onto the embedding of the Lie algebra in the tensor algebra.
+    """Project a free tensor onto the embedding of the Lie algebra in the tensor algebra.
 
     :param arg: Free tensor to project into the Lie algebra.
     :param scale_factor: Optional scalar multiplier applied to the projected Lie element.
@@ -1738,8 +1781,7 @@ def tensor_to_lie_derivative(
     scale_factor=None,
     t_scale_factor=None,
 ) -> DenseLie:
-    """
-    Compute the derivative of :func:`tensor_to_lie` in a tangent direction.
+    """Compute the derivative of :func:`tensor_to_lie` in a tangent direction.
 
     Writing the tensor-to-Lie projection as ``T2L``, the scaled operation is
     ``F(x, s) = s * T2L(x)``. Its derivative is
@@ -1775,8 +1817,7 @@ def tensor_to_lie_adjoint_derivative(
     ct_result: DenseLie,
     scale_factor=None,
 ) -> tuple[DenseShuffleTensor, jax.Array | None]:
-    """
-    Compute the adjoint derivative of :func:`tensor_to_lie`.
+    """Compute the adjoint derivative of :func:`tensor_to_lie`.
 
     Writing the tensor-to-Lie projection as ``T2L`` and the output cotangent
     as ``ct``, the adjoint derivative of ``F(x, s) = s * T2L(x)`` is
@@ -1847,16 +1888,14 @@ tensor_to_lie.defvjp(_tensor_to_lie_vjp_fwd, _tensor_to_lie_vjp_bwd)
 def ft_adjoint_left_mul(
     op: DenseFreeTensor, arg: DenseShuffleTensor
 ) -> DenseShuffleTensor:
-    """
-    Compute the adjoint action of left free-tensor multiplication on shuffles.
+    """Compute the adjoint action of left free-tensor multiplication on shuffles.
 
-    Computes the adjoint action of the left multiplier operator L_a: b -> ab
-    as an operator on shuffle tensors. That is, the shuffle tensor given
-    by L_a^*(s) where * denotes adjoint.
+    For the left-multiplication operator ``L_op(x) = op @ x``, this returns
+    ``L_op^*(arg)``, where the adjoint acts on shuffle tensors.
 
-    :param a: a in the notation above
-    :param arg: The ShuffleTensor to be acted upon.
-    :return: The result of the adjoint action as a ShuffleTensor.
+    :param op: Free tensor defining the left-multiplication operator.
+    :param arg: Shuffle tensor on which the adjoint operator acts.
+    :return: Result of the adjoint action as a shuffle tensor.
     """
     dtype = jnp.result_type(op.dtype, arg.dtype)
 
@@ -1883,7 +1922,14 @@ def ft_adjoint_left_mul_derivative(
     t_op: DenseFreeTensor,
     t_arg: DenseShuffleTensor,
 ) -> DenseShuffleTensor:
-    """Compute the derivative of `ft_adjoint_left_mul`."""
+    """Compute the derivative of :func:`ft_adjoint_left_mul`.
+
+    :param op: Primal free tensor defining left multiplication.
+    :param arg: Primal shuffle tensor acted upon by the adjoint operator.
+    :param t_op: Tangent corresponding to ``op``.
+    :param t_arg: Tangent corresponding to ``arg``.
+    :return: Directional derivative for ``(t_op, t_arg)``.
+    """
     check_basis_compat(op.basis, arg.basis, t_op.basis, t_arg.basis)
     t_result = ft_adjoint_left_mul(t_op, arg) + ft_adjoint_left_mul(op, t_arg)
 
@@ -1893,7 +1939,13 @@ def ft_adjoint_left_mul_derivative(
 def ft_adjoint_left_mul_adjoint_derivative(
     op: DenseFreeTensor, arg: DenseShuffleTensor, ct_result: DenseFreeTensor
 ) -> tuple[DenseShuffleTensor, DenseFreeTensor]:
-    """Compute the mathematical cotangents for `ft_adjoint_left_mul`."""
+    """Compute the mathematical cotangents for :func:`ft_adjoint_left_mul`.
+
+    :param op: Primal free tensor defining left multiplication.
+    :param arg: Primal shuffle tensor acted upon by the adjoint operator.
+    :param ct_result: Cotangent of the resulting shuffle tensor.
+    :return: Cotangents corresponding to ``op`` and ``arg``, in that order.
+    """
     check_basis_compat(op.basis, arg.basis, ct_result.basis)
     ct_op = ft_adjoint_right_mul(ct_result, arg)
     ct_arg = ft_mul(op, ct_result)
@@ -1928,16 +1980,14 @@ ft_adjoint_left_mul.defvjp(_ft_adjoint_left_mul_vjp_fwd, _ft_adjoint_left_mul_vj
 def ft_adjoint_right_mul(
     op: DenseFreeTensor, arg: DenseShuffleTensor
 ) -> DenseShuffleTensor:
-    """
-    Compute the adjoint action of right free-tensor multiplication on shuffles.
+    """Compute the adjoint action of right free-tensor multiplication on shuffles.
 
-    Computes the adjoint action of the right multiplier operator R_a: b -> ba
-    as an operator on shuffle tensors. That is, the shuffle tensor given
-    by R_a^*(s) where * denotes adjoint.
+    For the right-multiplication operator ``R_op(x) = x @ op``, this returns
+    ``R_op^*(arg)``, where the adjoint acts on shuffle tensors.
 
-    :param op: The FreeTensor representing the Lie algebra element.
-    :param arg: The ShuffleTensor to be acted upon.
-    :return: The result of the adjoint action as a ShuffleTensor.
+    :param op: Free tensor defining the right-multiplication operator.
+    :param arg: Shuffle tensor on which the adjoint operator acts.
+    :return: Result of the adjoint action as a shuffle tensor.
     """
     dtype = jnp.result_type(op.dtype, arg.dtype)
 
@@ -1964,7 +2014,14 @@ def ft_adjoint_right_mul_derivative(
     t_op: DenseFreeTensor,
     t_arg: DenseShuffleTensor,
 ) -> DenseShuffleTensor:
-    """Compute the derivative of `ft_adjoint_right_mul`."""
+    """Compute the derivative of :func:`ft_adjoint_right_mul`.
+
+    :param op: Primal free tensor defining right multiplication.
+    :param arg: Primal shuffle tensor acted upon by the adjoint operator.
+    :param t_op: Tangent corresponding to ``op``.
+    :param t_arg: Tangent corresponding to ``arg``.
+    :return: Directional derivative for ``(t_op, t_arg)``.
+    """
     check_basis_compat(op.basis, arg.basis, t_op.basis, t_arg.basis)
     t_result = ft_adjoint_right_mul(t_op, arg) + ft_adjoint_right_mul(op, t_arg)
     return t_result
@@ -1973,7 +2030,13 @@ def ft_adjoint_right_mul_derivative(
 def ft_adjoint_right_mul_adjoint_derivative(
     op: DenseFreeTensor, arg: DenseShuffleTensor, ct_result: DenseFreeTensor
 ) -> tuple[DenseShuffleTensor, DenseFreeTensor]:
-    """Compute the mathematical cotangents for `ft_adjoint_right_mul`."""
+    """Compute the mathematical cotangents for :func:`ft_adjoint_right_mul`.
+
+    :param op: Primal free tensor defining right multiplication.
+    :param arg: Primal shuffle tensor acted upon by the adjoint operator.
+    :param ct_result: Cotangent of the resulting shuffle tensor.
+    :return: Cotangents corresponding to ``op`` and ``arg``, in that order.
+    """
     check_basis_compat(op.basis, arg.basis, ct_result.basis)
     ct_op = ft_adjoint_left_mul(ct_result, arg)
     ct_arg = ft_mul(ct_result, op)
@@ -2009,8 +2072,7 @@ ft_adjoint_right_mul.defvjp(
 def tensor_pairing(
     functional: DenseShuffleTensor, argument: DenseFreeTensor
 ) -> jax.Array:
-    """
-    Computes the tensor pairing between a functional tensor and a free tensor.
+    """Compute the pairing between a shuffle tensor and a free tensor.
 
     The pairing is the evaluation of a functional (shuffle tensor) on a free tensor
     argument. The result of such a pairing is a scalar. However, to accommodate for
@@ -2019,11 +2081,10 @@ def tensor_pairing(
     Both input tensors must be compatible in terms of their basis and batch dimensions.
     The function returns a JAX Array whose shape is the same as the batch dimensions.
 
-    :param functional: A `ShuffleTensorT` object representing the functional tensor.
-        Its data will be used in the tensor pairing operation.
-    :param argument: A `FreeTensorT` object representing the free tensor to be
-        paired with the functional tensor.
-    :return: A `jax.Array` containing the result of the tensor pairing operation.
+    :param functional: Shuffle tensor representing the functional.
+    :param argument: Free tensor on which ``functional`` is evaluated.
+    :return: Pairing values as a :class:`jax.Array` with the common batch shape
+        of the operands.
     """
     dtype = jnp.result_type(functional.dtype, argument.dtype)
     batch_dims = get_common_batch_shape(functional, argument)
@@ -2049,7 +2110,15 @@ def tensor_pairing_derivative(
     t_functional: DenseShuffleTensor,
     t_argument: DenseFreeTensor,
 ) -> jax.Array:
-    """Compute the derivative of `tensor_pairing`."""
+    """Compute the derivative of :func:`tensor_pairing`.
+
+    :param functional: Primal shuffle-tensor functional.
+    :param argument: Primal free-tensor argument.
+    :param t_functional: Tangent corresponding to ``functional``.
+    :param t_argument: Tangent corresponding to ``argument``.
+    :return: Directional derivative for ``(t_functional, t_argument)`` with
+        the common batch shape.
+    """
     check_basis_compat(
         functional.basis, argument.basis, t_functional.basis, t_argument.basis
     )
@@ -2076,7 +2145,15 @@ def tensor_pairing_adjoint_derivative(
     argument: DenseFreeTensor,
     ct_result: jax.Array,
 ) -> tuple[DenseFreeTensor, DenseShuffleTensor]:
-    """Compute the JAX-facing cotangents for `tensor_pairing`."""
+    """Compute the mathematical cotangents for :func:`tensor_pairing`.
+
+    :param functional: Primal shuffle-tensor functional.
+    :param argument: Primal free-tensor argument.
+    :param ct_result: Cotangent of the scalar-valued pairing result. It may be
+        scalar or have a prefix of the operands' common batch shape.
+    :return: Cotangents corresponding to ``functional`` and ``argument``, in
+        that order.
+    """
     check_basis_compat(functional.basis, argument.basis)
     batch_dims = get_common_batch_shape(functional, argument)
 
@@ -2114,8 +2191,7 @@ tensor_pairing.defvjp(_tensor_pairing_vjp_fwd, _tensor_pairing_vjp_bwd)
 
 @jax.custom_vjp
 def lie_pairing(functional: DenseLie, argument: DenseLie) -> jax.Array:
-    """
-    Compute the pairing of two Lie algebra elements.
+    """Compute the pairing of two Lie algebra elements.
 
     This is the coefficient-space pairing induced by the Hall basis. The result
     is scalar-valued, with any leading batch dimensions preserved.
@@ -2147,7 +2223,15 @@ def lie_pairing_derivative(
     t_functional: DenseLie,
     t_argument: DenseLie,
 ) -> jax.Array:
-    """Compute the derivative of `lie_pairing`."""
+    """Compute the derivative of :func:`lie_pairing`.
+
+    :param functional: First primal Lie element.
+    :param argument: Second primal Lie element.
+    :param t_functional: Tangent corresponding to ``functional``.
+    :param t_argument: Tangent corresponding to ``argument``.
+    :return: Directional derivative for ``(t_functional, t_argument)`` with
+        the common batch shape.
+    """
     check_basis_compat(
         functional.basis, argument.basis, t_functional.basis, t_argument.basis
     )
@@ -2159,7 +2243,15 @@ def lie_pairing_derivative(
 def lie_pairing_adjoint_derivative(
     functional: DenseLie, argument: DenseLie, ct_result: jax.Array
 ) -> tuple[DenseLie, DenseLie]:
-    """Compute the JAX-facing cotangents for `lie_pairing`."""
+    """Compute the cotangents for :func:`lie_pairing`.
+
+    :param functional: First primal Lie element.
+    :param argument: Second primal Lie element.
+    :param ct_result: Cotangent of the scalar-valued pairing result. It may be
+        scalar or have a prefix of the operands' common batch shape.
+    :return: Cotangents corresponding to ``functional`` and ``argument``, in
+        that order.
+    """
     check_basis_compat(functional.basis, argument.basis)
     batch_dims = get_common_batch_shape(functional, argument)
 
@@ -2202,6 +2294,15 @@ def st_adjoint_mul(
     op_arg: DenseShuffleTensor,
     arg: DenseFreeTensor,
 ) -> DenseFreeTensor:
+    """Apply the adjoint of shuffle multiplication to a free tensor.
+
+    For the shuffle-multiplication operator ``M_op(x) = st_mul(op, x)``, this
+    returns ``M_op^*(arg)`` in the free-tensor dual space.
+
+    :param op_arg: Shuffle tensor defining the multiplication operator.
+    :param arg: Free tensor on which the adjoint operator acts.
+    :return: Result of the adjoint action as a free tensor.
+    """
     dtype = jnp.result_type(op_arg.dtype, arg.dtype)
     batch_dims = get_common_batch_shape(op_arg, arg)
 
@@ -2226,7 +2327,14 @@ def st_adjoint_mul_derivative(
     t_op: DenseShuffleTensor,
     t_arg: DenseFreeTensor,
 ) -> DenseFreeTensor:
-    """Compute the derivative of `st_adjoint_mul`."""
+    """Compute the derivative of :func:`st_adjoint_mul`.
+
+    :param op: Primal shuffle tensor defining multiplication.
+    :param arg: Primal free tensor acted upon by the adjoint operator.
+    :param t_op: Tangent corresponding to ``op``.
+    :param t_arg: Tangent corresponding to ``arg``.
+    :return: Directional derivative for ``(t_op, t_arg)``.
+    """
     check_basis_compat(op.basis, arg.basis, t_op.basis, t_arg.basis)
     t_result = st_adjoint_mul(op, t_arg) + st_adjoint_mul(t_op, arg)
 
@@ -2236,7 +2344,13 @@ def st_adjoint_mul_derivative(
 def st_adjoint_mul_adjoint_derivative(
     op: DenseShuffleTensor, arg: DenseFreeTensor, ct_result: DenseShuffleTensor
 ) -> tuple[DenseFreeTensor, DenseShuffleTensor]:
-    """Compute the mathematical cotangents for `st_adjoint_mul`."""
+    """Compute the mathematical cotangents for :func:`st_adjoint_mul`.
+
+    :param op: Primal shuffle tensor defining multiplication.
+    :param arg: Primal free tensor acted upon by the adjoint operator.
+    :param ct_result: Cotangent of the resulting free tensor.
+    :return: Cotangents corresponding to ``op`` and ``arg``, in that order.
+    """
     check_basis_compat(op.basis, arg.basis, ct_result.basis)
     ct_op = st_adjoint_mul(ct_result, arg)
     ct_arg = st_mul(op, ct_result)
@@ -2269,8 +2383,7 @@ st_adjoint_mul.defvjp(_st_adjoint_mul_vjp_fwd, _st_adjoint_mul_vjp_bwd)
 def to_signature(
     log_signature: DenseLie, tensor_basis: TensorBasis | None = None
 ) -> DenseFreeTensor:
-    """
-    Convert a log-signature in the Lie algebra to its signature.
+    """Convert a log-signature in the Lie algebra to its signature.
 
     The Lie element is first embedded into the tensor algebra and then
     exponentiated there. If ``tensor_basis`` is provided, the tensor result is
@@ -2288,8 +2401,7 @@ def to_signature(
 def to_log_signature(
     signature: DenseFreeTensor, lie_basis: LieBasis | None = None
 ) -> DenseLie:
-    """
-    Convert a signature in the tensor algebra to its log-signature.
+    """Convert a signature in the tensor algebra to its log-signature.
 
     This is the inverse process of :func:`to_signature`: the input free tensor is
     first mapped through the tensor logarithm and the result is then projected
@@ -2312,8 +2424,7 @@ def to_log_signature(
 
 
 def cbh(*lie_pieces: DenseLie, lie_basis: LieBasis | None = None) -> DenseLie:
-    """
-    Compute the Campbell-Baker-Hausdorff combination of Lie elements.
+    """Compute the Campbell-Baker-Hausdorff combination of Lie elements.
 
     This returns the Lie element whose exponential is the product of the
     exponentials of the input pieces, in the given order. Concretely, the

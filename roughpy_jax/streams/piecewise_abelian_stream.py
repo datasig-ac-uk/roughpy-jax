@@ -1,3 +1,5 @@
+"""Provide streams with piecewise linear log signatures."""
+
 from dataclasses import dataclass
 from functools import partial
 from typing import Self
@@ -34,7 +36,7 @@ from .utils import _index_stream_batch
 )
 @dataclass(frozen=True)
 class PiecewiseAbelianStream(Stream[DenseLie, DenseFreeTensor]):
-    """A stream whose log-signature is linear on each partition interval.
+    """Represent a stream whose log signature is linear on each partition piece.
 
     The partition divides one shared time domain into consecutive intervals. The
     Lie element at position ``i`` is the log-signature increment over interval
@@ -54,15 +56,18 @@ class PiecewiseAbelianStream(Stream[DenseLie, DenseFreeTensor]):
     Query intervals may also be batched. Query batch dimensions precede the
     stream-data batch dimensions in the result. Thus a query with batch shape
     ``Q`` against stream data with batch shape ``D`` produces coefficient data
-    with shape ``Q + D + (basis_size,)``.
+    with shape ``Q + D + (basis_size,)``. Empty stream and query batch
+    dimensions are supported.
 
-    Args:
-        _data: Lie increment coefficients with shape
-            ``(n_pieces, *batch_dims, lie_basis_size)``.
-        _partition: The unbatched partition defining the temporal pieces.
-        _lie_basis: Basis used for Lie-valued increments and log-signatures.
-        _group_basis: Tensor basis used to combine increments and form
-            signatures.
+    :param _data: Lie increment coefficients with shape
+        ``(n_pieces, *batch_dims, _lie_basis.size())``.
+    :param _partition: Unbatched partition defining the temporal pieces.
+    :param _lie_basis: Basis used for Lie-valued increments and log signatures.
+    :param _group_basis: Tensor basis used to combine increments and form
+        signatures. Its width and depth must match ``_lie_basis``.
+    :raises ValueError: If the data rank, number of pieces, or trailing Lie
+        dimension is invalid; the partition is batched; or the bases are
+        incompatible.
     """
 
     _data: jax.Array
@@ -99,17 +104,17 @@ class PiecewiseAbelianStream(Stream[DenseLie, DenseFreeTensor]):
 
     @property
     def lie_basis(self) -> Basis:
-        """Return the Lie basis."""
+        """Return the basis of log-signature results."""
         return self._lie_basis
 
     @property
     def group_basis(self) -> Basis:
-        """Return the group basis."""
+        """Return the basis of signature results."""
         return self._group_basis
 
     @property
     def support(self) -> Interval:
-        """Return the support interval."""
+        """Return the interval spanning the partition endpoints."""
         return RealInterval(
             _inf=self._partition.inf,
             _sup=self._partition.sup,
@@ -118,16 +123,22 @@ class PiecewiseAbelianStream(Stream[DenseLie, DenseFreeTensor]):
 
     @property
     def dtype(self):
-        """Return the coefficient dtype of the stream values."""
+        """Return the dtype of the stored Lie coefficients."""
         return self._data.dtype
 
     @property
     def batch_dims(self) -> tuple[int, ...]:
-        """Return the leading batch dimensions of the stream values."""
+        """Return the intrinsic batch shape of the stream."""
         return self._data.shape[1:-1]
 
     def __getitem__(self, index) -> Self:
-        """Select from the intrinsic batch dimensions of the stream."""
+        """Select from the intrinsic batch dimensions of the stream.
+
+        The leading piece axis and trailing Lie coordinate axis are not indexed.
+
+        :param index: NumPy-style index applied to ``batch_dims``.
+        :return: A stream with the selected intrinsic batch dimensions.
+        """
         data = _index_stream_batch(self._data, index)
         return type(self)(
             data,
@@ -140,14 +151,21 @@ class PiecewiseAbelianStream(Stream[DenseLie, DenseFreeTensor]):
     def log_signature(self, interval: Interval) -> DenseLie:
         """Compute the log-signature over one or more query intervals.
 
-        For batched interval endpoints, query dimensions precede any batch
-        dimensions carried by the stream data in the returned coefficients.
+        Each stored increment is scaled by the proportion of its partition piece
+        covered by the query, then the scaled increments are combined in temporal
+        order. Empty, reversed, and out-of-support intervals produce the zero Lie
+        element. Query endpoints are treated as nondifferentiable, while gradients
+        may flow through the stored increment data.
 
-        Args:
-            interval: Scalar or batched interval over which to query the stream.
+        If the broadcast endpoint shape is ``query_batch_dims``, the returned
+        data has shape
+        ``(*query_batch_dims, *batch_dims, lie_basis.size())``. Empty query and
+        intrinsic batch dimensions are supported.
 
-        Returns:
-            The log-signature over ``interval`` in the stream's Lie basis.
+        :param interval: Scalar or batched interval over which to query the
+            stream.
+        :return: Log signatures in ``lie_basis`` with query batch dimensions
+            preceding the intrinsic stream batch dimensions.
         """
         inf, sup = jnp.broadcast_arrays(
             jax.lax.stop_gradient(jnp.asarray(interval.inf)),
@@ -213,14 +231,14 @@ class PiecewiseAbelianStream(Stream[DenseLie, DenseFreeTensor]):
     def signature(self, interval: Interval) -> DenseFreeTensor:
         """Compute the signature over one or more query intervals.
 
-        For batched interval endpoints, query dimensions precede any batch
-        dimensions carried by the stream data in the returned coefficients.
+        This exponentiates :meth:`log_signature` in ``group_basis``. Consequently,
+        query batch dimensions precede intrinsic stream batch dimensions, and an
+        empty, reversed, or out-of-support interval produces the tensor identity.
 
-        Args:
-            interval: Scalar or batched interval over which to query the stream.
-
-        Returns:
-            The signature over ``interval`` in the stream's group basis.
+        :param interval: Scalar or batched interval over which to query the
+            stream.
+        :return: Signatures in ``group_basis`` with query batch dimensions
+            preceding the intrinsic stream batch dimensions.
         """
         log_sig = self.log_signature(interval)
         return to_signature(log_sig, tensor_basis=self._group_basis)
@@ -242,19 +260,14 @@ def to_piecewise_abelian_stream(
     pieces shared by all stream-data batches. Batch dimensions already carried by
     ``stream`` are preserved in every increment of the converted stream.
 
-    Args:
-        stream: Source stream whose partition increments will be sampled. Its
-            ``log_signature`` method must accept the batched interval returned by
-            :meth:`Partition.to_intervals`.
-        partition: Unbatched partition defining the pieces of the converted
-            stream.
-
-    Returns:
-        A piecewise abelian stream over ``partition`` using the source stream's
-        Lie and group bases.
-
-    Raises:
-        ValueError: If ``partition`` has batch dimensions.
+    :param stream: Source stream whose partition increments will be sampled. Its
+        ``log_signature`` method must accept the batched interval returned by
+        :meth:`Partition.to_intervals`.
+    :param partition: Unbatched partition defining the pieces of the converted
+        stream.
+    :return: A piecewise abelian stream over ``partition`` using the source
+        stream's Lie and group bases.
+    :raises ValueError: If ``partition`` has batch dimensions.
     """
     if len(partition.batch_dims) > 0:
         raise ValueError(
@@ -280,14 +293,21 @@ def piecewise_abelian_stream_from_data(
 ) -> PiecewiseAbelianStream:
     """Construct a piecewise abelian stream from Lie data and a partition.
 
-    Args:
-        data: A single Lie with shape ``(P, ..., L)``, or a sequence of ``P``
-            Lie elements with identical shapes and bases.
-        partition: Unbatched partition containing ``P`` intervals.
+    For a single Lie, the first batch axis is interpreted as the piece axis. For
+    a sequence, the elements are stacked to create that axis. Remaining batch
+    dimensions become the intrinsic stream batch dimensions, including empty
+    dimensions.
 
-    Returns:
-        A piecewise abelian stream whose group basis corresponds to the Lie basis
-        of ``data``.
+    :param data: A single Lie with data shape ``(P, *batch_dims, L)``, or a
+        sequence of ``P`` Lie elements with identical shapes and bases.
+    :param partition: Unbatched partition containing ``P`` intervals.
+    :return: A piecewise abelian stream whose group basis is derived from the Lie
+        basis of ``data``.
+    :raises TypeError: If ``data`` is neither a Lie nor a sequence consisting
+        entirely of Lie elements.
+    :raises ValueError: If the sequence is empty, the partition is batched, the
+        Lie bases or shapes are incompatible, or the data does not have one entry
+        per partition interval.
     """
     partition_size = len(partition)
     if len(partition.batch_dims) > 0:

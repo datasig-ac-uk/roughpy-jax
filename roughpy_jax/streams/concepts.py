@@ -1,3 +1,5 @@
+"""Protocols defining the public interfaces of stream objects."""
+
 import typing
 from typing import Protocol, Self, TypeVar
 
@@ -13,26 +15,12 @@ StreamValueT = TypeVar("StreamValueT", covariant=True)
 
 @typing.runtime_checkable
 class Stream(Protocol[LieT, GroupT]):
-    """
-    A stream is a description of the evolution of a system.
+    """Describe a system through signatures over query intervals.
 
-    A stream is any object that provides a (log-)signature over any query intervals.
-    The signature is usually a group-like element of the free tensor algebra. More
-    generally, the signature can be an element of a fairly arbitrary Lie group, such
-    as a compact matrix group, and the log-signature belongs to the corresponding
-    Lie Algebra.
-
-    There are several, fundamentally different, types of stream, and generally these
-    will be stacked to form a transformation pipeline. The streams at the root of
-    such pipelines (the input) will often provide access to raw data, which are
-    then transformed by, for example, solving a controlled differential equation.
-    Other types of stream might compute signatures from deterministic functions or
-    from stochastic sources like Brownian motion.
-
-    This class is part of a system designed to model and process continuous data
-    streams, allowing efficient calculation of both signatures and log signatures.
-    The Stream interface is defined as a protocol, thus any implementation must be
-    compliant with the method contracts defined herein.
+    A stream provides a signature and log-signature for each query interval.
+    The standard implementation returns a group-like free tensor and a Lie
+    element, but the protocol also permits other compatible Lie groups and
+    algebras.
 
     Stream queries have two independent sources of batching. A stream may carry
     intrinsic batch dimensions ``D``, reported by :attr:`batch_dims`, and the lower
@@ -47,38 +35,30 @@ class Stream(Protocol[LieT, GroupT]):
 
     @property
     def lie_basis(self) -> Basis:
-        """
-        A basis of the Lie algebra into which the stream is developed.
-        """
+        """Return the basis of the stream's Lie algebra."""
         ...
 
     @property
     def group_basis(self) -> Basis:
-        """
-        A basis of the group into which the stream is developed.
-        """
+        """Return the basis of the stream's group representation."""
         ...
 
     @property
     def support(self) -> Interval:
-        """
-        The support interval for the stream.
+        """Return the support interval of the stream.
 
-        Outside of this interval, the signature should return the identity element.
+        Queries outside the support return the group identity and Lie zero.
         """
         ...
 
     @property
     def dtype(self):
-        """
-        Data type of the coefficients returned by the stream.
-        """
+        """Return the coefficient dtype produced by stream queries."""
         ...
 
     @property
     def batch_dims(self) -> tuple[int, ...]:
-        """
-        Intrinsic batch dimensions of the stream data.
+        """Return the intrinsic batch dimensions of the stream data.
 
         These dimensions do not include dimensions introduced by a batched query.
         Query dimensions precede these stream dimensions in values returned by
@@ -105,21 +85,10 @@ class Stream(Protocol[LieT, GroupT]):
         ...
 
     def log_signature(self, interval: Interval) -> LieT:
-        """
-        Query the stream for the log signature over an interval.
+        """Query the stream for the log signature over an interval.
 
-        The log signature describes the evolution of the stream over an interval.
-        This contains the same information as the signature, but is usually a more
-        compressed representation.
-
-        When this is the standard Lie algebra development, continuous functions
-        on the underlying stream can be approximated uniformly by polynomials
-        on the log signature.
-
-        One should be able to query the stream over arbitrary intervals. This might
-        include queries where the stream has no recorded changes, in which case the
-        log signature is zero. (This includes the case where the query is outside
-        the support of the stream.)
+        An interval containing no stream evolution, including one outside the
+        support, returns the Lie zero.
 
         The endpoints may represent a batch of query intervals. If they broadcast
         to shape ``Q`` and the stream has batch shape ``D``, the returned Lie
@@ -132,19 +101,10 @@ class Stream(Protocol[LieT, GroupT]):
         ...
 
     def signature(self, interval: Interval) -> GroupT:
-        """
-        Query the stream for the signature over an interval.
+        """Query the stream for the signature over an interval.
 
-        The signature describes the evolution of the stream over an interval.
-
-        When this is the standard free tensor algebra development, continuous functions
-        on the underlying stream can be approximated uniformly by linear functionals
-        on the signature; that is, shuffle tensors.
-
-        One should be able to query the stream over arbitrary intervals. This might
-        include queries where the stream has no recorded changes, in which case the
-        signature is identity. (This includes the case where the query is outside
-        the support of the stream.)
+        An interval containing no stream evolution, including one outside the
+        support, returns the group identity.
 
         The endpoints may represent a batch of query intervals. If they broadcast
         to shape ``Q`` and the stream has batch shape ``D``, the returned group
@@ -159,53 +119,33 @@ class Stream(Protocol[LieT, GroupT]):
 
 @typing.runtime_checkable
 class ValueStream(Protocol[LieT, GroupT, StreamValueT]):
-    """
-    A value stream tracks the value as well as the evolution.
+    """Track an evolving value together with its increment stream.
 
-    A value stream is a pair of a (increment) stream and base value. The stream value
-    at any given parameter t is obtained by propagating the base value using the
-    signature over from t_0 up to t.
+    A value stream pairs an increment stream with a base value at one boundary
+    of its support. The value at a parameter is obtained by propagating that
+    reference value using the intervening signature.
 
-    A very basic version of a ValueStream is a tensor-valued stream, where the value
-    type is a free tensor and the propagation operation is left multiplication
-    by the signature. More generally, this might involve the action of a linear
-    projection of the signature.
+    For a tensor-valued stream, propagation may be left multiplication by the
+    signature. More generally, implementations may apply another action of the
+    signature on the value space.
 
-    The basic operation on a value stream is `query`. This takes a query interval and
-    produces a new value path. The increment stream of the new path is obtained by
-    restricting to the query interval. The new base value is obtained by propagating
-    the base value of the original stream using the signature up to the beginning
-    of the query interval. (There is an equivalent formulation that uses terminal
-    values and signature from the end of the query interval.)
-
-    The propagation operation is an implementation detail. The public interface
-    exposes :meth:`value_at`, which applies that operation internally, together
-    with access to the underlying stream and base value for inspection at the end
-    of a pipeline.
-
-    :ivar stream: The underlying increment stream.
-    :type stream: Stream[LieT, GroupT]
-    :ivar base_value: The value at the beginning (or end) of the stream.
-    :type base_value: StreamValueT
+    The propagation operation is an implementation detail exposed through
+    :meth:`value_at`. :meth:`query` restricts the increment stream and updates
+    the base value to the corresponding boundary of the requested interval.
     """
 
     @property
     def stream(self) -> Stream[LieT, GroupT]:
-        """
-        The underlying increment stream.
-        """
+        """Return the underlying increment stream."""
         ...
 
     @property
     def base_value(self) -> StreamValueT:
-        """
-        The value at the beginning (or end) of the stream.
-        """
+        """Return the value at the stream's reference boundary."""
         ...
 
     def value_at(self, parameter: ArrayLike) -> StreamValueT:
-        """
-        Compute the stream value at a parameter value.
+        """Compute the stream value at a parameter value.
 
         The implementation propagates :attr:`base_value` to ``parameter`` using
         the signature of the underlying increment stream.
@@ -216,18 +156,14 @@ class ValueStream(Protocol[LieT, GroupT, StreamValueT]):
         ...
 
     def query(self, interval: Interval) -> Self:
-        """
-        Query the value stream over an interval.
+        """Query the value stream over an interval.
 
-        Query the value stream over an interval. The increment stream of the new path
-        is obtained by restricting to the query interval. The new base value is
-        obtained by propagating the base value of the original stream using the
-        signature up to the beginning of the query interval. (There is an equivalent
-        formulation that uses terminal values and signature from the end of the query
-        interval.)
+        The returned increment stream is restricted to ``interval``. Its base
+        value is the original value propagated to the corresponding boundary
+        of ``interval``.
 
         :param interval: Query interval.
-        :return: A new value stream, with an updated base value and restricted increment
-                 stream.
+        :return: Value stream with an updated base value and restricted
+            increment stream.
         """
         ...
