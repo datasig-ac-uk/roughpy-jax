@@ -1,3 +1,5 @@
+"""Provide streams backed by cached dyadic Lie increments."""
+
 import dataclasses
 import inspect
 import math
@@ -361,14 +363,29 @@ def dyadic_query(
 ) -> AccT:
     """Query a dyadic cache over one or more intervals.
 
-    Callback arguments receive ``context`` as their first argument.  Endpoint
-    arrays are supported and are treated as leading query batch dimensions; the
-    callback return values must consequently be JAX-compatible pytrees with
-    those dimensions preserved.
+    Endpoint arrays define leading query batch dimensions. The callbacks receive
+    arrays with that shape and must return JAX-compatible pytrees that preserve
+    those dimensions. The current callback signatures are
+    ``init(context, k1, k2, n)``, ``get_left(context, k, n, digit)``,
+    ``get_right(context, k, n, digit)``, and
+    ``combine(context, left, accumulator, right)``.
 
     The callback contract used before batched queries were supported is retained
-    for source compatibility.  Legacy callbacks are selected by their arity
-    and use the original scalar Python implementation.
+    for source compatibility. Legacy callbacks omit ``context``, are selected
+    when ``init`` has three parameters, and use the scalar Python implementation.
+
+    :param query: Interval or batch of intervals to query.
+    :param resolution: Finest dyadic resolution available in the cache.
+    :param init: Callback that constructs the initial accumulator.
+    :param get_left: Callback that retrieves an increment to prepend.
+    :param get_right: Callback that retrieves an increment to append.
+    :param combine: Callback that combines the left increment, accumulator, and
+        right increment.
+    :param cache_interval_type: Endpoint convention used by the cached dyadic
+        intervals. Queries using the opposite convention are adjusted at aligned
+        endpoints.
+    :param context: Arbitrary callback context for the batched callback API.
+    :return: The accumulator produced for each query interval.
     """
     # Keep the old callback API working for downstream users.  The new API is
     # deliberately dispatched to the same JIT kernel used by LieIncrementStream.
@@ -660,16 +677,27 @@ def _check_times_and_data_consistent_for_stream(
 
 @jax.tree_util.register_pytree_node_class
 class LieIncrementStream(Stream[Lie, FreeTensor]):
-    """
-    Stream backed by a contiguous cache of dyadic log-signatures.
+    """Represent a stream using a contiguous cache of dyadic log signatures.
 
-    The cache is a JAX array with shape (2^(R+1), ..., LieDim), where the
-    cache axis packs log-signatures over dyadic intervals of lengths between
-    2^-R and 1 in steps of 2. The final element of the cache axis is unused
-    by the geometric series of dyadic intervals and should be zero.
+    For resolution ``R``, ``cache`` has shape
+    ``(2 ** (R + 1), *batch_dims, lie_basis.size())``. Its first axis packs log
+    signatures over dyadic intervals from resolution ``R`` down to zero. The
+    final entry on that axis is unused and should be zero.
 
-    Only left-closed, right-open (ClOpen) dyadic caches are currently
-    supported. This may change in the future.
+    Only left-closed, right-open dyadic caches are currently supported. Empty
+    intrinsic batch dimensions are permitted.
+
+    :param cache: Packed dyadic log-signature cache.
+    :param lie_basis: Basis of the cached log signatures.
+    :param resolution: Finest dyadic resolution represented by ``cache``.
+    :param support: Time interval represented by the unit dyadic cache. If
+        omitted, use ``[0, 1)``.
+    :param group_basis: Tensor basis used for signature results. If omitted,
+        derive it from ``lie_basis``.
+    :param interval_type: Endpoint convention of the cached intervals. Only
+        :attr:`IntervalType.ClOpen` is supported.
+    :raises ValueError: If the interval convention is unsupported or the cache
+        rank, length, or trailing Lie dimension is invalid.
     """
 
     _cache: jax.Array
@@ -721,6 +749,7 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
         self._interval_type = interval_type
 
     def tree_flatten(self):
+        """Flatten the stream according to the JAX pytree protocol."""
         children = (self._cache, self._support)
         aux_data = (
             self._lie_basis,
@@ -732,6 +761,12 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
 
     @classmethod
     def tree_unflatten(cls, aux_data, children):
+        """Reconstruct a stream from its JAX pytree representation.
+
+        :param aux_data: Static basis, resolution, and interval metadata.
+        :param children: Dynamic cache and support values.
+        :return: The reconstructed stream.
+        """
         cache, support = children
         lie_basis, group_basis, resolution, interval_type = aux_data
         return cls(cache, lie_basis, resolution, support, group_basis, interval_type)
@@ -774,6 +809,19 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
     def from_stream(
         cls: type[T], stream: Stream[Lie, FreeTensor], resolution: int
     ) -> T:
+        """Construct a dyadic cache from another stream.
+
+        If ``stream`` supplies ``__dyadic_cache__``, that provider is used.
+        Otherwise, the source is queried on every finest-level dyadic interval
+        and the coarser cache levels are built from those results. The source
+        bases, support, dtype, and intrinsic batch dimensions are preserved.
+
+        :param stream: Source stream to cache.
+        :param resolution: Positive finest resolution for the new cache.
+        :return: A stream whose queries are evaluated from the dyadic cache.
+        :raises ValueError: If ``resolution`` is not positive or the resulting
+            cache is incompatible with the source basis.
+        """
         lie_basis = cast(LieBasis, stream.lie_basis)
         group_basis = cast(TensorBasis, stream.group_basis)
         support = stream.support
@@ -840,10 +888,11 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
         :param resolution: Static dyadic cache resolution. Passing ``None``
             currently selects a resolution automatically but is deprecated.
         :param input_data_basis: Basis describing the trailing dimension of the
-            input data. If omitted, a depth-one Lie basis is inferred from that
-            dimension.
-        :param lie_basis: Basis used for the cached log-signatures. If omitted, a
-            depth-two basis with the input width is used.
+            input data. Pass ``None`` to infer a depth-one Lie basis from that
+            dimension. A shorter trailing dimension is zero-padded to the
+            specified basis size.
+        :param lie_basis: Basis used for the cached log signatures. Pass ``None``
+            to use a depth-two basis with the input width.
         :param interval_type: Endpoint convention for timestamps and queries.
             Currently only :attr:`IntervalType.ClOpen` caches are supported.
         :param data_dtype: Optional dtype for the increment data and cache. If
@@ -994,26 +1043,37 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
 
     @property
     def lie_basis(self) -> LieBasis:
+        """Return the basis of log-signature results."""
         return self._lie_basis
 
     @property
     def group_basis(self) -> TensorBasis:
+        """Return the basis of signature results."""
         return self._group_basis
 
     @property
     def support(self) -> Interval:
+        """Return the time interval represented by the stream."""
         return self._support
 
     @property
     def dtype(self):
+        """Return the dtype of the cached coefficients."""
         return self._cache.dtype
 
     @property
     def batch_dims(self) -> tuple[int, ...]:
+        """Return the intrinsic batch shape of the stream."""
         return self._cache.shape[1:-1]
 
     def __getitem__(self, index) -> Self:
-        """Select from the intrinsic batch dimensions of the stream."""
+        """Select from the intrinsic batch dimensions of the stream.
+
+        The cache axis and trailing Lie coordinate axis are not indexed.
+
+        :param index: NumPy-style index applied to ``batch_dims``.
+        :return: A stream with the selected intrinsic batch dimensions.
+        """
         cache = _index_stream_batch(self._cache, index)
         return type(self)(
             cache,
@@ -1026,6 +1086,7 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
 
     @property
     def resolution(self) -> int:
+        """Return the finest dyadic resolution stored in the cache."""
         return self._resolution
 
     def _zero_log_signature(self) -> Lie:
@@ -1046,10 +1107,21 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
         )
 
     def log_signature(self, interval: Interval | None = None) -> Lie:
-        """
-        Compute the log signature over an interval.
+        """Compute the log signature over an interval.
 
-        Endpoint arrays are treated as leading query batch dimensions.
+        The interval is clipped to the stream support before querying. Empty
+        intervals and intervals outside the support produce the zero Lie
+        element. Endpoint values are treated as nondifferentiable.
+
+        If the broadcast endpoint shape is ``query_batch_dims``, the returned
+        data has shape
+        ``(*query_batch_dims, *batch_dims, lie_basis.size())``. Empty query and
+        intrinsic batch dimensions are supported.
+
+        :param interval: Interval or batch of intervals to query. If omitted,
+            query the complete stream support.
+        :return: Log signatures in ``lie_basis`` with query batch dimensions
+            preceding the intrinsic stream batch dimensions.
         """
         if interval is None:
             interval = self._support
@@ -1085,10 +1157,16 @@ class LieIncrementStream(Stream[Lie, FreeTensor]):
         self,
         interval: Interval | None = None,
     ) -> FreeTensor:
-        """
-        Compute the signature over an interval.
+        """Compute the signature over an interval.
 
-        Endpoint arrays are treated as leading query batch dimensions.
+        This exponentiates :meth:`log_signature` in ``group_basis``. Consequently,
+        query batch dimensions precede intrinsic stream batch dimensions, and an
+        empty or out-of-support interval produces the tensor identity.
+
+        :param interval: Interval or batch of intervals to query. If omitted,
+            query the complete stream support.
+        :return: Signatures in ``group_basis`` with query batch dimensions
+            preceding the intrinsic stream batch dimensions.
         """
         log_sig = self.log_signature(interval)
         tensor = lie_to_tensor(log_sig)
