@@ -1,3 +1,10 @@
+"""Shared storage and batch utilities for dense algebra elements.
+
+Dense algebra coefficient arrays have shape ``(*batch_shape, basis.size())``.
+The final dimension is always the algebra coordinate; every preceding
+dimension, including a zero-length dimension, belongs to the batch shape.
+"""
+
 from collections.abc import Callable, Sequence
 from typing import Any, ClassVar, Generic, TypeVar
 
@@ -11,8 +18,7 @@ AlgebraT = TypeVar("AlgebraT", bound="DenseAlgebra[Any]")
 
 
 def get_batch_shape(operand) -> tuple[int, ...]:
-    """
-    Return the batch shape associated with an operand.
+    """Return the batch shape associated with an operand.
 
     Dense algebra objects contribute their ``batch_shape`` property, i.e. the
     leading dimensions before the trailing algebra coordinate. Plain arrays are
@@ -28,13 +34,11 @@ def get_batch_shape(operand) -> tuple[int, ...]:
 
 
 def get_common_batch_shape(*operands) -> tuple[int, ...]:
-    """
-    Validate that all operands share the same batch shape and return it.
+    """Validate that all operands share the same batch shape and return it.
 
     Dense algebra objects contribute the leading dimensions before the trailing
-    algebra coordinate. Plain arrays contribute their full shape. At present,
-    operations in roughpy-jax require all operands to have identical batch
-    shape, and this helper returns that common value after validation.
+    algebra coordinate. Plain arrays contribute their full shape. This helper
+    performs exact equality validation; it does not apply broadcasting rules.
 
     :param operands: Dense algebra objects or array-like operands to validate.
     :return: The batch shape common to all operands.
@@ -64,19 +68,21 @@ def broadcast_to_batch_shape(
     *,
     core_dims: int = 1,
 ) -> jax.Array:
-    """
-    Reshape data for broadcasting over a target batch shape and core dimensions.
+    """Reshape data for broadcasting over a target batch shape and core dimensions.
 
-    Scalars and batch prefixes are reshaped by appending singleton dimensions
-    until they are broadcast-compatible with arrays of shape
-    ``batch_shape + core_shape``. Inputs already shaped as
+    Scalars and exact prefixes of ``batch_shape`` are reshaped by appending
+    singleton dimensions, followed by ``core_dims`` singleton core dimensions.
+    This deliberately implements prefix broadcasting rather than general
+    NumPy broadcasting. Inputs already shaped as
     ``batch_shape + (1,) * core_dims`` are returned unchanged.
 
     :param data: Array-like input to reshape.
     :param batch_shape: Target batch shape.
-    :param core_dims: Number of trailing core dimensions.
-    :return: Reshaped JAX array.
-    :raises ValueError: If ``data`` is incompatible with ``batch_shape``.
+    :param core_dims: Number of trailing singleton core dimensions required in
+        the result.
+    :return: Reshaped array suitable for broadcasting over an algebra value.
+    :raises ValueError: If the input shape is neither a prefix of
+        ``batch_shape`` nor ``batch_shape + (1,) * core_dims``.
     """
     data = jnp.asarray(data)
     data_shape = data.shape
@@ -101,8 +107,7 @@ def broadcast_to_batch_shape(
 
 
 def _pad_final_dim(data: jax.Array, size: int) -> jax.Array:
-    """
-    Pad the trailing algebra dimension of ``data`` with zeros up to ``size``.
+    """Pad the trailing algebra dimension of ``data`` with zeros up to ``size``.
 
     This is used when combining dense algebra elements of different truncation
     depths by embedding the shallower coefficient array into the deeper basis.
@@ -118,8 +123,7 @@ def _pad_final_dim(data: jax.Array, size: int) -> jax.Array:
 def _algebra_add(
     a: AlgebraT, b: AlgebraT, *, impl: Callable[[jax.Array, jax.Array], jax.Array]
 ) -> AlgebraT:
-    """
-    Apply a pointwise binary operation to two compatible dense algebra objects.
+    """Apply a pointwise binary operation to two compatible dense algebra objects.
 
     Addition and subtraction between dense algebra elements are implemented by
     first checking width and batch-shape compatibility, then promoting the
@@ -155,8 +159,7 @@ def _algebra_add(
 
 
 def _algebra_scalar_multiply(a: AlgebraT, s: jax.typing.ArrayLike) -> AlgebraT:
-    """
-    Multiply a dense algebra element by a scalar-like value.
+    """Multiply a dense algebra element by a scalar-like value.
 
     :param a: Dense algebra operand.
     :param s: Scalar-like multiplier.
@@ -170,8 +173,7 @@ def _algebra_scalar_multiply(a: AlgebraT, s: jax.typing.ArrayLike) -> AlgebraT:
 
 
 def _redepth_data(data: jax.Array, new_alg_dim: int) -> jax.Array:
-    """
-    Resize the trailing algebra dimension by truncating or zero-padding.
+    """Resize the trailing algebra dimension by truncating or zero-padding.
 
     This helper is used when changing the truncation depth of a dense algebra
     element. Shrinking the algebra dimension drops higher-order coordinates,
@@ -192,13 +194,21 @@ def _redepth_data(data: jax.Array, new_alg_dim: int) -> jax.Array:
 
 @jax.tree_util.register_pytree_node_class
 class DenseAlgebra(Generic[BasisT]):
-    """
-    Internal base class for dense algebra elements with static basis metadata.
+    """Provide shared dense storage for batched algebra elements.
 
-    This class is primarily intended to be subclassed to define concrete dense
+    This class is intended to be subclassed to define concrete dense
     algebra types such as ``DenseLie``, ``DenseFreeTensor``, and
     ``DenseShuffleTensor``. It centralises storage, basic arithmetic, pytree
     registration, and simple basis-changing utilities shared by those classes.
+
+    Coefficient data has shape ``(*batch_shape, basis.size())``. The basis is
+    static pytree metadata, while the coefficient array is the dynamic leaf.
+
+    :param data: Coefficients with shape
+        ``(*batch_shape, basis.size())``. Empty batch dimensions are supported.
+    :param basis: Basis describing the trailing coefficient dimension.
+    :raises ValueError: If ``data`` is scalar or its final dimension does not
+        equal ``basis.size()``.
     """
 
     data: jax.Array
@@ -220,31 +230,26 @@ class DenseAlgebra(Generic[BasisT]):
 
     @property
     def dtype(self):
-        """Data type of the coefficient array."""
+        """Return the coefficient-array dtype."""
         return self.data.dtype
 
     @property
     def shape(self):
-        """Full shape of the coefficient array."""
+        """Return the complete coefficient-array shape."""
         return self.data.shape
 
     @property
     def batch_shape(self):
-        """Leading batch dimensions of the coefficient array."""
+        """Return the leading batch dimensions of the coefficient array."""
         return self.data.shape[:-1]
 
     @property
     def dimension(self):
-        """
-        Dimension of the algebra
-
-        Should match self.basis.size() in most cases.
-        """
+        """Return the size of the trailing algebra-coordinate dimension."""
         return self.data.shape[-1]
 
     def change_depth(self: AlgebraT, new_depth: int) -> AlgebraT:
-        """
-        Re-express the element in the same basis family at a new depth.
+        """Re-express the element in the same basis family at a new depth.
 
         If ``new_depth`` matches the current depth, the element is returned
         unchanged. Otherwise, a new basis of the same concrete type and width is
@@ -265,9 +270,16 @@ class DenseAlgebra(Generic[BasisT]):
         return algebra_cls(_redepth_data(self.data, new_size), new_basis)
 
     def __array__(self, dtype=None, copy=None):
+        """Convert the coefficient data to a NumPy array.
+
+        :param dtype: Optional NumPy dtype for the result.
+        :param copy: Whether NumPy must copy the coefficient data.
+        :return: NumPy representation of the coefficient array.
+        """
         return np.asarray(self.data, dtype=dtype, copy=copy)
 
     def __numpy_dtype__(self):
+        """Return the NumPy dtype corresponding to the coefficient dtype."""
         return np.dtype(self.data.dtype)
 
     def __getitem__(self: AlgebraT, index) -> AlgebraT:
@@ -296,7 +308,13 @@ class DenseAlgebra(Generic[BasisT]):
         *,
         equal_nan: bool = False,
     ) -> jax.Array:
-        """Compare dense coefficient arrays for exact equality."""
+        """Compare dense coefficient arrays for exact equality.
+
+        :param left: First algebra to compare.
+        :param right: Second algebra to compare.
+        :param equal_nan: Whether corresponding NaN coefficients compare equal.
+        :return: Boolean array with the broadcasted batch shape.
+        """
         left_data, right_data = jnp.broadcast_arrays(left.data, right.data)
         matches = left_data == right_data
         matches = matches | (
@@ -314,7 +332,15 @@ class DenseAlgebra(Generic[BasisT]):
         atol: jax.typing.ArrayLike = 1e-8,
         equal_nan: bool = False,
     ) -> jax.Array:
-        """Compare dense coefficient arrays using relative and absolute tolerances."""
+        """Compare dense coefficient arrays using numerical tolerances.
+
+        :param left: First algebra to compare.
+        :param right: Second algebra to compare.
+        :param rtol: Relative tolerance for coefficient comparisons.
+        :param atol: Absolute tolerance for coefficient comparisons.
+        :param equal_nan: Whether corresponding NaN coefficients compare equal.
+        :return: Boolean array with the broadcasted batch shape.
+        """
         left_data, right_data = jnp.broadcast_arrays(left.data, right.data)
         matches = jnp.isclose(
             left_data,
@@ -334,39 +360,81 @@ class DenseAlgebra(Generic[BasisT]):
         algebra: AlgebraT,
         dtype: jax.typing.DTypeLike,
     ) -> AlgebraT:
-        """Convert dense coefficient storage to a new dtype."""
+        """Convert dense coefficient storage to a new dtype.
+
+        :param algebra: Algebra whose coefficients should be converted.
+        :param dtype: Target coefficient dtype.
+        :return: Converted algebra with its concrete type and basis preserved.
+        """
         return cls(algebra.data.astype(dtype), algebra.basis)
 
     def __add__(self, other):
+        """Add a dense algebra element of the same concrete type.
+
+        :param other: Right-hand algebra operand.
+        :return: Sum in the deeper operand basis, or ``NotImplemented`` for an
+            unsupported operand type.
+        """
         if isinstance(other, type(self)):
             return _algebra_add(self, other, impl=jnp.add)
         return NotImplemented
 
     def __sub__(self, other):
+        """Subtract a dense algebra element of the same concrete type.
+
+        :param other: Right-hand algebra operand.
+        :return: Difference in the deeper operand basis, or ``NotImplemented``
+            for an unsupported operand type.
+        """
         if isinstance(other, type(self)):
             return _algebra_add(self, other, impl=jnp.subtract)
         return NotImplemented
 
     def __mul__(self, other):
+        """Multiply the coefficient data by a scalar-like value.
+
+        :param other: Scalar or prefix-batched multiplier.
+        :return: Scaled algebra element, or ``NotImplemented`` for another
+            algebra operand.
+        """
         if isinstance(other, DenseAlgebra):
             return NotImplemented
         return _algebra_scalar_multiply(self, jnp.asarray(other))
 
     def __rmul__(self, other):
+        """Multiply the coefficient data by a scalar-like value.
+
+        :param other: Scalar or prefix-batched multiplier.
+        :return: Scaled algebra element, or ``NotImplemented`` for another
+            algebra operand.
+        """
         if isinstance(other, DenseAlgebra):
             return NotImplemented
         return _algebra_scalar_multiply(self, jnp.asarray(other))
 
     def __truediv__(self, other):
+        """Divide the coefficient data by a scalar-like value.
+
+        :param other: Scalar or prefix-batched divisor.
+        :return: Scaled algebra element, or ``NotImplemented`` for another
+            algebra operand.
+        """
         if isinstance(other, DenseAlgebra):
             return NotImplemented
         return _algebra_scalar_multiply(self, 1 / jnp.asarray(other))
 
     def tree_flatten(self):
+        """Return dynamic children and static metadata for JAX pytree handling."""
         return (self.data,), (self.basis,)
 
     @classmethod
     def tree_unflatten(cls, aux_data, children):
+        """Reconstruct an algebra element from its pytree representation.
+
+        :param aux_data: Static tuple containing the algebra basis.
+        :param children: Dynamic tuple containing the coefficient array.
+        :return: Reconstructed dense algebra element.
+        """
         obj = cls.__new__(cls)
         obj.data = children[0]
         obj.basis = aux_data[0]
@@ -380,8 +448,7 @@ class DenseAlgebra(Generic[BasisT]):
         batch_dims: tuple[int, ...] = tuple(),
         device: jax.Device | None = None,
     ) -> AlgebraT:
-        """
-        Construct the additive identity in the given basis.
+        """Construct the additive identity in the given basis.
 
         The returned element has coefficient array shape
         ``batch_dims + (basis.size(),)`` and contains zeros in every basis
@@ -390,8 +457,9 @@ class DenseAlgebra(Generic[BasisT]):
 
         :param basis: Basis in which the zero element should live.
         :param dtype: Data type used for the coefficient array.
-        :param batch_dims: Optional leading batch dimensions.
-        :param device: The device on which the object should be resident
+        :param batch_dims: Optional leading batch dimensions. Zero-length
+            dimensions are supported.
+        :param device: Optional device on which to create the coefficient array.
         :return: A zero element of ``cls`` in ``basis``.
         """
         shape = (*batch_dims, basis.size())
@@ -405,8 +473,7 @@ class DenseAlgebra(Generic[BasisT]):
         axis: int = 0,
         dtype: jax.typing.DTypeLike | None = None,
     ) -> AlgebraT:
-        """
-        Implement representation-specific storage for :func:`algebra.stack`.
+        """Implement representation-specific storage for :func:`algebra.stack`.
 
         This class method is an implementation hook and is not intended to be
         called directly. Use :func:`roughpy_jax.algebra.stack` instead so that
@@ -419,7 +486,6 @@ class DenseAlgebra(Generic[BasisT]):
         :param dtype: Optional data type for the resulting coefficient array.
         :return: A dense algebra object containing the stacked coefficients.
         """
-
         bases = [algebra.basis for algebra in algebras]
         basis = result_basis(*bases, strategy="max_depth")
 
@@ -438,8 +504,7 @@ class DenseAlgebra(Generic[BasisT]):
         axis: int = 0,
         dtype: jax.typing.DTypeLike | None = None,
     ) -> AlgebraT:
-        """
-        Implement representation-specific storage for :func:`algebra.concatenate`.
+        """Implement representation-specific storage for :func:`algebra.concatenate`.
 
         This class method is an implementation hook and is not intended to be
         called directly. Use :func:`roughpy_jax.algebra.concatenate` instead so
@@ -466,11 +531,10 @@ DenseAlgebra.DualVector = DenseAlgebra
 
 @jax.tree_util.register_pytree_node_class
 class DenseTensor(DenseAlgebra[TensorBasis]):
-    """
-    Dense tensor algebra element.
+    """Represent a tensor-algebra element in dense coordinates.
 
-    This class represents elements of the tensor algebra over a given basis.
-    It is a subclass of ``DenseAlgebra`` and inherits its algebraic structure.
+    This base class supplies the multiplicative identity shared by concrete
+    free- and shuffle-tensor representations.
     """
 
     @classmethod
@@ -481,20 +545,18 @@ class DenseTensor(DenseAlgebra[TensorBasis]):
         batch_dims: tuple[int, ...] = tuple(),
         device: jax.Device | None = None,
     ) -> AlgebraT:
-        """
-            Construct the multiplicative identity in a tensor basis.
+        """Construct the multiplicative identity in a tensor basis.
 
-        return cls(result_data, basis)
-            The returned element has coefficient array shape
-            ``batch_dims + (basis.size(),)``. Its unit coordinate is set to ``1``
-            and all other coefficients are zero. This is valid for the tensor
-            algebra subclasses whose product has the empty word as identity.
+        The returned coefficient array has shape
+        ``batch_dims + (basis.size(),)``. Its empty-word coordinate is one and
+        every other coordinate is zero.
 
-            :param basis: Tensor basis in which the identity should live.
-            :param dtype: Data type used for the coefficient array.
-            :param batch_dims: Optional leading batch dimensions.
-            :param device: The device on which the object should be resident
-            :return: The identity element of ``cls`` in ``basis``.
+        :param basis: Tensor basis in which the identity should live.
+        :param dtype: Data type used for the coefficient array.
+        :param batch_dims: Optional leading batch dimensions. Zero-length
+            dimensions are supported.
+        :param device: Optional device on which to create the coefficient array.
+        :return: Identity element of ``cls`` in ``basis``.
         """
         shape = (*batch_dims, basis.size())
         data = jnp.zeros(dtype=jnp.dtype(dtype), shape=shape, device=device)
@@ -506,8 +568,7 @@ DenseTensor.DualVector = DenseTensor
 
 
 def zero_like(algebra: AlgebraT, dtype: jax.typing.DTypeLike | None = None) -> AlgebraT:
-    """
-    Construct a zero element with the same type, shape, and basis as ``algebra``.
+    """Construct a zero element with the same type, shape, and basis as ``algebra``.
 
     The returned object keeps the basis metadata and concrete dense algebra
     class of the input while replacing all coefficients with zeros. An
@@ -525,18 +586,14 @@ def zero_like(algebra: AlgebraT, dtype: jax.typing.DTypeLike | None = None) -> A
 def identity_like(
     tensor: AlgebraT, dtype: jax.typing.DTypeLike | None = None
 ) -> AlgebraT:
-    """
-    Creates an identity-like object based on the structure and type of the provided tensor. The resulting object retains
-    the basis of the input tensor but modifies its data to follow an identity pattern. The primary element indicating
-    identity is set to 1, while the remaining structure of the data is zeroed out.
+    """Construct a multiplicative identity matching a tensor's structure.
 
-    :param tensor: Input tensor that provides the basis and structure for the resulting identity-like object.
-    :type tensor: type of the input tensor
-    :param dtype: Optional data type to apply to the resulting identity-like object's data. If not provided, the data type
-        of the input tensor is used.
-    :type dtype: Optional
-    :return: A new object of the same type as the input tensor, with modified data representing an identity-like structure.
-    :rtype: type of the input tensor
+    The concrete type, basis, and batch shape are preserved. The empty-word
+    coordinate is set to one and every other coefficient is set to zero.
+
+    :param tensor: Tensor whose type, basis, and batch shape should be copied.
+    :param dtype: Optional coefficient dtype. Defaults to ``tensor.dtype``.
+    :return: Multiplicative identity matching ``tensor``.
     """
     data = jnp.zeros_like(tensor.data, dtype=dtype)
     data = data.at[..., 0].set(1)
@@ -544,8 +601,7 @@ def identity_like(
 
 
 def to_dual(algebra: DenseAlgebra) -> DenseAlgebra:
-    """
-    Map an algebra element to its isomorphic dual-space representation.
+    """Map an algebra element to its isomorphic dual-space representation.
 
     This reinterprets ``algebra`` in the corresponding dual space using the
     dual basis associated with the same truncated algebra. In the truncated
@@ -553,11 +609,10 @@ def to_dual(algebra: DenseAlgebra) -> DenseAlgebra:
     represented by changing the concrete algebra type while leaving the
     coefficient data and basis metadata unchanged.
 
-    This operation is only valid for algebras whose dual is isomorphic and is given
-    the dual basis. Care should be used when using this function to check
-    that these conditions hold.
+    This operation is only valid when ``algebra.DualVector`` identifies an
+    isomorphic dual representation using compatible basis coordinates.
 
-    :param algebra: The algebra element to reinterpret in the dual space.
-    :return: The same coefficients viewed in the dual algebra type.
+    :param algebra: Algebra element to reinterpret in the dual space.
+    :return: The same coefficients viewed in ``algebra.DualVector``.
     """
     return algebra.DualVector(algebra.data, algebra.basis)
