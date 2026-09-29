@@ -1,3 +1,5 @@
+"""Interval representations and partition operations for stream queries."""
+
 from __future__ import annotations
 
 import enum
@@ -14,53 +16,58 @@ RealT = TypeVar("RealT")
 
 
 class IntervalType(enum.IntEnum):
+    """Describe which endpoint of an interval is closed."""
+
     ClOpen = 0
+    """Left-closed and right-open: ``[inf, sup)``."""
+
     OpenCl = 1
+    """Left-open and right-closed: ``(inf, sup]``."""
 
 
 @typing.runtime_checkable
 class Interval(Protocol):
-    """
-    Representation of an interval with an unspecified type for mathematical
-    computations or range definitions. This interface outlines the required
-    methods for retrieving key properties of an interval.
-    The purpose of this protocol is to define a constraint for other classes
-    or structures that aim to represent intervals and their specific types,
-    lower bounds (infimum), and upper bounds (supremum). Classes that adhere
-    to this protocol should implement the specified methods to be considered
-    compatible.
-    :ivar interval_type: Type information of the interval. This attribute
-        specifies the nature or classification of the interval, such as
-        open, closed, or partially open/closed.
-    :type interval_type: IntervalType
-    :ivar inf: The lower bound (infimum) of the interval. This attribute
-        represents the smallest value contained within the interval.
-    :type inf: float
-    :ivar sup: The upper bound (supremum) of the interval. This attribute
-        represents the largest value contained within the interval.
-    :type sup: float
+    """Define the structural interface shared by interval representations.
+
+    Endpoint arrays may be scalar or batched. Implementations expose one
+    endpoint convention for the complete batch.
     """
 
     @property
-    def interval_type(self) -> IntervalType: ...
+    def interval_type(self) -> IntervalType:
+        """Return the endpoint convention used by the interval."""
+        ...
 
     @property
-    def inf(self) -> Array: ...
+    def inf(self) -> Array:
+        """Return the lower endpoint array."""
+        ...
 
     @property
-    def sup(self) -> Array: ...
+    def sup(self) -> Array:
+        """Return the upper endpoint array."""
+        ...
 
     @property
-    def length(self) -> Array: ...
+    def length(self) -> Array:
+        """Return the nonnegative interval length array."""
+        ...
 
 
 class BaseInterval:
+    """Provide shared formatting and length calculations for intervals."""
+
     # TODO: These don't need to be in a class, just have module-level functions for str, length, and intersection that
     # take Intervals as arguments. The only reason to have these in a class is if we want to use inheritance to share
     # code between different Interval implementations.
 
     @staticmethod
     def to_string(interval: Interval) -> str:
+        """Format an interval using its endpoint convention.
+
+        :param interval: Interval to format.
+        :return: String containing the endpoints and matching brackets.
+        """
         reprs = {
             IntervalType.ClOpen: "[{}, {})",
             IntervalType.OpenCl: "({}, {}]",
@@ -69,10 +76,10 @@ class BaseInterval:
 
     @staticmethod
     def length(interval: Interval) -> Array:
-        """
-        Calculate the length of the interval.
-        :return: The length of the interval, calculated as sup - inf.
-        :rtype: float
+        """Calculate the nonnegative length of an interval.
+
+        :param interval: Interval whose length is required.
+        :return: ``maximum(sup - inf, 0)`` with the broadcasted endpoint shape.
         """
         return jnp.maximum(0.0, jnp.asarray(interval.sup) - jnp.asarray(interval.inf))
 
@@ -81,20 +88,25 @@ def intersection(
     left_interval: Interval,
     right_interval: Interval,
 ) -> RealInterval | DyadicInterval | Partition:
-    """
-    Calculate the intersection of two intervals, dispatching to the
-    appropriate implementation based on the types of the arguments.
+    """Calculate the intersection of two interval representations.
 
-    - Two DyadicIntervals: delegates to DyadicInterval.intersection.
-    - Two RealIntervals (or other plain Intervals): computes the
-      intersection by bounds.
-    - One Partition and one Interval: delegates to Partition.truncate.
-    - Two Partitions: converts both to RealIntervals and computes the
-      intersection by bounds.
+    Two ordinary intervals produce a :class:`RealInterval`; two partitions
+    produce the real interval spanned by their overlapping outer bounds. One
+    partition and one other interval produce a clipped :class:`Partition`.
+    Disjoint real bounds are represented with ``inf > sup`` and therefore have
+    zero :attr:`Interval.length`.
 
-    :param left_interval: The left interval.
-    :param right_interval: The right interval.
-    :return: The intersection.
+    Dyadic intersection is not implemented. Two dyadic arguments raise
+    :class:`NotImplementedError`, while mixing a dyadic and non-dyadic interval
+    raises :class:`ValueError`.
+
+    :param left_interval: First interval operand.
+    :param right_interval: Second interval operand.
+    :return: Intersection represented according to the operand types.
+    :raises TypeError: If either operand does not satisfy :class:`Interval`, or
+        if the endpoint conventions differ.
+    :raises ValueError: If exactly one operand is dyadic.
+    :raises NotImplementedError: If both operands are dyadic intervals.
     """
     if not isinstance(left_interval, Interval) or not isinstance(
         right_interval, Interval
@@ -129,23 +141,21 @@ def intersection(
 
 
 class Dyadic:
-    """
-    Represents a dyadic number in mathematics.
-    Dyadic numbers are numbers of the form k * (2^-n), where k is an integer and
-    n is a non-negative integer.
-    ``k`` and ``n`` are scalar JAX arrays. Keeping the components as arrays is
-    important when dyadics are created or consumed inside JAX transformations.
+    """Represent values of the form ``k * 2**(-n)`` using integer arrays.
 
-    :ivar k: Integer component of the dyadic number.
-    :type k: Array
-    :ivar n: Exponent of 2 in the dyadic number.
-    :type n: Array
+    ``k`` and ``n`` may be scalar or batched. They remain JAX arrays so that
+    conversion can occur inside JAX transformations. When their shapes differ,
+    normal JAX broadcasting applies during conversion.
+
+    :param k: Integer numerator array.
+    :param n: Integer exponent array.
+    :raises TypeError: If either input has a non-integer dtype.
     """
 
     k: Array
     n: Array
 
-    def __init__(self, k: ArrayLike, n: ArrayLike) -> None:
+    def __init__(self, k: ArrayLike, n: ArrayLike):
         k = jnp.asarray(k)
         n = jnp.asarray(n)
 
@@ -158,12 +168,24 @@ class Dyadic:
         object.__setattr__(self, "n", n)
 
     def __setattr__(self, name: str, value: object) -> None:
+        """Reject mutation of a dyadic value.
+
+        :param name: Attribute name being assigned.
+        :param value: Proposed attribute value.
+        :raises FrozenInstanceError: On every attempted assignment.
+        """
         raise FrozenInstanceError(f"cannot assign to field '{name}'")
 
     def __str__(self) -> str:
+        """Return a representation containing the integer components."""
         return f"Dyadic(k={self.k}, n={self.n})"
 
     def __eq__(self, other: object) -> bool:
+        """Compare dyadic components for exact array equality.
+
+        :param other: Object to compare with this dyadic value.
+        :return: Whether ``other`` has the same type, ``k``, and ``n`` arrays.
+        """
         if type(self) is not type(other):
             return False
         return bool(
@@ -171,15 +193,23 @@ class Dyadic:
         )
 
     def __jax_array__(self) -> Array:
+        """Convert the dyadic components to a JAX floating-point array."""
         return jnp.ldexp(self.k, -self.n)
 
 
 class DyadicInterval(Dyadic):
-    """
-    This subclass represents a dyadic interval, and therefore conforms to the
-    Interval protocol. Crucially this is a subclass of Dyadic becuase its
-    endpoints (and width) are fully defined by the k and n parameters of Dyadic
-    and whether the interval is closed or open on either end.
+    """Represent unit-width dyadic intervals using integer components.
+
+    For :attr:`IntervalType.ClOpen`, ``k`` identifies
+    ``[k * 2**(-n), (k + 1) * 2**(-n))``. For
+    :attr:`IntervalType.OpenCl`, it identifies
+    ``((k - 1) * 2**(-n), k * 2**(-n)]``. Array components produce batched
+    intervals, including batches with zero-length dimensions.
+
+    :param k: Integer dyadic-location array.
+    :param n: Integer dyadic-resolution array.
+    :param interval_type: Endpoint convention shared by the interval batch.
+    :raises TypeError: If ``k`` or ``n`` has a non-integer dtype.
     """
 
     _interval_type: IntervalType
@@ -189,18 +219,25 @@ class DyadicInterval(Dyadic):
         k: ArrayLike,
         n: ArrayLike,
         interval_type: IntervalType = IntervalType.ClOpen,
-    ) -> None:
+    ):
         super().__init__(k, n)
         object.__setattr__(self, "_interval_type", interval_type)
 
     @property
     def interval_type(self) -> IntervalType:
+        """Return the endpoint convention used by the interval."""
         return self._interval_type
 
     def __str__(self) -> str:
+        """Format the interval using its endpoint convention."""
         return BaseInterval.to_string(self)
 
     def __eq__(self, other: object) -> bool:
+        """Compare interval type and dyadic components for equality.
+
+        :param other: Object to compare with this dyadic interval.
+        :return: Whether ``other`` has the same interval type, ``k``, and ``n``.
+        """
         return (
             isinstance(other, DyadicInterval)
             and self.interval_type == other.interval_type
@@ -210,22 +247,31 @@ class DyadicInterval(Dyadic):
 
     @property
     def inf(self) -> Array:
+        """Return the lower endpoint array."""
         k = self.k if self._interval_type == IntervalType.ClOpen else self.k - 1
         return jnp.ldexp(k, -self.n)
 
     @property
     def sup(self) -> Array:
+        """Return the upper endpoint array."""
         k = (self.k + 1) if self._interval_type == IntervalType.ClOpen else self.k
         return jnp.ldexp(k, -self.n)
 
     @property
     def length(self) -> Array:
+        """Return the nonnegative interval length array."""
         return BaseInterval.length(self)
 
     @classmethod
     def intersection(
         cls, left: DyadicInterval, right: DyadicInterval
     ) -> DyadicInterval:
+        """Raise because dyadic intersection is not implemented.
+
+        :param left: First dyadic interval.
+        :param right: Second dyadic interval.
+        :raises NotImplementedError: Always.
+        """
         raise NotImplementedError("DyadicInterval intersection is not implemented yet")
 
 
@@ -261,7 +307,7 @@ jax.tree_util.register_pytree_node(
 
 @dataclass(frozen=True, init=False)
 class RealInterval:
-    """A interval in the real line or collection thereof.
+    """Represent a scalar or batched interval on the real line.
 
     The lower and upper endpoint inputs must have broadcast-compatible shapes.
     They are broadcast when the interval is constructed and stored as arrays
@@ -272,9 +318,13 @@ class RealInterval:
     ``RealInterval`` is a pytree with the endpoint arrays as dynamic leaves and
     the interval type as static metadata.
 
-    :ivar inf: Lower endpoint array.
-    :ivar sup: Upper endpoint array.
-    :ivar interval_type: Shared endpoint convention for the interval batch.
+    Bounds are not required to be ordered. An element with ``inf >= sup`` has
+    zero length and can represent an empty intersection. Empty batch dimensions
+    are supported.
+
+    :param _inf: Lower endpoint input.
+    :param _sup: Upper endpoint input, broadcast-compatible with ``_inf``.
+    :param _interval_type: Endpoint convention shared by the interval batch.
     """
 
     _inf: Array
@@ -286,39 +336,59 @@ class RealInterval:
         _inf: ArrayLike,
         _sup: ArrayLike,
         _interval_type: IntervalType,
-    ) -> None:
+    ):
         inf, sup = jnp.broadcast_arrays(jnp.asarray(_inf), jnp.asarray(_sup))
         object.__setattr__(self, "_inf", inf)
         object.__setattr__(self, "_sup", sup)
         object.__setattr__(self, "_interval_type", _interval_type)
 
     def __str__(self) -> str:
+        """Format the interval using its endpoint convention."""
         return BaseInterval.to_string(self)
 
     def __hash__(self) -> int:
+        """Return a hash for an unbatched interval.
+
+        :return: Hash of the scalar endpoints and interval type.
+        :raises TypeError: If either endpoint is not scalar.
+        """
         if self._inf.ndim != 0 or self._sup.ndim != 0:
             raise TypeError("batched RealInterval objects are unhashable")
         return hash((self._inf.item(), self._sup.item(), self._interval_type))
 
     @property
     def interval_type(self) -> IntervalType:
+        """Return the endpoint convention used by the interval."""
         return self._interval_type
 
     @property
     def inf(self) -> Array:
+        """Return the lower endpoint array."""
         return self._inf
 
     @property
     def sup(self) -> Array:
+        """Return the upper endpoint array."""
         return self._sup
 
     @property
     def length(self) -> Array:
+        """Return ``maximum(sup - inf, 0)`` for each interval."""
         return BaseInterval.length(self)
 
     @classmethod
     def intersection(cls, left: Interval, right: Interval) -> RealInterval:
-        """Compute the intersection of two intervals as a RealInterval."""
+        """Compute an intersection from the overlapping endpoint bounds.
+
+        The endpoint arrays follow JAX broadcasting rules. This low-level
+        method assumes that the operands use compatible endpoint conventions;
+        :func:`intersection` performs that validation for public calls.
+
+        :param left: First interval operand.
+        :param right: Second interval operand.
+        :return: Real interval with lower bound ``maximum(left.inf, right.inf)``
+            and upper bound ``minimum(left.sup, right.sup)``.
+        """
         new_inf = jnp.maximum(left.inf, right.inf)
         new_sup = jnp.minimum(left.sup, right.sup)
         return RealInterval(new_inf, new_sup, left.interval_type)
@@ -333,7 +403,7 @@ RealInterval = jax.tree_util.register_dataclass(
 
 @jax.tree_util.register_pytree_node_class
 class Partition:
-    """A sorted partition of an interval.
+    """Represent a sorted partition of an interval.
 
     ``endpoints`` is stored as a JAX array. Its final axis contains the
     endpoints of each partition, while any preceding axes are batch
@@ -349,23 +419,18 @@ class Partition:
     The partition is a JAX pytree. The endpoint array is its dynamic leaf and
     ``interval_type`` is static metadata.
 
-    Args:
-        endpoints: Array-like endpoint values. The final axis must contain at
-            least two endpoints.
-        interval_type: Whether the intervals are left-closed/right-open or
-            left-open/right-closed.
+    :param endpoints: Array-like endpoint values with shape
+        ``(*batch_dims, n_endpoints)`` and at least two entries on the final
+        axis. Empty batch dimensions are supported.
+    :param interval_type: Endpoint convention shared by all subintervals.
+    :raises ValueError: If the final axis contains fewer than two endpoints.
 
-    Attributes:
-        endpoints: Sorted endpoint array with shape ``(..., n_endpoints)``.
-        interval_type: Shared endpoint convention for all represented
-            intervals.
     """
 
     endpoints: Array
     interval_type: IntervalType
 
     def __init__(self, endpoints: ArrayLike, interval_type: IntervalType):
-        """Construct a partition from array-like endpoints."""
         endpoints = jnp.sort(jnp.asarray(endpoints))
 
         if endpoints.shape[-1] < 2:
@@ -411,10 +476,17 @@ class Partition:
         return self.sup - self.inf
 
     def tree_flatten(self) -> tuple[Any, Any]:
+        """Return dynamic children and static metadata for JAX pytree handling."""
         return (self.endpoints,), (self.interval_type,)
 
     @classmethod
     def tree_unflatten(cls, aux_data: Any, children: Any):
+        """Reconstruct a partition from its pytree representation.
+
+        :param aux_data: Static tuple containing the endpoint convention.
+        :param children: Dynamic tuple containing the endpoint array.
+        :return: Reconstructed partition.
+        """
         obj = cls.__new__(cls)
         obj.endpoints = children[0]
         obj.interval_type = aux_data[0]
@@ -428,8 +500,7 @@ class Partition:
         )
 
     def truncate(self, other: Interval) -> Partition:
-        """
-        Clip every endpoint to the bounds of ``other``.
+        """Clip every endpoint to the bounds of another interval.
 
         This does not change the size of the array, so any endpoints that
         lie outside the other interval are repeated. The partition batch shape
@@ -437,7 +508,12 @@ class Partition:
         together. In particular, truncating an unbatched partition by a batched
         interval produces a partition with the interval's batch shape.
 
-        The interval types of the partition and the interval must match.
+        :param other: Interval providing the clipping bounds. Its endpoint
+            convention must match the partition's convention.
+        :return: Partition with clipped, sorted endpoints and the broadcasted
+            batch shape.
+        :raises ValueError: If the endpoint conventions differ or the batch
+            shapes cannot be broadcast together.
         """
         if self.interval_type != other.interval_type:
             raise ValueError("Cannot truncate partitions with different interval type")
@@ -446,8 +522,7 @@ class Partition:
         return Partition(endpoints, self.interval_type)
 
     def merge(self, other: Partition) -> Partition:
-        """
-        Interleave the endpoints from two partitions.
+        """Interleave the endpoints from two partitions.
 
         This performs an interval union of the two domains spanned by the
         arguments, with contained infimum and supremum endpoints becoming new
@@ -456,6 +531,10 @@ class Partition:
         define one unambiguous combined subdivision.
 
         Duplicate endpoints are preserved.
+
+        :param other: Partition whose endpoints should be merged with this one.
+        :return: Sorted partition containing both sets of endpoints.
+        :raises ValueError: If the endpoint conventions or batch shapes differ.
         """
         if self.interval_type != other.interval_type:
             raise ValueError("Cannot merge partitions with different interval types")
@@ -470,4 +549,5 @@ class Partition:
         return Partition(endpoints, self.interval_type)
 
     def to_real_interval(self) -> RealInterval:
+        """Return the real interval spanned by the outer endpoints."""
         return RealInterval(self.inf, self.sup, self.interval_type)
