@@ -78,6 +78,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+        with:
+          submodules: recursive
 
       - name: Prepare plugin build tree
         run: python3 tools/prepare_cuda_plugin_build.py --variant "${{ matrix.variant }}"
@@ -87,11 +89,6 @@ jobs:
         env:
           CIBW_ARCHS_LINUX: x86_64
           CIBW_MANYLINUX_X86_64_IMAGE: ${{ matrix.cibw_manylinux_image }}
-          CIBW_BEFORE_ALL_LINUX: >-
-            bash tools/bootstrap_rough_path_primitives.sh
-          CIBW_ENVIRONMENT_LINUX: >-
-            CMAKE_PREFIX_PATH=/usr
-            RPP_GIT_TAG=releases/1.0.2
           CIBW_REPAIR_WHEEL_COMMAND_LINUX: >-
             auditwheel repair --exclude libcudart.so.12 --exclude libcudart.so.13 -w {dest_dir} {wheel}
           # Importing the plugin requires CUDA-capable hardware, which GitHub-hosted runners lack.

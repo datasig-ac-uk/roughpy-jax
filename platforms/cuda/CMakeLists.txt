@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.30)
+cmake_minimum_required(VERSION 3.31)
 
 if (SKBUILD AND DEFINED SKBUILD_PROJECT_VERSION)
     set(RPJ_PLUGIN_VERSION ${SKBUILD_PROJECT_VERSION})
@@ -41,7 +41,31 @@ find_package(
         Python 3.11 REQUIRED COMPONENTS Development.Module Interpreter ${SKBUILD_SABI_COMPONENT}
 )
 find_package(CUDAToolkit ${RPJ_CUDA_TOOLKIT_MAJOR} REQUIRED)
-find_package(RoughPathPrimitives CONFIG REQUIRED COMPONENTS GPU)
+
+if (NOT DEFINED RPJ_RPP_SOURCE_DIR)
+    message(FATAL_ERROR "Set RPJ_RPP_SOURCE_DIR to the RPP submodule source directory.")
+endif ()
+get_filename_component(RPJ_RPP_SOURCE_DIR "${RPJ_RPP_SOURCE_DIR}" ABSOLUTE
+        BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+
+if (NOT IS_DIRECTORY "${RPJ_RPP_SOURCE_DIR}")
+    message(FATAL_ERROR "RPP source directory does not exist: ${RPJ_RPP_SOURCE_DIR}")
+endif ()
+
+if (NOT EXISTS "${RPJ_RPP_SOURCE_DIR}/CMakeLists.txt")
+    message(FATAL_ERROR
+        "No RPP CMakeLists.txt found in ${RPJ_RPP_SOURCE_DIR}. "
+        "Check RPJ_RPP_SOURCE_DIR and initialise the submodule with "
+        "git submodule update --init --recursive.")
+endif ()
+
+set(RPP_ENABLE_CUDA ON CACHE BOOL "" FORCE)
+set(RPP_ENABLE_TESTS OFF CACHE BOOL "" FORCE)
+set(RPP_ENABLE_BENCHMARKS OFF CACHE BOOL "" FORCE)
+set(RPP_ADD_STUB_TARGET OFF CACHE BOOL "" FORCE)
+add_subdirectory("${RPJ_RPP_SOURCE_DIR}"
+        "${CMAKE_CURRENT_BINARY_DIR}/third_party/rough_path_primitives"
+        EXCLUDE_FROM_ALL)
 
 if (NOT DEFINED RPJ_CUDA_TOOLKIT_MAJOR)
 #    message(FATAL_ERROR "RPJ_CUDA_TOOLKIT_MAJOR must be provided")

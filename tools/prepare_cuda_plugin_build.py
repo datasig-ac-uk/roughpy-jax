@@ -166,7 +166,7 @@ def render_pyproject(
             "]",
             "",
             "[tool.scikit-build]",
-            'cmake.version = ">=3.30"',
+            'cmake.version = ">=3.31"',
             'ninja.version = ">=1.11"',
             'cmake.build-type = "Release"',
             'logging.level = "INFO"',
@@ -182,6 +182,7 @@ def render_pyproject(
             'local_scheme = "no-local-version"',
             "",
             "[tool.scikit-build.cmake.define]",
+            'RPJ_RPP_SOURCE_DIR = "third_party/rough_path_primitives"',
             f'RPJ_CUDA_TOOLKIT_MAJOR = "{major}"',
             f'RPJ_CUDA_PACKAGE_DIR = "{package_module}"',
             f'RPJ_CUDA_VARIANT = "{family}"',
@@ -233,6 +234,13 @@ def main() -> None:
     out_dir = (args.out or repo_root / "build" / "cuda-plugin" / family).resolve()
     scm_root = Path(os.path.relpath(repo_root, out_dir)).as_posix()
 
+    rpp_source = repo_root / "third_party" / "rough_path_primitives"
+    if not (rpp_source / "CMakeLists.txt").is_file():
+        raise FileNotFoundError(
+            "RPP sources are missing. Run git submodule update --init --recursive "
+            "before preparing the plugin build."
+        )
+
     if out_dir.exists():
         shutil.rmtree(out_dir)
 
@@ -242,6 +250,11 @@ def main() -> None:
         out_dir / "package",
     )
     shutil.copy2(repo_root / "platforms" / "cuda" / "CMakeLists.txt", out_dir / "CMakeLists.txt")
+    shutil.copytree(
+        rpp_source,
+        out_dir / "third_party" / "rough_path_primitives",
+        ignore=shutil.ignore_patterns(".git", "__pycache__"),
+    )
 
     (out_dir / "pyproject.toml").write_text(
         render_pyproject(major, family, root_pyproject, scm_root),
