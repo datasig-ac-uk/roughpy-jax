@@ -1,4 +1,5 @@
 #include "dense_st_mul.h"
+#include "output_buffer.hpp"
 
 #include <rpp/architecture.hpp>
 #include <rpp/cpu/single_thread/operations/basic/st_mul.hpp>
@@ -28,6 +29,7 @@ struct DenseSTMulFunctor {
         using Arch = rpp::arch::DefaultArchitecture;
         using Strategy =
             rpp::cpu::strategies::SingleThreadStrategy<Accum, Arch>;
+        zero_result_buffer(out);
         auto out_batch =
             make_tensor_batch<Scalar, Arch>(out, 0, static_args.basis.depth);
         auto lhs_batch = make_tensor_batch<Scalar, Arch>(

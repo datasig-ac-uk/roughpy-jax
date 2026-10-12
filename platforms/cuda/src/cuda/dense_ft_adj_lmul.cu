@@ -7,6 +7,7 @@
 
 #include <xla_helpers/batch.hpp>
 #include <xla_helpers/xla_common.hpp>
+#include "output_buffer.cuh"
 #include "scalars.hpp"
 #include "select_strategy.cuh"
 
@@ -37,7 +38,8 @@ struct DenseFtAdjLMulFunctor {
         const auto elt_type = out->element_type();
 
         const auto n_tensors = get_batch_size(1, out);
-        RPY_XLA_SUCCESS_OR_RETURN(check_batch_size<DefaultArch>(n_tensors));
+
+        RPY_XLA_SUCCESS_OR_RETURN(zero_result_buffer(out, stream));
 
         return select_strategy<Accum>(tensor_size, [&](auto strategy) {
             using LaunchCfg = typename decltype(strategy)::LaunchConfig;
@@ -84,6 +86,9 @@ ffi::Error cuda_dense_ft_adj_lmul_impl(cudaStream_t stream,
     }
 
     RPY_XLA_SUCCESS_OR_RETURN(check_batch_dims(1, out, op, arg));
+
+    RPY_XLA_SUCCESS_OR_RETURN(
+        check_batch_size<DefaultArch>(get_batch_size(1, out)));
 
     return select_type_and_go<DenseFtAdjLMulFunctor>(
         elt_type, out, op, arg, static_args, stream);

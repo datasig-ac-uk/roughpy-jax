@@ -1,6 +1,6 @@
 #include "dense_ft_mul.h"
+#include "output_buffer.hpp"
 
-#include <algorithm>
 #include <rpp/architecture.hpp>
 #include <rpp/cpu/single_thread/operations/basic/ft_mul.hpp>
 #include <rpp/cpu/single_thread/strategy.hpp>
@@ -29,6 +29,7 @@ struct DenseFTMulFunctor {
         using Arch = rpp::arch::DefaultArchitecture;
         using Strategy =
             rpp::cpu::strategies::SingleThreadStrategy<Accum, Arch>;
+        zero_result_buffer(out);
         auto out_batch =
             make_tensor_batch<Scalar, Arch>(out, 0, static_args.basis.depth);
         auto lhs_batch = make_tensor_batch<Scalar, Arch>(
@@ -36,10 +37,6 @@ struct DenseFTMulFunctor {
         auto rhs_batch = make_tensor_batch<Scalar, Arch>(
             rhs, static_args.rhs_min_degree, static_args.rhs_max_degree);
 
-        // RPP's CPU multiplication currently reads the output with a zero
-        // coefficient. Initialise it so indeterminate values and NaNs cannot
-        // leak.
-        std::fill_n(out->typed_data<Scalar>(), out->element_count(), Scalar{});
         return map_err(rpp::ops::ft_mul(Strategy{},
                                         typename Strategy::LaunchConfig{},
                                         out_batch,

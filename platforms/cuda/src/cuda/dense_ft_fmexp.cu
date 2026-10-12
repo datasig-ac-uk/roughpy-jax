@@ -6,6 +6,7 @@
 
 #include <xla_helpers/batch.hpp>
 #include <xla_helpers/xla_common.hpp>
+#include "output_buffer.cuh"
 #include "scalars.hpp"
 #include "select_strategy.cuh"
 
@@ -32,7 +33,8 @@ struct DenseFTFMExpFunctor {
                            cudaStream_t stream) noexcept {
         const auto tensor_size = static_args.basis.size();
         const auto n_tensors = get_batch_size(1, out);
-        RPY_XLA_SUCCESS_OR_RETURN(check_batch_size<DefaultArch>(n_tensors));
+
+        RPY_XLA_SUCCESS_OR_RETURN(zero_result_buffer(out, stream));
 
         return select_strategy<Accum>(tensor_size, [&](auto strategy) {
             using LaunchCfg = typename decltype(strategy)::LaunchConfig;
@@ -85,6 +87,9 @@ ffi::Error cuda_dense_ft_fmexp_impl(cudaStream_t stream,
     }
 
     RPY_XLA_SUCCESS_OR_RETURN(check_batch_dims(1, out, multiplier, exponent));
+
+    RPY_XLA_SUCCESS_OR_RETURN(
+        check_batch_size<DefaultArch>(get_batch_size(1, out)));
 
     return select_type_and_go<DenseFTFMExpFunctor>(
         out->element_type(), out, multiplier, exponent, static_args, stream);

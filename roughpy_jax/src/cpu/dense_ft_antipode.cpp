@@ -1,4 +1,5 @@
 #include "dense_ft_antipode.h"
+#include "output_buffer.hpp"
 
 #include <rpp/architecture.hpp>
 #include <rpp/cpu/single_thread/operations/basic/tensor_generalised_antipode.hpp>
@@ -26,6 +27,7 @@ struct DenseFTAntipodeFunctor {
         using Strategy =
             rpp::cpu::strategies::SingleThreadStrategy<Accum, Arch>;
         using Policy = rpp::ops::TensorAntipodeSigningPolicy;
+        zero_result_buffer(out);
         auto out_batch =
             make_tensor_batch<Scalar, Arch>(out, 0, static_args.basis.depth);
         auto arg_batch =
