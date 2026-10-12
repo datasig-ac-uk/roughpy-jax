@@ -1,10 +1,11 @@
-#ifndef ROUGHPY_JAX_XLA_HELPERS_BATCH_CUH
-#define ROUGHPY_JAX_XLA_HELPERS_BATCH_CUH
+#ifndef ROUGHPY_JAX_XLA_HELPERS_BATCH_HPP
+#define ROUGHPY_JAX_XLA_HELPERS_BATCH_HPP
 
 #include <limits>
 
 #include <rpp/basis/tensor_basis.hpp>
-#include <rpp/gpu/architecture.hpp>
+#include <rpp/architecture.hpp>
+#include <rpp/basis/lie_basis.hpp>
 #include <rpp/views/batch.hpp>
 #include <rpp/views/dense_tensor_view.hpp>
 #include <rpp/views/dense_lie_view.hpp>
@@ -17,64 +18,64 @@ namespace rpy::jax {
 
 using HostTensorBasis = rpp::basis::StandardTensorBasis;
 
-template<typename T, typename Arch=rpp::gpu::arch::DefaultArchitecture>
-using GMemPtr = typename Arch::template GMemPtr<T>;
+template<typename T, typename Arch>
+using Ptr = typename Arch::template Ptr<T>;
 
-template<typename T, typename Arch=rpp::gpu::arch::DefaultArchitecture>
+template<typename T, typename Arch>
 using TensorView = rpp::DenseTensorView<
-    GMemPtr<T, Arch>,
+    Ptr<T, Arch>,
     rpp::basis::TensorBasis<Arch>
 >;
 
-template<typename T, typename Arch=rpp::gpu::arch::DefaultArchitecture>
+template<typename T, typename Arch>
 using LieView = rpp::DenseLieView<
-    GMemPtr<T, Arch>,
+    Ptr<T, Arch>,
     rpp::basis::LieBasis<Arch>
 >;
 
-template<typename T, typename Arch=rpp::gpu::arch::DefaultArchitecture>
-using ScalarView = rpp::ScalarView<GMemPtr<T, Arch>>;
+template<typename T, typename Arch>
+using ScalarView = rpp::ScalarView<Ptr<T, Arch>>;
 
-template<typename T, typename Arch=rpp::gpu::arch::DefaultArchitecture>
+template<typename T, typename Arch>
 using TensorBatch = rpp::Batch<
     TensorView<T, Arch>,
     rpp::layouts::StrideLayout<typename Arch::Index>
 >;
 
-template<typename T, typename Arch=rpp::gpu::arch::DefaultArchitecture>
+template<typename T, typename Arch>
 using LieBatch = rpp::Batch<
     LieView<T, Arch>,
     rpp::layouts::StrideLayout<typename Arch::Index>
 >;
 
-template<typename T, typename Arch=rpp::gpu::arch::DefaultArchitecture>
+template<typename T, typename Arch>
 using ScalarBatch = rpp::Batch<ScalarView<T, Arch>,
     rpp::layouts::NoStrideLayout
 >;
 
-// Batch counts are computed with 64-bit host integers, but the GPU operation
-// launch narrows them to the architecture's index type.
-template<typename Arch=rpp::gpu::arch::DefaultArchitecture, typename Size>
+// Batch counts are computed with 64-bit host integers, but operations
+// use the selected architecture's index type.
+template<typename Arch, typename Size>
 ffi::Error check_batch_size(Size batch_size) noexcept {
     using Index = typename Arch::Index;
 
     constexpr auto max_batch_size = std::numeric_limits<Index>::max();
     if (batch_size > max_batch_size) {
         return ffi::Error::InvalidArgument(
-            "batch size exceeds the CUDA kernel index range");
+            "batch size exceeds the architecture index range");
     }
 
     return ffi::Error::Success();
 }
 
-template<typename T, typename Arch=rpp::gpu::arch::DefaultArchitecture>
+template<typename T, typename Arch>
 auto make_tensor_batch(
     xla::ffi::AnyBuffer buffer,
     typename Arch::Degree min_degree = 0,
     typename Arch::Degree max_degree = -1
 ) noexcept {
     return TensorBatch<const T, Arch>{
-        GMemPtr<const T, Arch>(static_cast<const T *>(buffer.untyped_data())),
+        Ptr<const T, Arch>(static_cast<const T *>(buffer.untyped_data())),
         rpp::layouts::StrideLayout<typename Arch::Index>{
             static_cast<typename Arch::Index>(buffer.dimensions().back())
         },
@@ -82,14 +83,14 @@ auto make_tensor_batch(
     };
 }
 
-template<typename T, typename Arch=rpp::gpu::arch::DefaultArchitecture>
+template<typename T, typename Arch>
 auto make_tensor_batch(
     xla::ffi::Result<xla::ffi::AnyBuffer> buffer,
     typename Arch::Degree min_degree = 0,
     typename Arch::Degree max_degree = -1
 ) noexcept {
     return TensorBatch<T, Arch>{
-        GMemPtr<T, Arch>(static_cast<T *>(buffer->untyped_data())),
+        Ptr<T, Arch>(static_cast<T *>(buffer->untyped_data())),
         rpp::layouts::StrideLayout<typename Arch::Index>{
             static_cast<typename Arch::Index>(buffer->dimensions().back())
         },
@@ -98,14 +99,14 @@ auto make_tensor_batch(
 }
 
 
-template<typename T, typename Arch=rpp::gpu::arch::DefaultArchitecture>
+template<typename T, typename Arch>
 auto make_lie_batch(
     xla::ffi::AnyBuffer buffer,
     typename Arch::Degree min_degree = 0,
     typename Arch::Degree max_degree = -1
 ) noexcept {
     return LieBatch<const T, Arch>{
-        GMemPtr<const T, Arch>(static_cast<const T *>(buffer.untyped_data())),
+        Ptr<const T, Arch>(static_cast<const T *>(buffer.untyped_data())),
         rpp::layouts::StrideLayout<typename Arch::Index>{
             static_cast<typename Arch::Index>(buffer.dimensions().back())
         },
@@ -113,14 +114,14 @@ auto make_lie_batch(
     };
 }
 
-template<typename T, typename Arch=rpp::gpu::arch::DefaultArchitecture>
+template<typename T, typename Arch>
 auto make_lie_batch(
     xla::ffi::Result<xla::ffi::AnyBuffer> buffer,
     typename Arch::Degree min_degree = 0,
     typename Arch::Degree max_degree = -1
 ) noexcept {
     return LieBatch<T, Arch>{
-        GMemPtr<T, Arch>(static_cast<T *>(buffer->untyped_data())),
+        Ptr<T, Arch>(static_cast<T *>(buffer->untyped_data())),
         rpp::layouts::StrideLayout<typename Arch::Index>{
             static_cast<typename Arch::Index>(buffer->dimensions().back())
         },
@@ -128,19 +129,19 @@ auto make_lie_batch(
     };
 }
 
-template <typename T, typename Arch=rpp::gpu::arch::DefaultArchitecture>
+template <typename T, typename Arch>
 auto make_scalar_batch(xla::ffi::AnyBuffer buffer) noexcept {
-    return ScalarBatch<T, Arch>{
-        GMemPtr<const T, Arch>(static_cast<T const*>(buffer.untyped_data())),
+    return ScalarBatch<const T, Arch>{
+        Ptr<const T, Arch>(static_cast<T const*>(buffer.untyped_data())),
         rpp::layouts::NoStrideLayout{},
         {}
     };
 }
 
-template <typename T, typename Arch=rpp::gpu::arch::DefaultArchitecture>
+template <typename T, typename Arch>
 auto make_scalar_batch(ffi::Result<ffi::AnyBuffer> buffer) noexcept {
     return ScalarBatch<T, Arch>{
-        GMemPtr<T, Arch>(static_cast<T *>(buffer->untyped_data())),
+        Ptr<T, Arch>(static_cast<T *>(buffer->untyped_data())),
         rpp::layouts::NoStrideLayout{},
         {}
     };
@@ -149,4 +150,4 @@ auto make_scalar_batch(ffi::Result<ffi::AnyBuffer> buffer) noexcept {
 } // namespace rpy::jax
 
 
-#endif //ROUGHPY_JAX_XLA_HELPERS_BATCH_CUH
+#endif //ROUGHPY_JAX_XLA_HELPERS_BATCH_HPP

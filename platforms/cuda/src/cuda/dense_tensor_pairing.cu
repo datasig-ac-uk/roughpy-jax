@@ -4,7 +4,7 @@
 #include <rpp/basis/tensor_basis.hpp>
 #include <rpp/gpu/block/operations/basic/tensor_pairing.hpp>
 
-#include <xla_helpers/batch.cuh>
+#include <xla_helpers/batch.hpp>
 #include "scalars.hpp"
 #include "select_strategy.cuh"
 #include <xla_helpers/xla_common.hpp>
@@ -34,15 +34,15 @@ struct DenseTensorPairingFunctor {
         const auto tensor_size = static_args.basis.size();
         auto out_shape = out->dimensions();
         const auto batch_size = std::accumulate(out_shape.begin(), out_shape.end(), 1LL, std::multiplies<int64_t>());
-        RPY_XLA_SUCCESS_OR_RETURN(check_batch_size(batch_size));
+        RPY_XLA_SUCCESS_OR_RETURN(check_batch_size<DefaultArch>(batch_size));
 
         return select_strategy<Accum>(tensor_size, [&](auto strategy) {
             using LaunchCfg = typename decltype(strategy)::LaunchConfig;
             return rpp::ops::tensor_pairing(strategy, LaunchCfg{stream},
-                                            make_scalar_batch<Scalar>(out),
-                                            make_tensor_batch<Scalar>(func, static_args.fun_min_degree,
+                                            make_scalar_batch<Scalar, DefaultArch>(out),
+                                            make_tensor_batch<Scalar, DefaultArch>(func, static_args.fun_min_degree,
                                                                       static_args.fun_max_degree),
-                                            make_tensor_batch<Scalar>(arg, static_args.arg_min_degree,
+                                            make_tensor_batch<Scalar, DefaultArch>(arg, static_args.arg_min_degree,
                                                                       static_args.arg_max_degree),
                                             static_args.basis,
                                             batch_size

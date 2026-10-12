@@ -12,7 +12,7 @@
 
 #include "scalars.hpp"
 #include "select_strategy.cuh"
-#include <xla_helpers/batch.cuh>
+#include <xla_helpers/batch.hpp>
 #include <xla_helpers/xla_common.hpp>
 
 namespace rpy::jax::cuda {
@@ -47,16 +47,16 @@ struct DenseFtAdjLMulFunctor {
         const auto n_tensors = std::accumulate(
             out_shape.begin(), out_shape.end() - 1, 1LL,
             std::multiplies<>{});
-        RPY_XLA_SUCCESS_OR_RETURN(check_batch_size(n_tensors));
+        RPY_XLA_SUCCESS_OR_RETURN(check_batch_size<DefaultArch>(n_tensors));
 
         return select_strategy<Accum>(tensor_size, [&](auto strategy) {
             using LaunchCfg = typename decltype(strategy)::LaunchConfig;
             return rpp::ops::ft_adj_lmul(
                 strategy,
                 LaunchCfg { stream },
-                make_tensor_batch<Scalar>(out, 0, static_args.basis.depth),
-                make_tensor_batch<Scalar>(op, 0, static_args.op_max_deg),
-                make_tensor_batch<Scalar>(arg, 0, static_args.arg_max_deg),
+                make_tensor_batch<Scalar, DefaultArch>(out, 0, static_args.basis.depth),
+                make_tensor_batch<Scalar, DefaultArch>(op, 0, static_args.op_max_deg),
+                make_tensor_batch<Scalar, DefaultArch>(arg, 0, static_args.arg_max_deg),
                 static_args.basis,
                 n_tensors
                 );
@@ -85,16 +85,16 @@ struct DenseFTAdjRMulFunctor {
         const auto n_tensors = std::accumulate(
             out_shape.begin(), out_shape.end() - 1, 1LL,
             std::multiplies<>{});
-        RPY_XLA_SUCCESS_OR_RETURN(check_batch_size(n_tensors));
+        RPY_XLA_SUCCESS_OR_RETURN(check_batch_size<DefaultArch>(n_tensors));
 
         return select_strategy<Accum>(tensor_size, [&](auto strategy) {
             using LaunchCfg = typename decltype(strategy)::LaunchConfig;
             return rpp::ops::ft_adj_rmul(
                 strategy,
                 LaunchCfg { stream },
-                make_tensor_batch<Scalar>(out, 0, static_args.basis.depth),
-                make_tensor_batch<Scalar>(op, 0, static_args.op_max_deg),
-                make_tensor_batch<Scalar>(arg, 0, static_args.arg_max_deg),
+                make_tensor_batch<Scalar, DefaultArch>(out, 0, static_args.basis.depth),
+                make_tensor_batch<Scalar, DefaultArch>(op, 0, static_args.op_max_deg),
+                make_tensor_batch<Scalar, DefaultArch>(arg, 0, static_args.arg_max_deg),
                 static_args.basis,
                 n_tensors
                 );

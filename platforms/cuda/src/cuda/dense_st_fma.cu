@@ -7,7 +7,7 @@
 #include <rpp/gpu/block/operations/basic/st_fma.hpp>
 #include <rpp/gpu/block/operations/basic/st_mul.hpp>
 
-#include <xla_helpers/batch.cuh>
+#include <xla_helpers/batch.hpp>
 #include "scalars.hpp"
 #include "select_strategy.cuh"
 #include <xla_helpers/xla_common.hpp>
@@ -42,19 +42,19 @@ struct DenseSTFmaFunctor {
                             out_shape.end() - 1,
                             1LL,
                             std::multiplies<>{});
-        RPY_XLA_SUCCESS_OR_RETURN(check_batch_size(n_tensors));
+        RPY_XLA_SUCCESS_OR_RETURN(check_batch_size<DefaultArch>(n_tensors));
 
         return select_strategy<Accum>(tensor_size, [&](auto strategy) {
             using LaunchCfg = typename decltype(strategy)::LaunchConfig;
             return rpp::ops::st_fma(
                 strategy,
                 LaunchCfg{stream},
-                make_tensor_batch<Scalar>(out, 0, static_args.basis.depth),
-                make_tensor_batch<Scalar>(a, 0, static_args.a_max_degree),
-                make_tensor_batch<Scalar>(b,
+                make_tensor_batch<Scalar, DefaultArch>(out, 0, static_args.basis.depth),
+                make_tensor_batch<Scalar, DefaultArch>(a, 0, static_args.a_max_degree),
+                make_tensor_batch<Scalar, DefaultArch>(b,
                                           static_args.b_min_degree,
                                           static_args.b_max_degree),
-                make_tensor_batch<Scalar>(c,
+                make_tensor_batch<Scalar, DefaultArch>(c,
                                           static_args.c_min_degree,
                                           static_args.c_max_degree),
                 static_args.basis,
@@ -74,18 +74,18 @@ struct DenseSTFmaFunctor {
                             out_shape.end() - 1,
                             1LL,
                             std::multiplies<>{});
-        RPY_XLA_SUCCESS_OR_RETURN(check_batch_size(n_tensors));
+        RPY_XLA_SUCCESS_OR_RETURN(check_batch_size<DefaultArch>(n_tensors));
 
         return select_strategy<Accum>(tensor_size, [&](auto strategy) {
             using LaunchCfg = typename decltype(strategy)::LaunchConfig;
             return rpp::ops::st_mul(
                 strategy,
                 LaunchCfg{stream},
-                make_tensor_batch<Scalar>(out, 0, static_args.basis.depth),
-                make_tensor_batch<Scalar>(lhs,
+                make_tensor_batch<Scalar, DefaultArch>(out, 0, static_args.basis.depth),
+                make_tensor_batch<Scalar, DefaultArch>(lhs,
                                           static_args.b_min_degree,
                                           static_args.b_max_degree),
-                make_tensor_batch<Scalar>(rhs,
+                make_tensor_batch<Scalar, DefaultArch>(rhs,
                                           static_args.c_min_degree,
                                           static_args.c_max_degree),
                 static_args.basis,

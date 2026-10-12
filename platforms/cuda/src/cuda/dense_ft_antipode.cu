@@ -11,7 +11,7 @@
 #include <rpp/gpu/block/operations/basic/tensor_reflect.hpp>
 
 
-#include <xla_helpers/batch.cuh>
+#include <xla_helpers/batch.hpp>
 #include "scalars.hpp"
 #include "select_strategy.cuh"
 #include <xla_helpers/xla_common.hpp>
@@ -43,7 +43,7 @@ struct DenseFTAntipodeFunctor {
                                 out_shape.end() - 1,
                                 1LL,
                                 std::multiplies<>{});
-        RPY_XLA_SUCCESS_OR_RETURN(check_batch_size(n_tensors));
+        RPY_XLA_SUCCESS_OR_RETURN(check_batch_size<DefaultArch>(n_tensors));
 
         return select_strategy<Accum>(tensor_size, [&](auto strategy) {
             using LaunchCfg = typename decltype(strategy)::LaunchConfig;
@@ -51,8 +51,8 @@ struct DenseFTAntipodeFunctor {
                 return rpp::ops::tensor_reflect(
                     strategy,
                     LaunchCfg{stream},
-                    make_tensor_batch<Scalar>(out, 0, static_args.max_degree),
-                    make_tensor_batch<Scalar>(arg, 0, static_args.max_degree),
+                    make_tensor_batch<Scalar, DefaultArch>(out, 0, static_args.max_degree),
+                    make_tensor_batch<Scalar, DefaultArch>(arg, 0, static_args.max_degree),
                     static_args.basis,
                     n_tensors
                     );
@@ -60,8 +60,8 @@ struct DenseFTAntipodeFunctor {
             return rpp::ops::tensor_antipode(
                 strategy,
                 LaunchCfg{stream},
-                make_tensor_batch<Scalar>(out, 0, static_args.max_degree),
-                make_tensor_batch<Scalar>(arg, 0, static_args.max_degree),
+                make_tensor_batch<Scalar, DefaultArch>(out, 0, static_args.max_degree),
+                make_tensor_batch<Scalar, DefaultArch>(arg, 0, static_args.max_degree),
                 static_args.basis,
                 n_tensors
                 );
