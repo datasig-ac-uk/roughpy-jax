@@ -116,14 +116,18 @@ set_target_properties(
 
 
 target_sources(RoughPyJAXCudaPlugin PRIVATE
-        src/cuda/dense_ft_adj_mul.cu
-        src/cuda/dense_ft_adj_mul.h
+        src/cuda/dense_ft_adj_lmul.cu
+        src/cuda/dense_ft_adj_lmul.h
+        src/cuda/dense_ft_adj_rmul.cu
+        src/cuda/dense_ft_adj_rmul.h
         src/cuda/dense_ft_antipode.cu
         src/cuda/dense_ft_antipode.h
         src/cuda/dense_ft_exp.cu
         src/cuda/dense_ft_exp.h
         src/cuda/dense_ft_fma.h
         src/cuda/dense_ft_fma.cu
+        src/cuda/dense_ft_mul.cu
+        src/cuda/dense_ft_mul.h
         src/cuda/dense_ft_fmexp.cu
         src/cuda/dense_ft_fmexp.h
         src/cuda/dense_ft_log.cu
