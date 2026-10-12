@@ -81,6 +81,9 @@ ffi::Error cuda_dense_tensor_pairing(cudaStream_t stream,
             "all arguments should have the same data type");
     }
 
+    RPY_XLA_SUCCESS_OR_RETURN(
+        check_batch_dims(out->dimensions(), 1, functional, argument));
+
     return select_type_and_go<DenseTensorPairingFunctor>(
         out->element_type(), out, functional, argument, static_args, stream);
 }

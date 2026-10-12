@@ -45,7 +45,7 @@ struct DenseFTAntipodeFunctor {
                     strategy,
                     LaunchCfg{stream},
                     make_tensor_batch<Scalar, DefaultArch>(
-                        out, 0, static_args.max_degree),
+                        out, 0, static_args.basis.depth),
                     make_tensor_batch<Scalar, DefaultArch>(
                         arg, 0, static_args.max_degree),
                     static_args.basis,
@@ -55,7 +55,7 @@ struct DenseFTAntipodeFunctor {
                 strategy,
                 LaunchCfg{stream},
                 make_tensor_batch<Scalar, DefaultArch>(
-                    out, 0, static_args.max_degree),
+                    out, 0, static_args.basis.depth),
                 make_tensor_batch<Scalar, DefaultArch>(
                     arg, 0, static_args.max_degree),
                 static_args.basis,
@@ -86,6 +86,8 @@ ffi::Error cuda_dense_ft_antipode_impl(cudaStream_t stream,
         return ffi::Error::InvalidArgument(
             "all tensors should have the same data type");
     }
+
+    RPY_XLA_SUCCESS_OR_RETURN(check_batch_dims(1, out, arg));
 
     return select_type_and_go<DenseFTAntipodeFunctor>(
         out->element_type(), out, arg, static_args, stream);

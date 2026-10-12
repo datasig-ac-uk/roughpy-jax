@@ -84,6 +84,8 @@ ffi::Error cuda_dense_ft_fmexp_impl(cudaStream_t stream,
             "all tensors should have the same data type");
     }
 
+    RPY_XLA_SUCCESS_OR_RETURN(check_batch_dims(1, out, multiplier, exponent));
+
     return select_type_and_go<DenseFTFMExpFunctor>(
         out->element_type(), out, multiplier, exponent, static_args, stream);
 }
