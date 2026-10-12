@@ -1,5 +1,5 @@
-#ifndef ROUGHPY_JAX_XLA_HELPERS_SELECT_STRATEGY_CUH
-#define ROUGHPY_JAX_XLA_HELPERS_SELECT_STRATEGY_CUH
+#ifndef ROUGHPY_JAX_CUDA_SELECT_STRATEGY_CUH
+#define ROUGHPY_JAX_CUDA_SELECT_STRATEGY_CUH
 
 
 #include <rpp/architecture.hpp>
@@ -7,9 +7,9 @@
 #include <rpp/gpu/architecture.hpp>
 #include <rpp/gpu/block/strategy.hpp>
 
-#include "xla_common.hpp"
+#include <xla_helpers/xla_common.hpp>
 
-namespace rpy::jax {
+namespace rpy::jax::cuda {
 using DefaultArch = rpp::gpu::arch::DefaultArchitecture;
 
 namespace detail {
@@ -54,7 +54,7 @@ xla::ffi::Error select_strategy(Index problem_size, F&& func) noexcept {
     using Strategy = rpp::gpu::strategies::BlockStrategy<Accum, 256, 256, Arch>;
     return detail::map_err(func(Strategy{256}));
 }
-} // namespace rpy::jax
+} // namespace rpy::jax::cuda
 
 
-#endif //ROUGHPY_JAX_XLA_HELPERS_SELECT_STRATEGY_CUH
+#endif //ROUGHPY_JAX_CUDA_SELECT_STRATEGY_CUH

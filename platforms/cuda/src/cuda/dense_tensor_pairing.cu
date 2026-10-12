@@ -6,7 +6,7 @@
 
 #include <xla_helpers/batch.cuh>
 #include "scalars.hpp"
-#include <xla_helpers/select_strategy.cuh>
+#include "select_strategy.cuh"
 #include <xla_helpers/xla_common.hpp>
 
 
