@@ -17,6 +17,7 @@ namespace rpy::jax {
 // Specialisations of the shared tag must live in its declaring namespace.
 template <typename AccumType>
 struct ScalarTag<ffi::DataType::F16, AccumType> {
+    static constexpr bool available = true;
     static constexpr auto tag = ffi::DataType::F16;
     using Scalar = __half;
     using Accum = std::conditional_t<std::is_void_v<AccumType>, float, AccumType>;
@@ -24,13 +25,17 @@ struct ScalarTag<ffi::DataType::F16, AccumType> {
 
 template <typename AccumType>
 struct ScalarTag<ffi::DataType::BF16, AccumType> {
+    static constexpr bool available = true;
     static constexpr auto tag = ffi::DataType::BF16;
     using Scalar = __nv_bfloat16;
     using Accum = std::conditional_t<std::is_void_v<AccumType>, float, AccumType>;
 };
 
+// CUDA FP8 wrappers have storage mappings, but the kernels do not yet
+// support their arithmetic. Keep them unavailable to scalar dispatch.
 template <typename AccumType>
 struct ScalarTag<ffi::DataType::F8E4M3, AccumType> {
+    static constexpr bool available = false;
     static constexpr auto tag = ffi::DataType::F8E4M3;
     using Scalar = __nv_fp8_e4m3;
     using Accum = std::conditional_t<std::is_void_v<AccumType>, float, AccumType>;
@@ -38,6 +43,7 @@ struct ScalarTag<ffi::DataType::F8E4M3, AccumType> {
 
 template <typename AccumType>
 struct ScalarTag<ffi::DataType::F8E4M3FN, AccumType> {
+    static constexpr bool available = false;
     static constexpr auto tag = ffi::DataType::F8E4M3FN;
     using Scalar = __nv_fp8_e4m3;
     using Accum = std::conditional_t<std::is_void_v<AccumType>, float, AccumType>;
@@ -45,6 +51,7 @@ struct ScalarTag<ffi::DataType::F8E4M3FN, AccumType> {
 
 template <typename AccumType>
 struct ScalarTag<ffi::DataType::F8E4M3B11FNUZ, AccumType> {
+    static constexpr bool available = false;
     static constexpr auto tag = ffi::DataType::F8E4M3B11FNUZ;
     using Scalar = __nv_fp8_e4m3;
     using Accum = std::conditional_t<std::is_void_v<AccumType>, float, AccumType>;
@@ -52,6 +59,7 @@ struct ScalarTag<ffi::DataType::F8E4M3B11FNUZ, AccumType> {
 
 template <typename AccumType>
 struct ScalarTag<ffi::DataType::F8E4M3FNUZ, AccumType> {
+    static constexpr bool available = false;
     static constexpr auto tag = ffi::DataType::F8E4M3FNUZ;
     using Scalar = __nv_fp8_e4m3;
     using Accum = std::conditional_t<std::is_void_v<AccumType>, float, AccumType>;
@@ -59,6 +67,7 @@ struct ScalarTag<ffi::DataType::F8E4M3FNUZ, AccumType> {
 
 template <typename AccumType>
 struct ScalarTag<ffi::DataType::F8E5M2, AccumType> {
+    static constexpr bool available = false;
     static constexpr auto tag = ffi::DataType::F8E5M2;
     using Scalar = __nv_fp8_e5m2;
     using Accum = std::conditional_t<std::is_void_v<AccumType>, float, AccumType>;
@@ -66,6 +75,7 @@ struct ScalarTag<ffi::DataType::F8E5M2, AccumType> {
 
 template <typename AccumType>
 struct ScalarTag<ffi::DataType::F8E5M2FNUZ, AccumType> {
+    static constexpr bool available = false;
     static constexpr auto tag = ffi::DataType::F8E5M2FNUZ;
     using Scalar = __nv_fp8_e5m2;
     using Accum = std::conditional_t<std::is_void_v<AccumType>, float, AccumType>;
@@ -93,49 +103,6 @@ inline constexpr ffi::DataType native_dtype_v<float> = ffi::DataType::F32;
 
 template<>
 inline constexpr ffi::DataType native_dtype_v<double> = ffi::DataType::F64;
-
-template<template <typename> class Fn, typename... Args>
-RPP_FORCEINLINE ffi::Error select_type_and_go(ffi::DataType dtype,
-                                                   Args &&... args) noexcept {
-    switch (dtype) {
-        case ffi::DataType::F16:
-            return Fn<ScalarTag<ffi::DataType::F16> >::eval(
-                std::forward<Args>(args)...);
-        case ffi::DataType::BF16:
-            return Fn<ScalarTag<ffi::DataType::BF16> >::eval(
-                std::forward<Args>(args)...);
-        case ffi::DataType::F32:
-            return Fn<ScalarTag<ffi::DataType::F32> >::eval(
-                std::forward<Args>(args)...);
-        case ffi::DataType::F64:
-            return Fn<ScalarTag<ffi::DataType::F64> >::eval(
-                std::forward<Args>(args)...);
-        // case ffi::DataType::F8E4M3FN:
-        //     return
-        //     Fn<ScalarTag<ffi::DataType::F8E4M3FN>>::eval(
-        //         std::forward<Args>(args)...);
-        // case ffi::DataType::F8E4M3B11FNUZ:
-        //     return
-        //     Fn<ScalarTag<ffi::DataType::F8E4M3B11FNUZ>>::eval(
-        //         std::forward<Args>(args)...);
-        // case ffi::DataType::F8E4M3FNUZ:
-        //     return
-        //     Fn<ScalarTag<ffi::DataType::F8E4M3FNUZ>>::eval(
-        //         std::forward<Args>(args)...);
-        // case ffi::DataType::F8E5M2FNUZ:
-        //     return
-        //     Fn<ScalarTag<ffi::DataType::F8E5M2FNUZ>>::eval(
-        //         std::forward<Args>(args)...);
-        // case ffi::DataType::F4E2M1FN:
-        //     return
-        //     Fn<ScalarTag<ffi::DataType::F4E2M1FN>>::eval(
-        //         std::forward<Args>(args)...);
-        default:
-            return {ffi::ErrorCode::kInvalidArgument, "unsupported dtype"};
-    }
-}
-
-
 
 class AnyScalar {
     void const *data_;
