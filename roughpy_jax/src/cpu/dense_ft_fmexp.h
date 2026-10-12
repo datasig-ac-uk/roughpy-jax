@@ -14,4 +14,4 @@ XLA_FFI_Error* cpu_dense_ft_fmexp(XLA_FFI_CallFrame*);
 }
 #endif
 
-#endif  // ROUGHPY_JAX_CPU_DENSE_FT_FMEXP_H
+#endif // ROUGHPY_JAX_CPU_DENSE_FT_FMEXP_H

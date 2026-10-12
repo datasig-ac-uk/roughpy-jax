@@ -27,28 +27,16 @@ struct DenseFTFMExpFunctor : DenseFTFMExpStaticArgs {
     using StaticData = DenseFTFMExpStaticArgs;
 
     explicit DenseFTFMExpFunctor(DenseFTFMExpStaticArgs args)
-        : DenseFTFMExpStaticArgs(std::move(args))
-    {}
+        : DenseFTFMExpStaticArgs(std::move(args)) {}
 
-    ffi::Error operator()(
-            Scalar* out_data,
-            const Scalar* multiplier_data,
-            const Scalar* exponent_data
-    )
-    {
+    ffi::Error operator()(Scalar* out_data,
+                          const Scalar* multiplier_data,
+                          const Scalar* exponent_data) {
         DenseTensorView<Scalar*> result_view(out_data, basis);
         DenseTensorView<const Scalar*> multiplier_view(
-                multiplier_data,
-                basis,
-                mul_min_degree,
-                mul_max_degree
-        );
+            multiplier_data, basis, mul_min_degree, mul_max_degree);
         DenseTensorView<const Scalar*> exponent_view(
-                exponent_data,
-                basis,
-                exp_min_degree,
-                exp_max_degree
-        );
+            exponent_data, basis, exp_min_degree, exp_max_degree);
 
         std::fill_n(out_data, result_view.size(), Scalar{});
         intermediate::ft_fmexp(result_view, multiplier_view, exponent_view);
@@ -57,40 +45,35 @@ struct DenseFTFMExpFunctor : DenseFTFMExpStaticArgs {
     }
 };
 
-ffi::Error cpu_dense_ft_fmexp_impl(
-        ffi::Result<ffi::AnyBuffer> result,
-        ffi::AnyBuffer multiplier,
-        ffi::AnyBuffer exponent,
-        int32_t width,
-        int32_t depth,
-        DegreeBeginSpan degree_begin,
-        int32_t mul_max_deg,
-        int32_t exp_max_deg,
-        int32_t mul_min_deg,
-        int32_t exp_min_deg
-)
-{
-    DenseFTFMExpStaticArgs static_args {
-        TensorBasis {cast_db_array(degree_begin.begin()), width, depth},
+ffi::Error cpu_dense_ft_fmexp_impl(ffi::Result<ffi::AnyBuffer> result,
+                                   ffi::AnyBuffer multiplier,
+                                   ffi::AnyBuffer exponent,
+                                   int32_t width,
+                                   int32_t depth,
+                                   DegreeBeginSpan degree_begin,
+                                   int32_t mul_max_deg,
+                                   int32_t exp_max_deg,
+                                   int32_t mul_min_deg,
+                                   int32_t exp_min_deg) {
+    DenseFTFMExpStaticArgs static_args{
+        TensorBasis{cast_db_array(degree_begin.begin()), width, depth},
         mul_max_deg,
         exp_max_deg,
         mul_min_deg,
-        exp_min_deg
-    };
+        exp_min_deg};
 
     RPY_XLA_SUCCESS_OR_RETURN(
-            check_data_degree(result, static_args.basis, depth)
-    );
+        check_data_degree(result, static_args.basis, depth));
     RPY_XLA_SUCCESS_OR_RETURN(
-            check_data_degree(multiplier, static_args.basis, mul_max_deg)
-    );
+        check_data_degree(multiplier, static_args.basis, mul_max_deg));
     RPY_XLA_SUCCESS_OR_RETURN(
-            check_data_degree(exponent, static_args.basis, exp_max_deg)
-    );
+        check_data_degree(exponent, static_args.basis, exp_max_deg));
 
-    RPY_XLA_SUCCESS_OR_RETURN(check_batch_dims(1, result, multiplier, exponent));
+    RPY_XLA_SUCCESS_OR_RETURN(
+        check_batch_dims(1, result, multiplier, exponent));
     if (!all_buffers_match_type(result->element_type(), multiplier, exponent)) {
-        return ffi::Error::InvalidArgument("all tensors should have the same data type");
+        return ffi::Error::InvalidArgument(
+            "all tensors should have the same data type");
     }
 
     return select_implementation_and_go<DenseFTFMExpFunctor>(
@@ -98,24 +81,22 @@ ffi::Error cpu_dense_ft_fmexp_impl(
         result->element_type(),
         result,
         multiplier,
-        exponent
-        );
+        exponent);
 }
 
-}// namespace rpy::jax::cpu
+} // namespace rpy::jax::cpu
 
 XLA_FFI_DEFINE_HANDLER_SYMBOL(
-        cpu_dense_ft_fmexp,
-        rpy::jax::cpu::cpu_dense_ft_fmexp_impl,
-        xla::ffi::Ffi::Bind()
-                .Ret<xla::ffi::AnyBuffer>()
-                .Arg<xla::ffi::AnyBuffer>()
-                .Arg<xla::ffi::AnyBuffer>()
-                .Attr<int32_t>("width")
-                .Attr<int32_t>("depth")
-                .Attr<rpy::jax::DegreeBeginSpan>("degree_begin")
-                .Attr<int32_t>("mul_max_deg")
-                .Attr<int32_t>("exp_max_deg")
-                .Attr<int32_t>("mul_min_deg")
-                .Attr<int32_t>("exp_min_deg")
-);
+    cpu_dense_ft_fmexp,
+    rpy::jax::cpu::cpu_dense_ft_fmexp_impl,
+    xla::ffi::Ffi::Bind()
+        .Ret<xla::ffi::AnyBuffer>()
+        .Arg<xla::ffi::AnyBuffer>()
+        .Arg<xla::ffi::AnyBuffer>()
+        .Attr<int32_t>("width")
+        .Attr<int32_t>("depth")
+        .Attr<rpy::jax::DegreeBeginSpan>("degree_begin")
+        .Attr<int32_t>("mul_max_deg")
+        .Attr<int32_t>("exp_max_deg")
+        .Attr<int32_t>("mul_min_deg")
+        .Attr<int32_t>("exp_min_deg"));

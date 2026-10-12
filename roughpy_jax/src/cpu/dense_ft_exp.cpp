@@ -11,15 +11,13 @@ using namespace rpy::compute;
 
 namespace rpy::jax::cpu {
 
-struct DenseFTExpStaticArgs
-{
+struct DenseFTExpStaticArgs {
     TensorBasis basis;
     int32_t arg_max_degree;
 };
 
 template <ffi::DataType DType>
-struct DenseFTExpFunctor : DenseFTExpStaticArgs
-{
+struct DenseFTExpFunctor : DenseFTExpStaticArgs {
     using Scalar = ffi::NativeType<DType>;
     static constexpr size_t core_dims = 1;
 
@@ -28,12 +26,10 @@ struct DenseFTExpFunctor : DenseFTExpStaticArgs
     explicit DenseFTExpFunctor(DenseFTExpStaticArgs args)
         : DenseFTExpStaticArgs(std::move(args)) {}
 
-    ffi::Error operator()(Scalar* out_data, const Scalar* arg_data)
-    {
-        DenseTensorView<Scalar*>
-                result_view(out_data, basis);
-        DenseTensorView<const Scalar*>
-                arg_view(arg_data, basis, 0, arg_max_degree);
+    ffi::Error operator()(Scalar* out_data, const Scalar* arg_data) {
+        DenseTensorView<Scalar*> result_view(out_data, basis);
+        DenseTensorView<const Scalar*> arg_view(
+            arg_data, basis, 0, arg_max_degree);
 
         std::fill_n(out_data, result_view.size(), Scalar{});
 
@@ -43,23 +39,20 @@ struct DenseFTExpFunctor : DenseFTExpStaticArgs
     }
 };
 
-ffi::Error cpu_dense_ft_exp_impl(
-    ffi::Result<ffi::AnyBuffer> result,
-    ffi::AnyBuffer arg,
-    int32_t width,
-    int32_t depth,
-    DegreeBeginSpan degree_begin,
-    int32_t arg_max_degree
-) {
+ffi::Error cpu_dense_ft_exp_impl(ffi::Result<ffi::AnyBuffer> result,
+                                 ffi::AnyBuffer arg,
+                                 int32_t width,
+                                 int32_t depth,
+                                 DegreeBeginSpan degree_begin,
+                                 int32_t arg_max_degree) {
 
     if (arg_max_degree == -1 || arg_max_degree > depth) {
         arg_max_degree = depth;
     }
 
-    DenseFTExpStaticArgs static_args {
-        TensorBasis {cast_db_array(degree_begin.begin()), width, depth},
-        arg_max_degree
-    };
+    DenseFTExpStaticArgs static_args{
+        TensorBasis{cast_db_array(degree_begin.begin()), width, depth},
+        arg_max_degree};
 
     RPY_XLA_SUCCESS_OR_RETURN(
         check_data_degree(result, static_args.basis, arg_max_degree));
@@ -69,15 +62,12 @@ ffi::Error cpu_dense_ft_exp_impl(
 
     RPY_XLA_SUCCESS_OR_RETURN(check_batch_dims(1, result, arg));
     if (!all_buffers_match_type(result->element_type(), arg)) {
-        return ffi::Error::InvalidArgument("all tensors should have the same data type");
+        return ffi::Error::InvalidArgument(
+            "all tensors should have the same data type");
     }
 
     return select_implementation_and_go<DenseFTExpFunctor>(
-        std::move(static_args),
-        result->element_type(),
-        result,
-        arg
-        );
+        std::move(static_args), result->element_type(), result, arg);
 }
 
 } // namespace rpy::jax::cpu
@@ -91,5 +81,4 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
         .Attr<int32_t>("width")
         .Attr<int32_t>("depth")
         .Attr<rpy::jax::DegreeBeginSpan>("degree_begin")
-        .Attr<int32_t>("arg_max_deg")
-);
+        .Attr<int32_t>("arg_max_deg"));
