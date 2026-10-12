@@ -16,11 +16,9 @@
 #include <xla_helpers/select_strategy.cuh>
 #include <xla_helpers/xla_common.hpp>
 
-using namespace rpy::jax;
-using namespace rpy::jax::cuda;
+namespace rpy::jax::cuda {
 
 namespace {
-namespace ffi = xla::ffi;
 
 struct DenseFTAntipodeStaticArgs {
     HostTensorBasis basis;
@@ -101,9 +99,11 @@ ffi::Error cuda_dense_ft_antipode_impl(cudaStream_t stream,
 }
 } // namespace
 
+} // namespace rpy::jax::cuda
+
 XLA_FFI_DEFINE_HANDLER_SYMBOL(
     cuda_dense_ft_antipode,
-    cuda_dense_ft_antipode_impl,
+    rpy::jax::cuda::cuda_dense_ft_antipode_impl,
     xla::ffi::Ffi::Bind()
     .Ctx<xla::ffi::PlatformStream<cudaStream_t> >()
     .Ret<xla::ffi::AnyBuffer>()

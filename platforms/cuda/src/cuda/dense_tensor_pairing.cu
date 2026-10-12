@@ -10,8 +10,6 @@
 #include <xla_helpers/xla_common.hpp>
 
 
-namespace ffi = xla::ffi;
-
 
 namespace rpy::jax::cuda {
 struct DenseTensorPairingStaticArgs {

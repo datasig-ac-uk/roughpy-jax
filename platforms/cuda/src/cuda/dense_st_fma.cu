@@ -12,8 +12,6 @@
 #include <xla_helpers/select_strategy.cuh>
 #include <xla_helpers/xla_common.hpp>
 
-namespace ffi = xla::ffi;
-
 namespace rpy::jax::cuda {
 namespace {
 

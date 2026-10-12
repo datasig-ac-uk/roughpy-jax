@@ -12,11 +12,9 @@
 #include <xla_helpers/select_strategy.cuh>
 #include <xla_helpers/xla_common.hpp>
 
-using namespace rpy::jax;
-using namespace rpy::jax::cuda;
+namespace rpy::jax::cuda {
 
 namespace {
-namespace ffi = xla::ffi;
 
 struct DenseFTFmaStaticArgs {
     HostTensorBasis basis;
@@ -169,9 +167,11 @@ ffi::Error cuda_dense_ft_mul_impl(cudaStream_t stream,
 }
 } // namespace
 
+} // namespace rpy::jax::cuda
+
 XLA_FFI_DEFINE_HANDLER_SYMBOL(
     cuda_dense_ft_fma,
-    cuda_dense_ft_fma_impl,
+    rpy::jax::cuda::cuda_dense_ft_fma_impl,
     xla::ffi::Ffi::Bind()
         .Ctx<xla::ffi::PlatformStream<cudaStream_t>>()
         .Ret<xla::ffi::AnyBuffer>()
@@ -189,7 +189,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
 
 XLA_FFI_DEFINE_HANDLER_SYMBOL(
     cuda_dense_ft_mul,
-    cuda_dense_ft_mul_impl,
+    rpy::jax::cuda::cuda_dense_ft_mul_impl,
     xla::ffi::Ffi::Bind()
         .Ctx<xla::ffi::PlatformStream<cudaStream_t>>()
         .Ret<xla::ffi::AnyBuffer>()
