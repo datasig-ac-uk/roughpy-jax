@@ -115,6 +115,11 @@ ffi::Error cpu_dense_st_fma_impl(
             check_data_degree(c, static_args.basis, c_max_deg)
     );
 
+    RPY_XLA_SUCCESS_OR_RETURN(check_batch_dims(1, result, a, b, c));
+    if (!all_buffers_match_type(result->element_type(), a, b, c)) {
+        return ffi::Error::InvalidArgument("all tensors should have the same data type");
+    }
+
     return select_implementation_and_go<DenseSTFmaFunctor>(
         std::move(static_args),
         result->element_type(),
@@ -158,6 +163,11 @@ ffi::Error cpu_dense_st_mul_impl(
     RPY_XLA_SUCCESS_OR_RETURN(
             check_data_degree(rhs, static_args.basis, rhs_max_deg)
     );
+
+    RPY_XLA_SUCCESS_OR_RETURN(check_batch_dims(1, result, lhs, rhs));
+    if (!all_buffers_match_type(result->element_type(), lhs, rhs)) {
+        return ffi::Error::InvalidArgument("all tensors should have the same data type");
+    }
 
     return select_implementation_and_go<DenseSTFmaFunctor>(
             std::move(static_args),

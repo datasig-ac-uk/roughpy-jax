@@ -65,6 +65,11 @@ ffi::Error cpu_dense_ft_log_impl(
             check_data_degree(arg, static_args.basis, arg_max_deg)
     );
 
+    RPY_XLA_SUCCESS_OR_RETURN(check_batch_dims(1, result, arg));
+    if (!all_buffers_match_type(result->element_type(), arg)) {
+        return ffi::Error::InvalidArgument("all tensors should have the same data type");
+    }
+
     return select_implementation_and_go<DenseFTLogFunctor>(
         std::move(static_args),
         result->element_type(),

@@ -76,6 +76,11 @@ ffi::Error cpu_dense_ft_antipode_impl(
     RPY_XLA_SUCCESS_OR_RETURN(check_data_degree(result, static_args.basis, max_deg));
     RPY_XLA_SUCCESS_OR_RETURN(check_data_degree(arg, static_args.basis, max_deg));
 
+    RPY_XLA_SUCCESS_OR_RETURN(check_batch_dims(1, result, arg));
+    if (!all_buffers_match_type(result->element_type(), arg)) {
+        return ffi::Error::InvalidArgument("all tensors should have the same data type");
+    }
+
     return select_implementation_and_go<DenseFTAntipode>(
         std::move(static_args),
         result->element_type(),

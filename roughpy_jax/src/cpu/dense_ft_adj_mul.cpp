@@ -82,6 +82,11 @@ ffi::Error cpu_dense_ft_adj_lmul_impl(
             check_data_degree(arg, static_args.basis, arg_max_deg)
     );
 
+    RPY_XLA_SUCCESS_OR_RETURN(check_batch_dims(1, out, op, arg));
+    if (!all_buffers_match_type(out->element_type(), op, arg)) {
+        return ffi::Error::InvalidArgument("all tensors should have the same data type");
+    }
+
     return select_implementation_and_go<DenseFTAdjLMulFunctor>(
             std::move(static_args),
             out->element_type(),
@@ -202,6 +207,11 @@ ffi::Error cpu_dense_ft_adj_rmul_impl(
     RPY_XLA_SUCCESS_OR_RETURN(
             check_data_degree(arg, static_args.basis, arg_max_deg)
     );
+
+    RPY_XLA_SUCCESS_OR_RETURN(check_batch_dims(1, out, op, arg));
+    if (!all_buffers_match_type(out->element_type(), op, arg)) {
+        return ffi::Error::InvalidArgument("all tensors should have the same data type");
+    }
 
     return select_implementation_and_go<DenseFTAdjRMulFunctor>(
             std::move(static_args),
