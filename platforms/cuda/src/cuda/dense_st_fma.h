@@ -8,7 +8,6 @@ extern "C" {
 #endif
 
 XLA_FFI_Error* cuda_dense_st_fma(XLA_FFI_CallFrame*);
-XLA_FFI_Error* cuda_dense_st_mul(XLA_FFI_CallFrame*);
 
 #ifdef __cplusplus
 }

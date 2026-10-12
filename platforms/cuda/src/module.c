@@ -13,6 +13,7 @@
 #include "cuda/dense_lie_pairing.h"
 #include "cuda/dense_st_adj_mul.h"
 #include "cuda/dense_st_fma.h"
+#include "cuda/dense_st_mul.h"
 #include "cuda/dense_tensor_pairing.h"
 
 static inline int
