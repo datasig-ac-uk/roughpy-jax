@@ -13,6 +13,8 @@ target_sources(Roughpy_JAXModule PRIVATE
     src/cpu/dense_ft_fmexp.cpp
     src/cpu/dense_ft_antipode.cpp
     src/cpu/dense_st_fma.cpp
+    src/cpu/dense_st_mul.cpp
+    src/cpu/dense_st_mul.h
     src/cpu/dense_st_adj_mul.cpp
     src/cpu/dense_st_adj_mul.h
     src/roughpy_jax_module.c
