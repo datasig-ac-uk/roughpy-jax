@@ -1,15 +1,13 @@
 #include "dense_ft_log.h"
 
-#include <algorithm>
-#include <functional>
 
 #include <rpp/basis/tensor_basis.hpp>
 #include <rpp/gpu/block/operations/intermediate/ft_log.hpp>
 
 #include <xla_helpers/batch.hpp>
+#include <xla_helpers/xla_common.hpp>
 #include "scalars.hpp"
 #include "select_strategy.cuh"
-#include <xla_helpers/xla_common.hpp>
 
 namespace rpy::jax::cuda {
 namespace {
@@ -29,23 +27,19 @@ struct DenseFTLogFunctor {
                            DenseFTLogStaticArgs static_args,
                            cudaStream_t stream) noexcept {
         const auto tensor_size = static_args.basis.size();
-        const auto out_shape = out->dimensions();
-        const auto n_tensors =
-            std::accumulate(out_shape.begin(),
-                            out_shape.end() - 1,
-                            1LL,
-                            std::multiplies<>{});
+        const auto n_tensors = get_batch_size(1, out);
         RPY_XLA_SUCCESS_OR_RETURN(check_batch_size<DefaultArch>(n_tensors));
 
         return select_strategy<Accum>(tensor_size, [&](auto strategy) {
             using LaunchCfg = typename decltype(strategy)::LaunchConfig;
-            return rpp::ops::ft_log(
-                strategy,
-                LaunchCfg{stream},
-                make_tensor_batch<Scalar, DefaultArch>(out, 0, static_args.basis.depth),
-                make_tensor_batch<Scalar, DefaultArch>(arg, 0, static_args.max_degree),
-                static_args.basis,
-                n_tensors);
+            return rpp::ops::ft_log(strategy,
+                                    LaunchCfg{stream},
+                                    make_tensor_batch<Scalar, DefaultArch>(
+                                        out, 0, static_args.basis.depth),
+                                    make_tensor_batch<Scalar, DefaultArch>(
+                                        arg, 0, static_args.max_degree),
+                                    static_args.basis,
+                                    n_tensors);
         });
     }
 };
@@ -60,14 +54,14 @@ ffi::Error cuda_dense_ft_log_impl(cudaStream_t stream,
                                   DegreeBeginSpan degree_begin,
                                   int32_t max_degree) noexcept {
     DenseFTLogStaticArgs static_args{
-        HostTensorBasis{
-            static_cast<HostTensorBasis::Degree>(width),
-            static_cast<HostTensorBasis::Degree>(depth),
-            cast_db_array(degree_begin.begin())},
+        HostTensorBasis{static_cast<HostTensorBasis::Degree>(width),
+                        static_cast<HostTensorBasis::Degree>(depth),
+                        cast_db_array(degree_begin.begin())},
         max_degree};
 
     RPY_XLA_SUCCESS_OR_RETURN(check_data_degree(out, static_args.basis, depth));
-    RPY_XLA_SUCCESS_OR_RETURN(check_data_degree(arg, static_args.basis, max_degree));
+    RPY_XLA_SUCCESS_OR_RETURN(
+        check_data_degree(arg, static_args.basis, max_degree));
     if (!all_buffers_match_type(out->element_type(), arg)) {
         return ffi::Error::InvalidArgument(
             "all tensors should have the same data type");

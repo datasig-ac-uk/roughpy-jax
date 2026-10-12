@@ -1,10 +1,6 @@
 #include "dense_ft_adj_lmul.h"
 
 
-#include <algorithm>
-#include <functional>
-
-
 #include <rpp/basis/tensor_basis.hpp>
 #include <rpp/gpu/block/operations/basic/ft_adj_lmul.hpp>
 
@@ -40,9 +36,7 @@ struct DenseFtAdjLMulFunctor {
 
         const auto elt_type = out->element_type();
 
-        const auto out_shape = out->dimensions();
-        const auto n_tensors = std::accumulate(
-            out_shape.begin(), out_shape.end() - 1, 1LL, std::multiplies<>{});
+        const auto n_tensors = get_batch_size(1, out);
         RPY_XLA_SUCCESS_OR_RETURN(check_batch_size<DefaultArch>(n_tensors));
 
         return select_strategy<Accum>(tensor_size, [&](auto strategy) {
