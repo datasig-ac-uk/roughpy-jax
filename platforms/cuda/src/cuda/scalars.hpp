@@ -12,82 +12,66 @@
 
 #include <xla_helpers/xla_common.hpp>
 
-namespace rpy::jax::cuda {
+namespace rpy::jax {
 
-
-template<xla::ffi::DataType DType>
-struct ScalarTag;
-
-template<>
-struct ScalarTag<xla::ffi::DataType::F16> {
-    static constexpr auto tag = xla::ffi::DataType::F16;
+// Specialisations of the shared tag must live in its declaring namespace.
+template <typename AccumType>
+struct ScalarTag<ffi::DataType::F16, AccumType> {
+    static constexpr auto tag = ffi::DataType::F16;
     using Scalar = __half;
-    using Accum = float;
+    using Accum = std::conditional_t<std::is_void_v<AccumType>, float, AccumType>;
 };
 
-template<>
-struct ScalarTag<xla::ffi::DataType::BF16> {
-    static constexpr auto tag = xla::ffi::DataType::BF16;
+template <typename AccumType>
+struct ScalarTag<ffi::DataType::BF16, AccumType> {
+    static constexpr auto tag = ffi::DataType::BF16;
     using Scalar = __nv_bfloat16;
-    using Accum = float;
+    using Accum = std::conditional_t<std::is_void_v<AccumType>, float, AccumType>;
 };
 
-template<>
-struct ScalarTag<xla::ffi::DataType::F8E4M3> {
-    static constexpr auto tag = xla::ffi::DataType::F8E4M3;
+template <typename AccumType>
+struct ScalarTag<ffi::DataType::F8E4M3, AccumType> {
+    static constexpr auto tag = ffi::DataType::F8E4M3;
     using Scalar = __nv_fp8_e4m3;
-    using Accum = float;
+    using Accum = std::conditional_t<std::is_void_v<AccumType>, float, AccumType>;
 };
 
-template<>
-struct ScalarTag<xla::ffi::DataType::F8E4M3FN> {
-    static constexpr auto tag = xla::ffi::DataType::F8E4M3FN;
+template <typename AccumType>
+struct ScalarTag<ffi::DataType::F8E4M3FN, AccumType> {
+    static constexpr auto tag = ffi::DataType::F8E4M3FN;
     using Scalar = __nv_fp8_e4m3;
-    using Accum = float;
+    using Accum = std::conditional_t<std::is_void_v<AccumType>, float, AccumType>;
 };
 
-template<>
-struct ScalarTag<xla::ffi::DataType::F8E4M3B11FNUZ> {
-    static constexpr auto tag = xla::ffi::DataType::F8E4M3B11FNUZ;
+template <typename AccumType>
+struct ScalarTag<ffi::DataType::F8E4M3B11FNUZ, AccumType> {
+    static constexpr auto tag = ffi::DataType::F8E4M3B11FNUZ;
     using Scalar = __nv_fp8_e4m3;
-    using Accum = float;
+    using Accum = std::conditional_t<std::is_void_v<AccumType>, float, AccumType>;
 };
 
-template<>
-struct ScalarTag<xla::ffi::DataType::F8E4M3FNUZ> {
-    static constexpr auto tag = xla::ffi::DataType::F8E4M3FNUZ;
+template <typename AccumType>
+struct ScalarTag<ffi::DataType::F8E4M3FNUZ, AccumType> {
+    static constexpr auto tag = ffi::DataType::F8E4M3FNUZ;
     using Scalar = __nv_fp8_e4m3;
-    using Accum = float;
+    using Accum = std::conditional_t<std::is_void_v<AccumType>, float, AccumType>;
 };
 
-template<>
-struct ScalarTag<xla::ffi::DataType::F8E5M2> {
-    static constexpr auto tag = xla::ffi::DataType::F8E5M2;
+template <typename AccumType>
+struct ScalarTag<ffi::DataType::F8E5M2, AccumType> {
+    static constexpr auto tag = ffi::DataType::F8E5M2;
     using Scalar = __nv_fp8_e5m2;
-    using Accum = float;
+    using Accum = std::conditional_t<std::is_void_v<AccumType>, float, AccumType>;
 };
 
-template<>
-struct ScalarTag<xla::ffi::DataType::F8E5M2FNUZ> {
-    static constexpr auto tag = xla::ffi::DataType::F8E5M2FNUZ;
+template <typename AccumType>
+struct ScalarTag<ffi::DataType::F8E5M2FNUZ, AccumType> {
+    static constexpr auto tag = ffi::DataType::F8E5M2FNUZ;
     using Scalar = __nv_fp8_e5m2;
-    using Accum = float;
+    using Accum = std::conditional_t<std::is_void_v<AccumType>, float, AccumType>;
 };
 
-
-template<>
-struct ScalarTag<xla::ffi::DataType::F32> {
-    static constexpr auto tag = xla::ffi::DataType::F32;
-    using Scalar = float;
-    using Accum = float;
-};
-
-template<>
-struct ScalarTag<xla::ffi::DataType::F64> {
-    static constexpr auto tag = xla::ffi::DataType::F64;
-    using Scalar = double;
-    using Accum = double;
-};
+namespace cuda {
 
 template<typename T>
 inline constexpr ffi::DataType native_dtype_v = ffi::DataType::INVALID;
@@ -111,43 +95,43 @@ template<>
 inline constexpr ffi::DataType native_dtype_v<double> = ffi::DataType::F64;
 
 template<template <typename> class Fn, typename... Args>
-RPP_FORCEINLINE xla::ffi::Error select_type_and_go(xla::ffi::DataType dtype,
+RPP_FORCEINLINE ffi::Error select_type_and_go(ffi::DataType dtype,
                                                    Args &&... args) noexcept {
     switch (dtype) {
-        case xla::ffi::DataType::F16:
-            return Fn<ScalarTag<xla::ffi::DataType::F16> >::eval(
+        case ffi::DataType::F16:
+            return Fn<ScalarTag<ffi::DataType::F16> >::eval(
                 std::forward<Args>(args)...);
-        case xla::ffi::DataType::BF16:
-            return Fn<ScalarTag<xla::ffi::DataType::BF16> >::eval(
+        case ffi::DataType::BF16:
+            return Fn<ScalarTag<ffi::DataType::BF16> >::eval(
                 std::forward<Args>(args)...);
-        case xla::ffi::DataType::F32:
-            return Fn<ScalarTag<xla::ffi::DataType::F32> >::eval(
+        case ffi::DataType::F32:
+            return Fn<ScalarTag<ffi::DataType::F32> >::eval(
                 std::forward<Args>(args)...);
-        case xla::ffi::DataType::F64:
-            return Fn<ScalarTag<xla::ffi::DataType::F64> >::eval(
+        case ffi::DataType::F64:
+            return Fn<ScalarTag<ffi::DataType::F64> >::eval(
                 std::forward<Args>(args)...);
-        // case xla::ffi::DataType::F8E4M3FN:
+        // case ffi::DataType::F8E4M3FN:
         //     return
-        //     Fn<ScalarTag<xla::ffi::DataType::F8E4M3FN>>::eval(
+        //     Fn<ScalarTag<ffi::DataType::F8E4M3FN>>::eval(
         //         std::forward<Args>(args)...);
-        // case xla::ffi::DataType::F8E4M3B11FNUZ:
+        // case ffi::DataType::F8E4M3B11FNUZ:
         //     return
-        //     Fn<ScalarTag<xla::ffi::DataType::F8E4M3B11FNUZ>>::eval(
+        //     Fn<ScalarTag<ffi::DataType::F8E4M3B11FNUZ>>::eval(
         //         std::forward<Args>(args)...);
-        // case xla::ffi::DataType::F8E4M3FNUZ:
+        // case ffi::DataType::F8E4M3FNUZ:
         //     return
-        //     Fn<ScalarTag<xla::ffi::DataType::F8E4M3FNUZ>>::eval(
+        //     Fn<ScalarTag<ffi::DataType::F8E4M3FNUZ>>::eval(
         //         std::forward<Args>(args)...);
-        // case xla::ffi::DataType::F8E5M2FNUZ:
+        // case ffi::DataType::F8E5M2FNUZ:
         //     return
-        //     Fn<ScalarTag<xla::ffi::DataType::F8E5M2FNUZ>>::eval(
+        //     Fn<ScalarTag<ffi::DataType::F8E5M2FNUZ>>::eval(
         //         std::forward<Args>(args)...);
-        // case xla::ffi::DataType::F4E2M1FN:
+        // case ffi::DataType::F4E2M1FN:
         //     return
-        //     Fn<ScalarTag<xla::ffi::DataType::F4E2M1FN>>::eval(
+        //     Fn<ScalarTag<ffi::DataType::F4E2M1FN>>::eval(
         //         std::forward<Args>(args)...);
         default:
-            return {xla::ffi::ErrorCode::kInvalidArgument, "unsupported dtype"};
+            return {ffi::ErrorCode::kInvalidArgument, "unsupported dtype"};
     }
 }
 
@@ -229,6 +213,7 @@ ffi::ErrorOr<T> cast_scalar(AnyScalar const &value) noexcept {
 }
 
 
-} // namespace rpy::jax::cuda
+} // namespace cuda
+} // namespace rpy::jax
 
 #endif //ROUGHPY_JAX_CUDA_SCALARS_HPP

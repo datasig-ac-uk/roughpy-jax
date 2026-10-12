@@ -19,6 +19,25 @@ namespace rpy::jax {
 
 namespace ffi = xla::ffi;
 
+// Platforms specialise this tag for their additional scalar types. An omitted
+// accumulation type selects the default for the storage dtype.
+template <ffi::DataType DType, typename AccumType = void>
+struct ScalarTag;
+
+template <typename AccumType>
+struct ScalarTag<ffi::DataType::F32, AccumType> {
+    static constexpr auto tag = ffi::DataType::F32;
+    using Scalar = float;
+    using Accum = std::conditional_t<std::is_void_v<AccumType>, float, AccumType>;
+};
+
+template <typename AccumType>
+struct ScalarTag<ffi::DataType::F64, AccumType> {
+    static constexpr auto tag = ffi::DataType::F64;
+    using Scalar = double;
+    using Accum = std::conditional_t<std::is_void_v<AccumType>, double, AccumType>;
+};
+
 using DegreeBeginIndex = std::conditional_t<(sizeof(std::ptrdiff_t) == sizeof(int64_t)),
                                             int64_t, int32_t>;
 using DegreeBeginSpan = ffi::Span<const DegreeBeginIndex>;
