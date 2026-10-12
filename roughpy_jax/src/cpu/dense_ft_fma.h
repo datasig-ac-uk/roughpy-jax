@@ -8,7 +8,6 @@ extern "C" {
 #endif
 
 XLA_FFI_Error* cpu_dense_ft_fma(XLA_FFI_CallFrame*);
-XLA_FFI_Error* cpu_dense_ft_mul(XLA_FFI_CallFrame*);
 
 
 #ifdef __cplusplus
