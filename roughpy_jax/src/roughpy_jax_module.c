@@ -14,7 +14,8 @@
 #include "cpu/dense_ft_fmexp.h"
 #include "cpu/dense_ft_log.h"
 #include "cpu/dense_st_fma.h"
-#include "cpu/dense_ft_adj_mul.h"
+#include "cpu/dense_ft_adj_lmul.h"
+#include "cpu/dense_ft_adj_rmul.h"
 #include "cpu/dense_st_adj_mul.h"
 
 
