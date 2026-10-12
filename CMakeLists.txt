@@ -13,7 +13,6 @@ project(RoughPy_JAX VERSION "${RPJ_VERSION}" LANGUAGES C CXX)
 include(GNUInstallDirs)
 
 option(RPJ_INPLACE_BUILD "build the library in-place" ON)
-option(RPJ_BUILD_CUDA "Build the cuda extensions" ON)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
@@ -26,14 +25,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_C_VISIBILITY_PRESET hidden)
 set(CMAKE_CXX_VISIBILITY_PRESET hidden)
 set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
-
-include(CheckLanguage)
-
-check_language(CUDA)
-if (RPJ_BUILD_CUDA AND CMAKE_CUDA_COMPILER)
-    enable_language(CUDA)
-endif ()
-
 
 set(Python_FIND_VIRTUAL_ENVIRONMENT FIRST)
 find_package(Python 3.11 REQUIRED COMPONENTS
@@ -55,24 +46,6 @@ endif ()
 add_library(XLA::FFI INTERFACE IMPORTED)
 set_target_properties(XLA::FFI PROPERTIES
         INTERFACE_INCLUDE_DIRECTORIES "${XLA_DIR}")
-
-
-execute_process(
-        COMMAND "${Python_EXECUTABLE}"
-        -c "import roughpy; print(roughpy.get_include())"
-        RESULT_VARIABLE RPY_COMPUTE_DIR_RESULT
-        OUTPUT_STRIP_TRAILING_WHITESPACE OUTPUT_VARIABLE RPY_COMPUTE_DIR
-        ERROR_VARIABLE RPY_COMPUTE_DIR_ERROR
-)
-message(STATUS "RPC_DIR=${RPY_COMPUTE_DIR}")
-if (NOT RPY_COMPUTE_DIR_RESULT EQUAL 0 OR RPY_COMPUTE_DIR STREQUAL "")
-    message(FATAL_ERROR "Failed to locate RoughPy headers: ${RPY_COMPUTE_DIR_ERROR}")
-endif ()
-
-
-add_library(RoughPy::Compute INTERFACE IMPORTED)
-set_target_properties(RoughPy::Compute PROPERTIES
-        INTERFACE_INCLUDE_DIRECTORIES "${RPY_COMPUTE_DIR}")
 
 
 set(RPP_ENABLE_CUDA OFF CACHE BOOL "" FORCE)
@@ -103,7 +76,6 @@ endif ()
 
 target_link_libraries(Roughpy_JAXModule PRIVATE
         XLA::FFI
-        RoughPy::Compute
 )
 
 target_include_directories(Roughpy_JAXModule PRIVATE
