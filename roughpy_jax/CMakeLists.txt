@@ -4,6 +4,8 @@ target_sources(Roughpy_JAXModule PRIVATE
     src/cpu/dense_ft_adj_mul.cpp
     src/cpu/dense_ft_adj_mul.h
     src/cpu/dense_ft_fma.cpp
+    src/cpu/dense_ft_mul.cpp
+    src/cpu/dense_ft_mul.h
     src/cpu/dense_ft_exp.cpp
     src/cpu/dense_ft_log.cpp
     src/cpu/dense_ft_fmexp.cpp
