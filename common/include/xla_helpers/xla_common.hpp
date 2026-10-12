@@ -1,6 +1,9 @@
 #ifndef ROUGHPY_JAX_XLA_HELPERS_XLA_COMMON_HPP
 #define ROUGHPY_JAX_XLA_HELPERS_XLA_COMMON_HPP
 
+#include <algorithm>
+#include <functional>
+#include <numeric>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -125,10 +128,41 @@ inline ffi::Span<const int64_t> shape(ffi::AnyBuffer const &arg) noexcept {
   return arg.dimensions();
 }
 inline ffi::Span<const int64_t>
-shape(ffi::Result<ffi::AnyBuffer> &arg) noexcept {
+shape(const ffi::Result<ffi::AnyBuffer> &arg) noexcept {
   return arg->dimensions();
 }
 } // namespace detail
+
+// Compare batch shapes without computing the number of batches. Core dimensions
+// may differ between buffers; batch ranks and dimensions must match exactly.
+template <typename Head, typename... Tail>
+ffi::Error check_batch_dims(size_t ncore_dims, const Head &head,
+                            const Tail &...tail) noexcept {
+  const auto dims = detail::shape(head);
+  if (dims.size() < ncore_dims) {
+    return ffi::Error::InvalidArgument("buffer rank is smaller than core rank");
+  }
+  const auto batch_dims = dims.first(dims.size() - ncore_dims);
+  const auto matches = [&](const auto &buffer) {
+    const auto other = detail::shape(buffer);
+    return other.size() >= ncore_dims &&
+           other.size() - ncore_dims == batch_dims.size() &&
+           std::equal(batch_dims.begin(), batch_dims.end(), other.begin());
+  };
+  if (!(matches(tail) && ...)) {
+    return ffi::Error::InvalidArgument("mismatched batch dimensions");
+  }
+  return ffi::Error::Success();
+}
+
+// Requires a buffer whose rank and batch shape have already been validated.
+template <typename Buffer>
+int64_t get_batch_size(size_t ncore_dims, const Buffer &buffer) noexcept {
+  const auto dims = detail::shape(buffer);
+  const auto batch_dims = dims.first(dims.size() - ncore_dims);
+  return std::accumulate(batch_dims.begin(), batch_dims.end(), int64_t{1},
+                         std::multiplies<>{});
+}
 
 template <typename Buffer, typename Basis>
 ffi::Error check_data_degree(Buffer &buf, const Basis &basis, int32_t degree,

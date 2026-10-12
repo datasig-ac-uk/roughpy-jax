@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <functional>
 #include <utility>
+#include <tuple>
 
 #include "xla_includes.hpp"
 #include <xla_helpers/xla_common.hpp>
@@ -14,46 +15,6 @@
 namespace rpy::jax::cpu {
 
 namespace detail {
-
-template <typename Head, typename... Tail>
-ffi::Error batch_config_recurse(
-        size_t ncore_dims,
-        ffi::Span<const int64_t> batch_dims,
-        Head & head,
-        Tail &... tail
-)
-{
-    const ffi::Span<const int64_t> dims = rpy::jax::detail::shape(head);
-    const auto these_batch_dims = dims.first(dims.size() - ncore_dims);
-
-    for (size_t i=0; i<these_batch_dims.size(); ++i) {
-        if (these_batch_dims[i] != batch_dims[i]) {
-            return ffi::Error::InvalidArgument("mismatched batch dimensions");
-        }
-    }
-
-    if constexpr (sizeof...(Tail) > 0) {
-        return batch_config_recurse(ncore_dims, batch_dims, tail...);
-    }
-
-    return ffi::Error::Success();
-}
-
-template <typename Head, typename... Tail>
-ffi::ErrorOr<int64_t> get_batch_dims(size_t ncore_dims, Head& head, Tail&... tail)
-{
-    const ffi::Span<const int64_t> dims = rpy::jax::detail::shape(head);
-    auto batch_dims = dims.first(dims.size() - ncore_dims);
-
-    if constexpr (sizeof...(Tail) > 0) {
-        auto status = batch_config_recurse(ncore_dims, batch_dims, tail...);
-        if (!status.success()) {
-            return ffi::Unexpected(status);
-        }
-    }
-
-    return std::accumulate(batch_dims.begin(), batch_dims.end(), int64_t{1}, std::multiplies<>{});
-}
 
 struct BaseAccessor
 {
@@ -129,12 +90,8 @@ ffi::Error batching_loop(
     )
 {
     using T = typename Fn::Scalar;
-    auto result = detail::get_batch_dims(Fn::core_dims, arrays...);
-    if (result.has_error()) {
-        return result.error(); // take the error
-    }
-
-    const auto n_batches = result.value();
+    const auto n_batches = get_batch_size(
+            Fn::core_dims, std::get<0>(std::forward_as_tuple(arrays...)));
 
     return detail::do_batch_loop(
             n_batches,
