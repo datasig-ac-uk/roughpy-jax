@@ -5,6 +5,7 @@
 #include <rpp/gpu/block/operations/intermediate/ft_log.hpp>
 
 #include <xla_helpers/batch.hpp>
+#include <xla_helpers/static_args.hpp>
 #include <xla_helpers/xla_common.hpp>
 #include "output_buffer.cuh"
 #include "scalars.hpp"
@@ -13,10 +14,6 @@
 namespace rpy::jax::cuda {
 namespace {
 
-struct DenseFTLogStaticArgs {
-    HostTensorBasis basis;
-    int32_t max_degree;
-};
 
 template <typename Tag>
 struct DenseFTLogFunctor {
@@ -39,7 +36,7 @@ struct DenseFTLogFunctor {
                                     make_tensor_batch<Scalar, DefaultArch>(
                                         out, 0, static_args.basis.depth),
                                     make_tensor_batch<Scalar, DefaultArch>(
-                                        arg, 0, static_args.max_degree),
+                                        arg, 0, static_args.arg_max_degree),
                                     static_args.basis,
                                     n_tensors);
         });

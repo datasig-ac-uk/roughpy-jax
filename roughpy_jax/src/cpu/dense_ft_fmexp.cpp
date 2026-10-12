@@ -5,17 +5,11 @@
 #include <rpp/cpu/single_thread/operations/intermediate/ft_fmexp.hpp>
 #include <rpp/cpu/single_thread/strategy.hpp>
 #include <xla_helpers/batch.hpp>
+#include <xla_helpers/static_args.hpp>
 #include <xla_helpers/xla_common.hpp>
 
 namespace rpy::jax::cpu {
 
-struct DenseFTFMExpStaticArgs {
-    HostTensorBasis basis;
-    int32_t mul_max_degree;
-    int32_t exp_max_degree;
-    int32_t mul_min_degree;
-    int32_t exp_min_degree;
-};
 
 template <typename Tag>
 struct DenseFTFMExpFunctor {

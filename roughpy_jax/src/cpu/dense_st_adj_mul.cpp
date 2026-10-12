@@ -5,15 +5,11 @@
 #include <rpp/cpu/single_thread/operations/basic/st_adj_mul.hpp>
 #include <rpp/cpu/single_thread/strategy.hpp>
 #include <xla_helpers/batch.hpp>
+#include <xla_helpers/static_args.hpp>
 #include <xla_helpers/xla_common.hpp>
 
 namespace rpy::jax::cpu {
 
-struct DenseSTAdjMulStaticArgs {
-    HostTensorBasis basis;
-    int32_t op_max_deg;
-    int32_t arg_max_deg;
-};
 
 template <typename Tag>
 struct DenseSTAdjMulFunctor {
@@ -31,9 +27,9 @@ struct DenseSTAdjMulFunctor {
         auto out_batch =
             make_tensor_batch<Scalar, Arch>(out, 0, static_args.basis.depth);
         auto op_batch =
-            make_tensor_batch<Scalar, Arch>(op, 0, static_args.op_max_deg);
+            make_tensor_batch<Scalar, Arch>(op, 0, static_args.op_max_degree);
         auto arg_batch =
-            make_tensor_batch<Scalar, Arch>(arg, 0, static_args.arg_max_deg);
+            make_tensor_batch<Scalar, Arch>(arg, 0, static_args.arg_max_degree);
 
         return map_err(rpp::ops::st_adj_mul(Strategy{},
                                             typename Strategy::LaunchConfig{},

@@ -5,15 +5,11 @@
 #include <rpp/cpu/single_thread/operations/basic/tensor_generalised_antipode.hpp>
 #include <rpp/cpu/single_thread/strategy.hpp>
 #include <xla_helpers/batch.hpp>
+#include <xla_helpers/static_args.hpp>
 #include <xla_helpers/xla_common.hpp>
 
 namespace rpy::jax::cpu {
 
-struct DenseFTAntipodeStaticArgs {
-    HostTensorBasis basis;
-    int32_t max_degree;
-    bool no_sign;
-};
 
 template <typename Tag>
 struct DenseFTAntipodeFunctor {
@@ -31,7 +27,7 @@ struct DenseFTAntipodeFunctor {
         auto out_batch =
             make_tensor_batch<Scalar, Arch>(out, 0, static_args.basis.depth);
         auto arg_batch =
-            make_tensor_batch<Scalar, Arch>(arg, 0, static_args.max_degree);
+            make_tensor_batch<Scalar, Arch>(arg, 0, static_args.arg_max_degree);
         const auto n_tensors = get_batch_size(1, out);
 
         if (static_args.no_sign) {

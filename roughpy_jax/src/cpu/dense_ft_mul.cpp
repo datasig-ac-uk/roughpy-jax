@@ -5,17 +5,11 @@
 #include <rpp/cpu/single_thread/operations/basic/ft_mul.hpp>
 #include <rpp/cpu/single_thread/strategy.hpp>
 #include <xla_helpers/batch.hpp>
+#include <xla_helpers/static_args.hpp>
 #include <xla_helpers/xla_common.hpp>
 
 namespace rpy::jax::cpu {
 
-struct DenseFTMulStaticArgs {
-    HostTensorBasis basis;
-    int32_t lhs_max_degree;
-    int32_t rhs_max_degree;
-    int32_t lhs_min_degree;
-    int32_t rhs_min_degree;
-};
 
 template <typename Tag>
 struct DenseFTMulFunctor {

@@ -6,6 +6,7 @@
 
 
 #include <xla_helpers/batch.hpp>
+#include <xla_helpers/static_args.hpp>
 #include <xla_helpers/xla_common.hpp>
 #include "output_buffer.cuh"
 #include "scalars.hpp"
@@ -16,12 +17,6 @@ namespace rpy::jax::cuda {
 namespace {
 
 
-struct DenseFtAdjMulStaticArgs {
-    HostTensorBasis basis;
-    int32_t op_max_deg;
-    int32_t arg_max_deg;
-};
-
 template <typename Tag>
 struct DenseFtAdjLMulFunctor {
     using Scalar = typename Tag::Scalar;
@@ -31,11 +26,9 @@ struct DenseFtAdjLMulFunctor {
     static ffi::Error eval(ffi::Result<ffi::AnyBuffer> out,
                            ffi::AnyBuffer op,
                            ffi::AnyBuffer arg,
-                           DenseFtAdjMulStaticArgs static_args,
+                           DenseFTAdjLMulStaticArgs static_args,
                            cudaStream_t stream) noexcept {
         const auto tensor_size = static_args.basis.size();
-
-        const auto elt_type = out->element_type();
 
         const auto n_tensors = get_batch_size(1, out);
 
@@ -43,16 +36,17 @@ struct DenseFtAdjLMulFunctor {
 
         return select_strategy<Accum>(tensor_size, [&](auto strategy) {
             using LaunchCfg = typename decltype(strategy)::LaunchConfig;
-            return rpp::ops::ft_adj_lmul(strategy,
-                                         LaunchCfg{stream},
-                                         make_tensor_batch<Scalar, DefaultArch>(
-                                             out, 0, static_args.basis.depth),
-                                         make_tensor_batch<Scalar, DefaultArch>(
-                                             op, 0, static_args.op_max_deg),
-                                         make_tensor_batch<Scalar, DefaultArch>(
-                                             arg, 0, static_args.arg_max_deg),
-                                         static_args.basis,
-                                         n_tensors);
+            return rpp::ops::ft_adj_lmul(
+                strategy,
+                LaunchCfg{stream},
+                make_tensor_batch<Scalar, DefaultArch>(
+                    out, 0, static_args.basis.depth),
+                make_tensor_batch<Scalar, DefaultArch>(
+                    op, 0, static_args.op_max_degree),
+                make_tensor_batch<Scalar, DefaultArch>(
+                    arg, 0, static_args.arg_max_degree),
+                static_args.basis,
+                n_tensors);
         });
     }
 };
@@ -67,7 +61,7 @@ ffi::Error cuda_dense_ft_adj_lmul_impl(cudaStream_t stream,
                                        DegreeBeginSpan degree_begin,
                                        int32_t op_max_deg,
                                        int32_t arg_max_deg) noexcept {
-    DenseFtAdjMulStaticArgs static_args{
+    DenseFTAdjLMulStaticArgs static_args{
         HostTensorBasis{static_cast<HostTensorBasis::Degree>(width),
                         static_cast<HostTensorBasis::Degree>(depth),
                         cast_db_array(degree_begin.begin())},

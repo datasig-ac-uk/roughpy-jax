@@ -7,6 +7,7 @@
 #include <rpp/operations/basic/st_adj_mul.hpp>
 
 #include <xla_helpers/batch.hpp>
+#include <xla_helpers/static_args.hpp>
 #include <xla_helpers/xla_common.hpp>
 #include "output_buffer.cuh"
 #include "scalars.hpp"
@@ -14,11 +15,6 @@
 
 namespace rpy::jax::cuda {
 namespace {
-struct DenseSTAdjMulStaticArgs {
-    HostTensorBasis basis;
-    int32_t op_max_deg;
-    int32_t arg_max_deg;
-};
 
 
 template <typename Tag>
@@ -43,9 +39,9 @@ struct DenseSTAdjMulFunctor {
                                         make_tensor_batch<Scalar, DefaultArch>(
                                             out, 0, static_args.basis.depth),
                                         make_tensor_batch<Scalar, DefaultArch>(
-                                            op, 0, static_args.op_max_deg),
+                                            op, 0, static_args.op_max_degree),
                                         make_tensor_batch<Scalar, DefaultArch>(
-                                            arg, 0, static_args.arg_max_deg),
+                                            arg, 0, static_args.arg_max_degree),
                                         static_args.basis,
                                         n_tensors);
         });

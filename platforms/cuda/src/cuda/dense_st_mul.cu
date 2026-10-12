@@ -5,6 +5,7 @@
 #include <rpp/gpu/block/operations/basic/st_mul.hpp>
 
 #include <xla_helpers/batch.hpp>
+#include <xla_helpers/static_args.hpp>
 #include <xla_helpers/xla_common.hpp>
 #include "output_buffer.cuh"
 #include "scalars.hpp"
@@ -13,14 +14,6 @@
 namespace rpy::jax::cuda {
 namespace {
 
-struct DenseSTFmaStaticArgs {
-    HostTensorBasis basis;
-    int32_t a_max_degree;
-    int32_t b_max_degree;
-    int32_t c_max_degree;
-    int32_t b_min_degree = 0;
-    int32_t c_min_degree = 0;
-};
 
 template <typename Tag>
 struct DenseSTMulFunctor {
@@ -30,7 +23,7 @@ struct DenseSTMulFunctor {
     static ffi::Error eval(ffi::Result<ffi::AnyBuffer> out,
                            ffi::AnyBuffer lhs,
                            ffi::AnyBuffer rhs,
-                           DenseSTFmaStaticArgs static_args,
+                           DenseSTMulStaticArgs static_args,
                            cudaStream_t stream) noexcept {
         const auto tensor_size = static_args.basis.size();
         const auto n_tensors = get_batch_size(1, out);
@@ -39,17 +32,20 @@ struct DenseSTMulFunctor {
 
         return select_strategy<Accum>(tensor_size, [&](auto strategy) {
             using LaunchCfg = typename decltype(strategy)::LaunchConfig;
-            return rpp::ops::st_mul(
-                strategy,
-                LaunchCfg{stream},
-                make_tensor_batch<Scalar, DefaultArch>(
-                    out, 0, static_args.basis.depth),
-                make_tensor_batch<Scalar, DefaultArch>(
-                    lhs, static_args.b_min_degree, static_args.b_max_degree),
-                make_tensor_batch<Scalar, DefaultArch>(
-                    rhs, static_args.c_min_degree, static_args.c_max_degree),
-                static_args.basis,
-                n_tensors);
+            return rpp::ops::st_mul(strategy,
+                                    LaunchCfg{stream},
+                                    make_tensor_batch<Scalar, DefaultArch>(
+                                        out, 0, static_args.basis.depth),
+                                    make_tensor_batch<Scalar, DefaultArch>(
+                                        lhs,
+                                        static_args.lhs_min_degree,
+                                        static_args.lhs_max_degree),
+                                    make_tensor_batch<Scalar, DefaultArch>(
+                                        rhs,
+                                        static_args.rhs_min_degree,
+                                        static_args.rhs_max_degree),
+                                    static_args.basis,
+                                    n_tensors);
         });
     }
 };
@@ -67,11 +63,10 @@ ffi::Error cuda_dense_st_mul_impl(cudaStream_t stream,
                                   int32_t rhs_max_deg,
                                   int32_t lhs_min_deg,
                                   int32_t rhs_min_deg) noexcept {
-    DenseSTFmaStaticArgs static_args{
+    DenseSTMulStaticArgs static_args{
         HostTensorBasis{static_cast<HostTensorBasis::Degree>(width),
                         static_cast<HostTensorBasis::Degree>(depth),
                         cast_db_array(degree_begin.begin())},
-        0,
         lhs_max_deg,
         rhs_max_deg,
         lhs_min_deg,

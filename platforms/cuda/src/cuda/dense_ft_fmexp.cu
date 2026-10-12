@@ -5,6 +5,7 @@
 #include <rpp/gpu/block/operations/intermediate/ft_fmexp.hpp>
 
 #include <xla_helpers/batch.hpp>
+#include <xla_helpers/static_args.hpp>
 #include <xla_helpers/xla_common.hpp>
 #include "output_buffer.cuh"
 #include "scalars.hpp"
@@ -13,13 +14,6 @@
 namespace rpy::jax::cuda {
 namespace {
 
-struct DenseFTFMExpStaticArgs {
-    HostTensorBasis basis;
-    int32_t mul_max_deg;
-    int32_t exp_max_deg;
-    int32_t mul_min_deg;
-    int32_t exp_min_deg;
-};
 
 template <typename Tag>
 struct DenseFTFMExpFunctor {
@@ -38,18 +32,20 @@ struct DenseFTFMExpFunctor {
 
         return select_strategy<Accum>(tensor_size, [&](auto strategy) {
             using LaunchCfg = typename decltype(strategy)::LaunchConfig;
-            return rpp::ops::ft_fmexp(
-                strategy,
-                LaunchCfg{stream},
-                make_tensor_batch<Scalar, DefaultArch>(
-                    out, 0, static_args.basis.depth),
-                make_tensor_batch<Scalar, DefaultArch>(multiplier,
-                                                       static_args.mul_min_deg,
-                                                       static_args.mul_max_deg),
-                make_tensor_batch<Scalar, DefaultArch>(
-                    exponent, static_args.exp_min_deg, static_args.exp_max_deg),
-                static_args.basis,
-                n_tensors);
+            return rpp::ops::ft_fmexp(strategy,
+                                      LaunchCfg{stream},
+                                      make_tensor_batch<Scalar, DefaultArch>(
+                                          out, 0, static_args.basis.depth),
+                                      make_tensor_batch<Scalar, DefaultArch>(
+                                          multiplier,
+                                          static_args.mul_min_degree,
+                                          static_args.mul_max_degree),
+                                      make_tensor_batch<Scalar, DefaultArch>(
+                                          exponent,
+                                          static_args.exp_min_degree,
+                                          static_args.exp_max_degree),
+                                      static_args.basis,
+                                      n_tensors);
         });
     }
 };

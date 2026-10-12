@@ -5,14 +5,11 @@
 #include <rpp/cpu/single_thread/operations/intermediate/ft_log.hpp>
 #include <rpp/cpu/single_thread/strategy.hpp>
 #include <xla_helpers/batch.hpp>
+#include <xla_helpers/static_args.hpp>
 #include <xla_helpers/xla_common.hpp>
 
 namespace rpy::jax::cpu {
 
-struct DenseFTLogStaticArgs {
-    HostTensorBasis basis;
-    int32_t arg_max_degree;
-};
 
 template <typename Tag>
 struct DenseFTLogFunctor {

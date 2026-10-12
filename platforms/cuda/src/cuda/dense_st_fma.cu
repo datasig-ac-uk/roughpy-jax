@@ -5,6 +5,7 @@
 #include <rpp/gpu/block/operations/basic/st_fma.hpp>
 
 #include <xla_helpers/batch.hpp>
+#include <xla_helpers/static_args.hpp>
 #include <xla_helpers/xla_common.hpp>
 #include "output_buffer.cuh"
 #include "scalars.hpp"
@@ -13,14 +14,6 @@
 namespace rpy::jax::cuda {
 namespace {
 
-struct DenseSTFmaStaticArgs {
-    HostTensorBasis basis;
-    int32_t a_max_degree;
-    int32_t b_max_degree;
-    int32_t c_max_degree;
-    int32_t b_min_degree = 0;
-    int32_t c_min_degree = 0;
-};
 
 template <typename Tag>
 struct DenseSTFmaFunctor {

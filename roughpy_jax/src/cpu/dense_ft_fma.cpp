@@ -3,6 +3,7 @@
 
 #include <rpp/architecture.hpp>
 #include <xla_helpers/batch.hpp>
+#include <xla_helpers/static_args.hpp>
 
 #include <rpp/cpu/single_thread/operations/basic/ft_fma.hpp>
 #include <rpp/cpu/single_thread/strategy.hpp>
@@ -12,14 +13,6 @@
 
 namespace rpy::jax::cpu {
 
-struct DenseFTFmaStaticArgs {
-    HostTensorBasis basis;
-    int32_t a_max_degree;
-    int32_t b_max_degree;
-    int32_t c_max_degree;
-    int32_t b_min_degree = 0;
-    int32_t c_min_degree = 0;
-};
 
 template <typename Tag>
 struct DenseFTFmaFunctor {
