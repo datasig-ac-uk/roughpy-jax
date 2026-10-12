@@ -132,8 +132,6 @@ target_sources(RoughPyJAXCudaPlugin PRIVATE
         src/cuda/dense_ft_fmexp.h
         src/cuda/dense_ft_log.cu
         src/cuda/dense_ft_log.h
-        src/cuda/dense_lie_pairing.cu
-        src/cuda/dense_tensor_pairing.h
         src/cuda/dense_st_adj_mul.cu
         src/cuda/dense_st_adj_mul.h
         src/cuda/dense_st_fma.cu

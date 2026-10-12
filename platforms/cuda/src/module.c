@@ -10,7 +10,6 @@
 #include "cuda/dense_ft_fmexp.h"
 #include "cuda/dense_ft_log.h"
 #include "cuda/dense_ft_mul.h"
-#include "cuda/dense_lie_pairing.h"
 #include "cuda/dense_st_adj_mul.h"
 #include "cuda/dense_st_fma.h"
 #include "cuda/dense_st_mul.h"
