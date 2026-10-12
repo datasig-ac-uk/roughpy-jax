@@ -1,6 +1,5 @@
 
 target_sources(Roughpy_JAXModule PRIVATE
-    src/cpu/batching_loop.hpp
     src/cpu/dense_ft_adj_lmul.cpp
     src/cpu/dense_ft_adj_lmul.h
     src/cpu/dense_ft_adj_rmul.cpp
