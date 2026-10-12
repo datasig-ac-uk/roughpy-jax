@@ -4,7 +4,7 @@
 
 #include "roughpy_compute/dense/basic/shuffle_tensor_product.hpp"
 
-#include "xla_common.hpp"
+#include <xla_helpers/xla_common.hpp>
 #include "batching_loop.hpp"
 
 using namespace rpy::compute;

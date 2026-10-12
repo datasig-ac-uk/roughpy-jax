@@ -2,7 +2,7 @@
 
 #include "roughpy_compute/dense/intermediate/free_tensor_exp.hpp"
 
-#include "xla_common.hpp"
+#include <xla_helpers/xla_common.hpp>
 #include "batching_loop.hpp"
 
 

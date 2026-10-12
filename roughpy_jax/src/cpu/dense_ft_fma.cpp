@@ -5,7 +5,7 @@
 #include "roughpy_compute/dense/basic/free_tensor_fma.hpp"
 
 #include "batching_loop.hpp"
-#include "xla_common.hpp"
+#include <xla_helpers/xla_common.hpp>
 
 using namespace rpy::compute;
 

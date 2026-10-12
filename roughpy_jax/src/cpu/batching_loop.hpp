@@ -7,7 +7,7 @@
 #include <utility>
 
 #include "xla_includes.hpp"
-#include "xla_common.hpp"
+#include <xla_helpers/xla_common.hpp>
 
 
 
