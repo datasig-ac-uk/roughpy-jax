@@ -1,57 +1,11 @@
 #ifndef ROUGHPY_JAX_CPU_XLA_COMMON_HPP
 #define ROUGHPY_JAX_CPU_XLA_COMMON_HPP
 
-#include <cstddef>
-#include <type_traits>
-#include <vector>
+#include <utility>
 
-#include "roughpy_compute/common/basis.hpp"
-
-#include "xla_includes.hpp"
-
-#define RPY_XLA_SUCCESS_OR_RETURN(stat)                                        \
-    do {                                                                       \
-        const auto status = (stat);                                            \
-        if (!status.success()) { return status; }                              \
-    } while (0)
+#include <xla_helpers/xla_common.hpp>
 
 namespace rpy::jax::cpu {
-
-namespace ffi = xla::ffi;
-
-// TODO: This is awful, replace it with something more robust.
-using DegreeBeginIndex = std::conditional_t<sizeof(typename rpy::compute::BasisBase::Index) == sizeof(int64_t), int64_t, int32_t>;
-using DegreeBeginSpan = ffi::Span<const DegreeBeginIndex>;
-
-template <typename T>
-/// This is a solution to a problem that shouldn't exist. Unfortunately, only
-/// long long (=int64_t) is a registered type in the XLA decoder logic, and on
-/// MacOs ptrdiff_t resolves to a long, even though this is the same size it is
-/// a different type. This function just casts the pointer to a ptrdiff_t, after
-/// checking it is the right size.
-constexpr auto cast_db_array(const T* db_in) noexcept -> const typename compute::BasisBase::Index*{
-    using Index = typename compute::BasisBase::Index;
-    static_assert(sizeof(T) == sizeof(Index), "mismatch integer size");
-    static_assert(std::is_signed_v<T> == std::is_signed_v<Index>, "different signedness");
-    return reinterpret_cast<const Index*>(db_in);
-}
-
-template <typename Basis>
-auto data_size_to_degree(const Basis& basis, int32_t degree) -> typename Basis::Index
-{
-    if (degree < 0) {
-        return 0;
-    }
-    if (degree >= basis.depth) {
-        return basis.size();
-    }
-    return basis.degree_begin[degree + 1];
-}
-
-template <typename... BufferType>
-bool all_buffers_match_type(xla::ffi::DataType expected_type, const BufferType&... buffer) {
-    return ((buffer.element_type() == expected_type) && ...);
-}
 
 template <typename... BufferType>
 bool all_buffers_valid_type(const BufferType&... buffer) {
@@ -62,47 +16,6 @@ bool all_buffers_valid_type(const BufferType&... buffer) {
     }
     return true;
 }
-
-namespace detail {
-
-inline ffi::Span<const int64_t> shape(ffi::AnyBuffer const& arg) noexcept
-{
-    return arg.dimensions();
-}
-inline ffi::Span<const int64_t> shape(ffi::Result<ffi::AnyBuffer>& arg) noexcept
-{
-    return arg->dimensions();
-}
-}
-
-
-template <typename Buffer, typename Basis>
-ffi::Error check_data_degree(Buffer& buf, const Basis& basis, int32_t degree, int dim=-1)
-{
-    if (degree > basis.depth) {
-        return ffi::Error::InvalidArgument("degree exceeds basis depth");
-    }
-
-    const auto buf_shape = detail::shape(buf);
-    if (dim < 0) {
-        dim = buf_shape.size() + dim;
-    }
-    if (dim < 0 || static_cast<size_t>(dim) >= buf_shape.size()) {
-        return ffi::Error::InvalidArgument("invalid dimension for buffer");
-    }
-
-    const auto val = buf_shape[dim];
-    const auto data_size = data_size_to_degree(basis, degree);
-
-    if (val < data_size) {
-        return ffi::Error::InvalidArgument(
-                "data dimension is too small for specified degree"
-        );
-    }
-
-    return ffi::Error::Success();
-}
-
 
 // Convenience function getting XLA dims when validating python buffer size
 std::pair<int64_t, int64_t> get_buffer_dims(const ffi::AnyBuffer& buffer);

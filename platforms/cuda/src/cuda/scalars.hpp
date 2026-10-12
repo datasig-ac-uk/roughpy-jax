@@ -1,5 +1,5 @@
-#ifndef PLATFORMS_CUDA_SRC_CUDA_SCALARS_HPP
-#define PLATFORMS_CUDA_SRC_CUDA_SCALARS_HPP
+#ifndef ROUGHPY_JAX_CUDA_SCALARS_HPP
+#define ROUGHPY_JAX_CUDA_SCALARS_HPP
 
 #include <type_traits>
 #include <utility>
@@ -10,7 +10,7 @@
 #include <cuda_fp16.h>
 #include <cuda_fp8.h>
 
-#include "xla_headers.hpp"
+#include <xla_helpers/xla_common.hpp>
 
 namespace rpy::jax::cuda {
 
@@ -231,4 +231,4 @@ ffi::ErrorOr<T> cast_scalar(AnyScalar const &value) noexcept {
 
 } // namespace rpy::jax::cuda
 
-#endif //PLATFORMS_CUDA_SRC_CUDA_SCALARS_HPP
+#endif //ROUGHPY_JAX_CUDA_SCALARS_HPP

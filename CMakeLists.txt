@@ -99,6 +99,10 @@ target_link_libraries(Roughpy_JAXModule PRIVATE
     RoughPy::Compute
 )
 
+target_include_directories(Roughpy_JAXModule PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/common/include"
+)
+
 
 add_subdirectory(roughpy_jax)
 

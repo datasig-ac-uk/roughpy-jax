@@ -6,10 +6,10 @@
 #include <rpp/basis/tensor_basis.hpp>
 #include <rpp/gpu/block/operations/intermediate/ft_fmexp.hpp>
 
-#include "batch.cuh"
+#include <xla_helpers/batch.cuh>
 #include "scalars.hpp"
-#include "select_strategy.cuh"
-#include "xla_headers.hpp"
+#include <xla_helpers/select_strategy.cuh>
+#include <xla_helpers/xla_common.hpp>
 
 namespace ffi = xla::ffi;
 
@@ -114,7 +114,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
         .Arg<xla::ffi::AnyBuffer>()
         .Attr<int32_t>("width")
         .Attr<int32_t>("depth")
-        .Attr<rpy::jax::cuda::DegreeBeginSpan>("degree_begin")
+        .Attr<rpy::jax::DegreeBeginSpan>("degree_begin")
         .Attr<int32_t>("mul_max_deg")
         .Attr<int32_t>("exp_max_deg")
         .Attr<int32_t>("mul_min_deg")

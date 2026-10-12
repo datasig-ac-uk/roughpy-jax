@@ -23,7 +23,7 @@ ffi::Error batch_config_recurse(
         Tail &... tail
 )
 {
-    const ffi::Span<const int64_t> dims = shape(head);
+    const ffi::Span<const int64_t> dims = rpy::jax::detail::shape(head);
     const auto these_batch_dims = dims.first(dims.size() - ncore_dims);
 
     for (size_t i=0; i<these_batch_dims.size(); ++i) {
@@ -42,7 +42,7 @@ ffi::Error batch_config_recurse(
 template <typename Head, typename... Tail>
 ffi::ErrorOr<int64_t> get_batch_dims(size_t ncore_dims, Head& head, Tail&... tail)
 {
-    const ffi::Span<const int64_t> dims = shape(head);
+    const ffi::Span<const int64_t> dims = rpy::jax::detail::shape(head);
     auto batch_dims = dims.first(dims.size() - ncore_dims);
 
     if constexpr (sizeof...(Tail) > 0) {
@@ -62,7 +62,7 @@ struct BaseAccessor
     template <typename Array>
     BaseAccessor(Array& stride_array, size_t ncore_dims) noexcept
     {
-        auto core_dims = shape(stride_array).last(ncore_dims);
+        auto core_dims = rpy::jax::detail::shape(stride_array).last(ncore_dims);
         stride = std::accumulate(core_dims.begin(), core_dims.end(), int64_t{1}, std::multiplies<>{});
     }
 };

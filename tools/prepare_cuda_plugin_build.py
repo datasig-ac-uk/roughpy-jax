@@ -182,7 +182,7 @@ def render_pyproject(
             'local_scheme = "no-local-version"',
             "",
             "[tool.scikit-build.cmake.define]",
-            'RPJ_RPP_SOURCE_DIR = "third_party/rough_path_primitives"',
+            'RPJ_REPO_ROOT = "."',
             f'RPJ_CUDA_TOOLKIT_MAJOR = "{major}"',
             f'RPJ_CUDA_PACKAGE_DIR = "{package_module}"',
             f'RPJ_CUDA_VARIANT = "{family}"',
@@ -241,6 +241,10 @@ def main() -> None:
             "before preparing the plugin build."
         )
 
+    common_source = repo_root / "common"
+    if not (common_source / "include" / "xla_helpers").is_dir():
+        raise FileNotFoundError(f"Shared XLA helpers are missing from {common_source}")
+
     if out_dir.exists():
         shutil.rmtree(out_dir)
 
@@ -255,6 +259,7 @@ def main() -> None:
         out_dir / "third_party" / "rough_path_primitives",
         ignore=shutil.ignore_patterns(".git", "__pycache__"),
     )
+    shutil.copytree(common_source, out_dir / "common")
 
     (out_dir / "pyproject.toml").write_text(
         render_pyproject(major, family, root_pyproject, scm_root),

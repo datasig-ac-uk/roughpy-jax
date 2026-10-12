@@ -1,34 +1,27 @@
-#ifndef PLATFORMS_CUDA_SRC_CUDA_XLA_HEADERS_HPP
-#define PLATFORMS_CUDA_SRC_CUDA_XLA_HEADERS_HPP
+#ifndef ROUGHPY_JAX_XLA_HELPERS_XLA_COMMON_HPP
+#define ROUGHPY_JAX_XLA_HELPERS_XLA_COMMON_HPP
 
 
+#include <cstddef>
 #include <cstdint>
 #include <type_traits>
-#include <rpp/basis/tensor_basis.hpp>
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wreturn-type"
-#pragma GCC diagnostic ignored "-Wsign-compare"
-#pragma GCC diagnostic ignored "-Wattributes"
-#include "xla/ffi/api/c_api.h"
-#include "xla/ffi/api/ffi.h"
-#pragma GCC diagnostic pop
+#include "xla_includes.hpp"
 
 #define RPY_XLA_SUCCESS_OR_RETURN(stat)                                        \
-do {                                                                       \
-const auto status = (stat);                                            \
-if (!status.success()) { return status; }                              \
-} while (0)
+    do {                                                                       \
+        const auto status = (stat);                                            \
+        if (!status.success()) { return status; }                              \
+    } while (0)
 
 
-namespace rpy::jax::cuda {
+namespace rpy::jax {
 
 namespace ffi = xla::ffi;
 
 using DegreeBeginIndex = std::conditional_t<(sizeof(std::ptrdiff_t) == sizeof(int64_t)),
                                             int64_t, int32_t>;
 using DegreeBeginSpan = ffi::Span<const DegreeBeginIndex>;
-using HostTensorBasis = rpp::basis::StandardTensorBasis;
 
 template <typename T>
 constexpr auto cast_db_array(const T* db_in) noexcept -> const std::ptrdiff_t*
@@ -97,7 +90,7 @@ ffi::Error check_data_degree(Buffer& buf, const Basis& basis, int32_t degree, in
     return ffi::Error::Success();
 }
 
-} // namespace rpy::jax::cuda
+} // namespace rpy::jax
 
 
-#endif //PLATFORMS_CUDA_SRC_CUDA_XLA_HEADERS_HPP
+#endif //ROUGHPY_JAX_XLA_HELPERS_XLA_COMMON_HPP

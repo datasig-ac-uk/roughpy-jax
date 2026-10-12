@@ -42,11 +42,22 @@ find_package(
 )
 find_package(CUDAToolkit ${RPJ_CUDA_TOOLKIT_MAJOR} REQUIRED)
 
-if (NOT DEFINED RPJ_RPP_SOURCE_DIR)
-    message(FATAL_ERROR "Set RPJ_RPP_SOURCE_DIR to the RPP submodule source directory.")
+if (NOT DEFINED RPJ_REPO_ROOT)
+    message(FATAL_ERROR "Set RPJ_REPO_ROOT to the RoughPy JAX repository root.")
 endif ()
-get_filename_component(RPJ_RPP_SOURCE_DIR "${RPJ_RPP_SOURCE_DIR}" ABSOLUTE
+get_filename_component(RPJ_REPO_ROOT "${RPJ_REPO_ROOT}" ABSOLUTE
         BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+
+if (NOT IS_DIRECTORY "${RPJ_REPO_ROOT}")
+    message(FATAL_ERROR "RPJ repository root does not exist: ${RPJ_REPO_ROOT}")
+endif ()
+
+set(RPJ_RPP_SOURCE_DIR "${RPJ_REPO_ROOT}/third_party/rough_path_primitives")
+set(RPJ_COMMON_SOURCE_DIR "${RPJ_REPO_ROOT}/common")
+
+if (NOT IS_DIRECTORY "${RPJ_COMMON_SOURCE_DIR}/include/xla_helpers")
+    message(FATAL_ERROR "Shared XLA helpers are missing from ${RPJ_COMMON_SOURCE_DIR}/include")
+endif ()
 
 if (NOT IS_DIRECTORY "${RPJ_RPP_SOURCE_DIR}")
     message(FATAL_ERROR "RPP source directory does not exist: ${RPJ_RPP_SOURCE_DIR}")
@@ -55,7 +66,7 @@ endif ()
 if (NOT EXISTS "${RPJ_RPP_SOURCE_DIR}/CMakeLists.txt")
     message(FATAL_ERROR
         "No RPP CMakeLists.txt found in ${RPJ_RPP_SOURCE_DIR}. "
-        "Check RPJ_RPP_SOURCE_DIR and initialise the submodule with "
+        "Check RPJ_REPO_ROOT and initialise the submodule with "
         "git submodule update --init --recursive.")
 endif ()
 
@@ -125,9 +136,6 @@ target_sources(RoughPyJAXCudaPlugin PRIVATE
         src/cuda/dense_st_fma.h
         src/cuda/dense_tensor_pairing.cu
         src/cuda/dense_tensor_pairing.h
-        src/cuda/xla_headers.hpp
-        src/cuda/scalars.hpp
-        src/cuda/select_strategy.cuh
         src/module.c
 )
 
@@ -139,6 +147,7 @@ target_include_directories(
         RoughPyJAXCudaPlugin
         PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/src"
+        "${RPJ_COMMON_SOURCE_DIR}/include"
 )
 
 target_compile_definitions(

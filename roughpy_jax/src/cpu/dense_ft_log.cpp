@@ -84,6 +84,6 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
         .Arg<xla::ffi::AnyBuffer>()
         .Attr<int32_t>("width")
         .Attr<int32_t>("depth")
-        .Attr<rpy::jax::cpu::DegreeBeginSpan>("degree_begin")
+        .Attr<rpy::jax::DegreeBeginSpan>("degree_begin")
         .Attr<int32_t>("arg_max_deg")
 );

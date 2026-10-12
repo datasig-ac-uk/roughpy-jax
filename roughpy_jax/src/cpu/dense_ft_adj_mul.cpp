@@ -225,7 +225,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(cpu_dense_ft_adj_lmul,
         .Arg<xla::ffi::AnyBuffer>()
         .Attr<int32_t>("width")
         .Attr<int32_t>("depth")
-        .Attr<rpy::jax::cpu::DegreeBeginSpan>("degree_begin")
+        .Attr<rpy::jax::DegreeBeginSpan>("degree_begin")
         .Attr<int32_t>("op_max_deg")
         .Attr<int32_t>("arg_max_deg")
 );
@@ -239,7 +239,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(cpu_dense_ft_adj_rmul,
         .Arg<xla::ffi::AnyBuffer>()
         .Attr<int32_t>("width")
         .Attr<int32_t>("depth")
-        .Attr<rpy::jax::cpu::DegreeBeginSpan>("degree_begin")
+        .Attr<rpy::jax::DegreeBeginSpan>("degree_begin")
         .Attr<int32_t>("op_max_deg")
         .Attr<int32_t>("arg_max_deg")
 );

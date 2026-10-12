@@ -7,11 +7,12 @@
 #include <rpp/gpu/block/operations/basic/ft_fma.hpp>
 #include <rpp/gpu/block/operations/basic/ft_mul.hpp>
 
-#include "batch.cuh"
+#include <xla_helpers/batch.cuh>
 #include "scalars.hpp"
-#include "select_strategy.cuh"
-#include "xla_headers.hpp"
+#include <xla_helpers/select_strategy.cuh>
+#include <xla_helpers/xla_common.hpp>
 
+using namespace rpy::jax;
 using namespace rpy::jax::cuda;
 
 namespace {
@@ -179,7 +180,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
         .Arg<xla::ffi::AnyBuffer>()
         .Attr<int32_t>("width")
         .Attr<int32_t>("depth")
-        .Attr<rpy::jax::cuda::DegreeBeginSpan>("degree_begin")
+        .Attr<rpy::jax::DegreeBeginSpan>("degree_begin")
         .Attr<int32_t>("a_max_deg")
         .Attr<int32_t>("b_max_deg")
         .Attr<int32_t>("c_max_deg")
@@ -196,7 +197,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
         .Arg<xla::ffi::AnyBuffer>()
         .Attr<int32_t>("width")
         .Attr<int32_t>("depth")
-        .Attr<rpy::jax::cuda::DegreeBeginSpan>("degree_begin")
+        .Attr<rpy::jax::DegreeBeginSpan>("degree_begin")
         .Attr<int32_t>("lhs_max_deg")
         .Attr<int32_t>("rhs_max_deg")
         .Attr<int32_t>("lhs_min_deg")

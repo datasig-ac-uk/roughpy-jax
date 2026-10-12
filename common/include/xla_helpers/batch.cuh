@@ -1,8 +1,9 @@
-#ifndef PLATFORMS_CUDA_SRC_CUDA_BATCH_CUH
-#define PLATFORMS_CUDA_SRC_CUDA_BATCH_CUH
+#ifndef ROUGHPY_JAX_XLA_HELPERS_BATCH_CUH
+#define ROUGHPY_JAX_XLA_HELPERS_BATCH_CUH
 
 #include <limits>
 
+#include <rpp/basis/tensor_basis.hpp>
 #include <rpp/gpu/architecture.hpp>
 #include <rpp/views/batch.hpp>
 #include <rpp/views/dense_tensor_view.hpp>
@@ -10,9 +11,12 @@
 #include <rpp/views/scalar_view.hpp>
 
 
-#include "xla_headers.hpp"
+#include "xla_common.hpp"
 
-namespace rpy::jax::cuda {
+namespace rpy::jax {
+
+using HostTensorBasis = rpp::basis::StandardTensorBasis;
+
 template<typename T, typename Arch=rpp::gpu::arch::DefaultArchitecture>
 using GMemPtr = typename Arch::template GMemPtr<T>;
 
@@ -142,7 +146,7 @@ auto make_scalar_batch(ffi::Result<ffi::AnyBuffer> buffer) noexcept {
     };
 }
 
-} // namespace rpy::jax::cuda
+} // namespace rpy::jax
 
 
-#endif //PLATFORMS_CUDA_SRC_CUDA_BATCH_CUH
+#endif //ROUGHPY_JAX_XLA_HELPERS_BATCH_CUH
