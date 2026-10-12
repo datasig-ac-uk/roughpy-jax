@@ -3,8 +3,11 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <string>
 #include <type_traits>
 #include <utility>
+
+#include <rpp/support/error.hpp>
 
 #include "xla_includes.hpp"
 
@@ -19,6 +22,48 @@
 namespace rpy::jax {
 
 namespace ffi = xla::ffi;
+
+// Preserve the RPP error message while translating its status to XLA FFI.
+template <typename Payload>
+ffi::Error map_err(const rpp::Error<Payload> &err) noexcept {
+  using rpp::ErrorCode;
+  ffi::ErrorCode code;
+  switch (err.code()) {
+  case ErrorCode::Success:
+    return ffi::Error::Success();
+  case ErrorCode::Cancelled:
+    code = ffi::ErrorCode::kCancelled;
+    break;
+  case ErrorCode::Unknown:
+    code = ffi::ErrorCode::kUnknown;
+    break;
+  case ErrorCode::InvalidArgument:
+    code = ffi::ErrorCode::kInvalidArgument;
+    break;
+  case ErrorCode::Timeout:
+    code = ffi::ErrorCode::kDeadlineExceeded;
+    break;
+  case ErrorCode::OutOfResources:
+    code = ffi::ErrorCode::kResourceExhausted;
+    break;
+  case ErrorCode::ContractViolation:
+    code = ffi::ErrorCode::kFailedPrecondition;
+    break;
+  case ErrorCode::OutOfBounds:
+    code = ffi::ErrorCode::kOutOfRange;
+    break;
+  case ErrorCode::NotImplemented:
+    code = ffi::ErrorCode::kUnimplemented;
+    break;
+  case ErrorCode::Internal:
+    code = ffi::ErrorCode::kInternal;
+    break;
+  default:
+    code = ffi::ErrorCode::kUnknown;
+    break;
+  }
+  return ffi::Error{code, std::string(err.message())};
+}
 
 // Platforms specialise this tag for their additional scalar types. An omitted
 // accumulation type selects the default for the storage dtype. Dispatch checks
