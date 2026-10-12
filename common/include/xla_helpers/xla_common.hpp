@@ -133,7 +133,7 @@ inline ffi::Span<const int64_t> shape(ffi::AnyBuffer const& arg) noexcept {
     return arg.dimensions();
 }
 inline ffi::Span<const int64_t>
-shape(const ffi::Result<ffi::AnyBuffer>& arg) noexcept {
+shape(ffi::Result<ffi::AnyBuffer> arg) noexcept {
     return arg->dimensions();
 }
 } // namespace detail
