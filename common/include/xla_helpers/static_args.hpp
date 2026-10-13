@@ -95,6 +95,30 @@ struct DenseTensorPairingStaticArgs {
     int32_t arg_min_degree;
 };
 
+struct DenseLeftHSMulStaticArgs {
+    HostTensorBasis basis;
+    int32_t integrator_max_degree;
+    int32_t integrand_max_degree;
+    int32_t integrator_min_degree = 0;
+    int32_t integrand_min_degree = 0;
+};
+
+struct DenseLeftHSAdjLMulStaticArgs {
+    HostTensorBasis basis;
+    int32_t integrator_max_degree;
+    int32_t integrand_max_degree;
+    int32_t integrator_min_degree = 0;
+    int32_t integrand_min_degree = 0;
+};
+
+struct DenseLeftHSAdjRMulStaticArgs {
+    HostTensorBasis basis;
+    int32_t integrator_max_degree;
+    int32_t integrand_max_degree;
+    int32_t integrator_min_degree = 0;
+    int32_t integrand_min_degree = 0;
+};
+
 } // namespace rpy::jax
 
 #endif // ROUGHPY_JAX_XLA_HELPERS_STATIC_ARGS_HPP
