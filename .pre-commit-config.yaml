@@ -7,3 +7,9 @@ repos:
         types_or: [python, pyi]
       - id: ruff-format
         types_or: [python, pyi]
+  - repo: https://github.com/pre-commit/mirrors-clang-format
+    rev: v22.1.8
+    hooks:
+      - id: clang-format
+        types_or: [c, c++, cuda]
+        files: ^(common/include|roughpy_jax/src|platforms/[^/]+/src)/.*\.(c|cc|cpp|cxx|h|hh|hpp|hxx|cu|cuh)$

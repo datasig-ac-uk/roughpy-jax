@@ -15,4 +15,4 @@ XLA_FFI_Error* cpu_dense_st_adj_mul(XLA_FFI_CallFrame*);
 #endif
 
 
-#endif// ROUGHPY_JAX_SRC_CPU_DENSE_ST_ADJ_MUL_HPP
+#endif // ROUGHPY_JAX_SRC_CPU_DENSE_ST_ADJ_MUL_HPP

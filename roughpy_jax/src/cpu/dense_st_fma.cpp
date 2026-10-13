@@ -1,171 +1,99 @@
 #include "dense_st_fma.h"
+#include "output_buffer.hpp"
 
-#include <algorithm>
+#include <rpp/architecture.hpp>
+#include <xla_helpers/batch.hpp>
+#include <xla_helpers/static_args.hpp>
 
-#include "roughpy_compute/dense/basic/shuffle_tensor_product.hpp"
+#include <rpp/cpu/single_thread/operations/basic/st_fma.hpp>
+#include <rpp/cpu/single_thread/strategy.hpp>
+#include <rpp/operations/basic/st_fma.hpp>
 
-#include "xla_common.hpp"
-#include "batching_loop.hpp"
-
-using namespace rpy::compute;
+#include <xla_helpers/xla_common.hpp>
 
 namespace rpy::jax::cpu {
 
 
-struct DenseSTFmaStaticArgs
-{
-    TensorBasis basis;
-    int32_t a_max_degree;
-    int32_t b_max_degree;
-    int32_t c_max_degree;
+template <typename Tag>
+struct DenseSTFmaFunctor {
+    using Scalar = typename Tag::Scalar;
+    using Accum = typename Tag::Accum;
 
-    int32_t b_min_degree = 0;
-    int32_t c_min_degree = 0;
+    static ffi::Error eval(ffi::Result<ffi::AnyBuffer> out,
+                           ffi::AnyBuffer a,
+                           ffi::AnyBuffer b,
+                           ffi::AnyBuffer c,
+                           DenseSTFmaStaticArgs static_args) noexcept {
+        using Arch = rpp::arch::DefaultArchitecture;
 
-    bool zero_out_a = false;
-};
+        using Strategy =
+            rpp::cpu::strategies::SingleThreadStrategy<Accum, Arch>;
 
+        zero_result_buffer(out);
+        auto out_batch =
+            make_tensor_batch<Scalar, Arch>(out, 0, static_args.basis.depth);
+        auto a_batch =
+            make_tensor_batch<Scalar, Arch>(a, 0, static_args.a_max_degree);
+        auto b_batch = make_tensor_batch<Scalar, Arch>(
+            b, static_args.b_min_degree, static_args.b_max_degree);
+        auto c_batch = make_tensor_batch<Scalar, Arch>(
+            c, static_args.c_min_degree, static_args.c_max_degree);
 
-template <ffi::DataType DType>
-struct DenseSTFmaFunctor : DenseSTFmaStaticArgs
-{
-    using Scalar = ffi::NativeType<DType>;
-    static constexpr size_t core_dims = 1;
+        const auto n_tensors = get_batch_size(1, out);
 
-    using StaticData = DenseSTFmaStaticArgs;
+        const auto status = rpp::ops::st_fma(Strategy{},
+                                             typename Strategy::LaunchConfig{},
+                                             out_batch,
+                                             a_batch,
+                                             b_batch,
+                                             c_batch,
+                                             static_args.basis,
+                                             n_tensors);
 
-    explicit DenseSTFmaFunctor(DenseSTFmaStaticArgs args)
-        : DenseSTFmaStaticArgs(std::move(args))
-    {}
-
-
-    ffi::Error operator()(
-        Scalar* a_data,
-        const Scalar* b_data,
-        const Scalar* c_data
-        )
-    {
-        DenseTensorView<Scalar*> result_view(a_data, basis, 0, a_max_degree);
-        DenseTensorView<const Scalar*>
-                b_view(b_data, basis, b_min_degree, b_max_degree);
-        DenseTensorView<const Scalar*>
-                c_view(c_data, basis, c_min_degree, c_max_degree);
-
-        if (zero_out_a) {
-            std::fill(result_view.data(), result_view.data() + result_view.size(), 0);
-        }
-
-        basic::st_fma(result_view, b_view, c_view);
-
-        return ffi::Error::Success();
-    }
-
-
-    ffi::Error operator()(
-        Scalar* out_data,
-        const Scalar* a_data,
-        const Scalar* b_data,
-        const Scalar* c_data)
-    {
-        const auto size = data_size_to_degree(basis, a_max_degree);
-
-        auto it = std::copy_n(a_data, size, out_data);
-        std::fill(it, out_data + basis.size(), Scalar{});
-
-        return operator()(out_data, b_data, c_data);
+        return map_err(status);
     }
 };
 
+ffi::Error cpu_dense_st_fma_impl(ffi::Result<ffi::AnyBuffer> out,
+                                 ffi::AnyBuffer a,
+                                 ffi::AnyBuffer b,
+                                 ffi::AnyBuffer c,
+                                 int32_t width,
+                                 int32_t depth,
+                                 DegreeBeginSpan degree_begin,
+                                 int32_t a_max_deg,
+                                 int32_t b_max_deg,
+                                 int32_t c_max_deg,
+                                 int32_t b_min_deg,
+                                 int32_t c_min_deg) {
 
-
-ffi::Error cpu_dense_st_fma_impl(
-    ffi::Result<ffi::AnyBuffer> result,
-    ffi::AnyBuffer a,
-    ffi::AnyBuffer b,
-    ffi::AnyBuffer c,
-    int32_t width,
-    int32_t depth,
-    DegreeBeginSpan degree_begin,
-    int32_t a_max_deg,
-    int32_t b_max_deg,
-    int32_t c_max_deg,
-    int32_t b_min_deg,
-    int32_t c_min_deg
-) noexcept {
-
-    DenseSTFmaStaticArgs static_args {
-        TensorBasis { cast_db_array(degree_begin.begin()), width, depth },
+    DenseSTFmaStaticArgs static_args{
+        HostTensorBasis{width, depth, cast_db_array(degree_begin.begin())},
         a_max_deg,
         b_max_deg,
         c_max_deg,
         b_min_deg,
-        c_min_deg
-    };
+        c_min_deg};
 
+    RPY_XLA_SUCCESS_OR_RETURN(check_data_degree(out, static_args.basis, depth));
     RPY_XLA_SUCCESS_OR_RETURN(
-            check_data_degree(result, static_args.basis, a_max_deg)
-    );
+        check_data_degree(a, static_args.basis, a_max_deg));
     RPY_XLA_SUCCESS_OR_RETURN(
-            check_data_degree(a, static_args.basis, a_max_deg)
-    );
+        check_data_degree(b, static_args.basis, b_max_deg));
     RPY_XLA_SUCCESS_OR_RETURN(
-            check_data_degree(b, static_args.basis, b_max_deg)
-    );
-    RPY_XLA_SUCCESS_OR_RETURN(
-            check_data_degree(c, static_args.basis, c_max_deg)
-    );
+        check_data_degree(c, static_args.basis, c_max_deg));
 
-    return select_implementation_and_go<DenseSTFmaFunctor>(
-        std::move(static_args),
-        result->element_type(),
-        result,
-        a,
-        b,
-        c
-        );
-}
+    RPY_XLA_SUCCESS_OR_RETURN(check_batch_dims(1, out, a, b, c));
+    if (!all_buffers_match_type(out->element_type(), a, b, c)) {
+        return ffi::Error::InvalidArgument(
+            "all tensors should have the same data type");
+    }
 
+    RPY_XLA_SUCCESS_OR_RETURN(check_batch_size<rpp::arch::DefaultArchitecture>(
+        get_batch_size(1, out)));
 
-ffi::Error cpu_dense_st_mul_impl(
-    ffi::Result<ffi::AnyBuffer> result,
-    ffi::AnyBuffer lhs,
-    ffi::AnyBuffer rhs,
-    int32_t width,
-    int32_t depth,
-    DegreeBeginSpan degree_begin,
-    int32_t lhs_max_deg,
-    int32_t rhs_max_deg,
-    int32_t lhs_min_deg,
-    int32_t rhs_min_deg
-    ) noexcept
-{
-    DenseSTFmaStaticArgs static_args {
-        TensorBasis { cast_db_array(degree_begin.begin()), width, depth },
-        depth,
-        lhs_max_deg,
-        rhs_max_deg,
-        lhs_min_deg,
-        rhs_min_deg,
-        true
-    };
-
-    RPY_XLA_SUCCESS_OR_RETURN(
-            check_data_degree(result, static_args.basis, depth)
-    );
-    RPY_XLA_SUCCESS_OR_RETURN(
-            check_data_degree(lhs, static_args.basis, lhs_max_deg)
-    );
-    RPY_XLA_SUCCESS_OR_RETURN(
-            check_data_degree(rhs, static_args.basis, rhs_max_deg)
-    );
-
-    return select_implementation_and_go<DenseSTFmaFunctor>(
-            std::move(static_args),
-            result->element_type(),
-            result,
-            lhs,
-            rhs
-    );
+    return select_type_and_go<DenseSTFmaFunctor>(
+        out->element_type(), out, a, b, c, static_args);
 }
 
 } // namespace rpy::jax::cpu
@@ -180,26 +108,11 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
         .Arg<xla::ffi::AnyBuffer>()
         .Attr<int32_t>("width")
         .Attr<int32_t>("depth")
-        .Attr<rpy::jax::cpu::DegreeBeginSpan>("degree_begin")
+        .Attr<rpy::jax::DegreeBeginSpan>("degree_begin")
         .Attr<int32_t>("a_max_deg")
         .Attr<int32_t>("b_max_deg")
         .Attr<int32_t>("c_max_deg")
         .Attr<int32_t>("b_min_deg")
         .Attr<int32_t>("c_min_deg")
-);
 
-XLA_FFI_DEFINE_HANDLER_SYMBOL(
-        cpu_dense_st_mul,
-        rpy::jax::cpu::cpu_dense_st_mul_impl,
-        xla::ffi::Ffi::Bind()
-                .Ret<xla::ffi::AnyBuffer>()
-                .Arg<xla::ffi::AnyBuffer>()
-                .Arg<xla::ffi::AnyBuffer>()
-                .Attr<int32_t>("width")
-                .Attr<int32_t>("depth")
-                .Attr<rpy::jax::cpu::DegreeBeginSpan>("degree_begin")
-                .Attr<int32_t>("lhs_max_deg")
-                .Attr<int32_t>("rhs_max_deg")
-                .Attr<int32_t>("lhs_min_deg")
-                .Attr<int32_t>("rhs_min_deg")
 );

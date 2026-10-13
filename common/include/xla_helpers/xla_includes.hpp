@@ -1,5 +1,5 @@
-#ifndef ROUGHPY_JAX_XLA_INCLUDES_HPP
-#define ROUGHPY_JAX_XLA_INCLUDES_HPP
+#ifndef ROUGHPY_JAX_XLA_HELPERS_XLA_INCLUDES_HPP
+#define ROUGHPY_JAX_XLA_HELPERS_XLA_INCLUDES_HPP
 
 // FIXME review warning suppression and non-GCC alternative
 #pragma GCC diagnostic push
@@ -10,4 +10,4 @@
 #include "xla/ffi/api/ffi.h"
 #pragma GCC diagnostic pop
 
-#endif // ROUGHPY_JAX_XLA_INCLUDES_HPP
+#endif // ROUGHPY_JAX_XLA_HELPERS_XLA_INCLUDES_HPP

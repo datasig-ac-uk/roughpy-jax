@@ -1,28 +1,19 @@
 #include "dense_ft_fmexp.h"
 
-#include <algorithm>
-#include <functional>
 
 #include <rpp/basis/tensor_basis.hpp>
 #include <rpp/gpu/block/operations/intermediate/ft_fmexp.hpp>
 
-#include "batch.cuh"
+#include <xla_helpers/batch.hpp>
+#include <xla_helpers/static_args.hpp>
+#include <xla_helpers/xla_common.hpp>
+#include "output_buffer.cuh"
 #include "scalars.hpp"
 #include "select_strategy.cuh"
-#include "xla_headers.hpp"
-
-namespace ffi = xla::ffi;
 
 namespace rpy::jax::cuda {
 namespace {
 
-struct DenseFTFMExpStaticArgs {
-    HostTensorBasis basis;
-    int32_t mul_max_deg;
-    int32_t exp_max_deg;
-    int32_t mul_min_deg;
-    int32_t exp_min_deg;
-};
 
 template <typename Tag>
 struct DenseFTFMExpFunctor {
@@ -35,28 +26,26 @@ struct DenseFTFMExpFunctor {
                            DenseFTFMExpStaticArgs static_args,
                            cudaStream_t stream) noexcept {
         const auto tensor_size = static_args.basis.size();
-        const auto out_shape = out->dimensions();
-        const auto n_tensors =
-            std::accumulate(out_shape.begin(),
-                            out_shape.end() - 1,
-                            1LL,
-                            std::multiplies<>{});
-        RPY_XLA_SUCCESS_OR_RETURN(check_batch_size(n_tensors));
+        const auto n_tensors = get_batch_size(1, out);
+
+        RPY_XLA_SUCCESS_OR_RETURN(zero_result_buffer(out, stream));
 
         return select_strategy<Accum>(tensor_size, [&](auto strategy) {
             using LaunchCfg = typename decltype(strategy)::LaunchConfig;
-            return rpp::ops::ft_fmexp(
-                strategy,
-                LaunchCfg{stream},
-                make_tensor_batch<Scalar>(out, 0, static_args.basis.depth),
-                make_tensor_batch<Scalar>(multiplier,
-                                          static_args.mul_min_deg,
-                                          static_args.mul_max_deg),
-                make_tensor_batch<Scalar>(exponent,
-                                          static_args.exp_min_deg,
-                                          static_args.exp_max_deg),
-                static_args.basis,
-                n_tensors);
+            return rpp::ops::ft_fmexp(strategy,
+                                      LaunchCfg{stream},
+                                      make_tensor_batch<Scalar, DefaultArch>(
+                                          out, 0, static_args.basis.depth),
+                                      make_tensor_batch<Scalar, DefaultArch>(
+                                          multiplier,
+                                          static_args.mul_min_degree,
+                                          static_args.mul_max_degree),
+                                      make_tensor_batch<Scalar, DefaultArch>(
+                                          exponent,
+                                          static_args.exp_min_degree,
+                                          static_args.exp_max_degree),
+                                      static_args.basis,
+                                      n_tensors);
         });
     }
 };
@@ -75,10 +64,9 @@ ffi::Error cuda_dense_ft_fmexp_impl(cudaStream_t stream,
                                     int32_t mul_min_deg,
                                     int32_t exp_min_deg) noexcept {
     DenseFTFMExpStaticArgs static_args{
-        HostTensorBasis{
-            static_cast<HostTensorBasis::Degree>(width),
-            static_cast<HostTensorBasis::Degree>(depth),
-            cast_db_array(degree_begin.begin())},
+        HostTensorBasis{static_cast<HostTensorBasis::Degree>(width),
+                        static_cast<HostTensorBasis::Degree>(depth),
+                        cast_db_array(degree_begin.begin())},
         mul_max_deg,
         exp_max_deg,
         mul_min_deg,
@@ -94,12 +82,13 @@ ffi::Error cuda_dense_ft_fmexp_impl(cudaStream_t stream,
             "all tensors should have the same data type");
     }
 
-    return select_type_and_go<DenseFTFMExpFunctor>(out->element_type(),
-                                                   out,
-                                                   multiplier,
-                                                   exponent,
-                                                   static_args,
-                                                   stream);
+    RPY_XLA_SUCCESS_OR_RETURN(check_batch_dims(1, out, multiplier, exponent));
+
+    RPY_XLA_SUCCESS_OR_RETURN(
+        check_batch_size<DefaultArch>(get_batch_size(1, out)));
+
+    return select_type_and_go<DenseFTFMExpFunctor>(
+        out->element_type(), out, multiplier, exponent, static_args, stream);
 }
 
 } // namespace rpy::jax::cuda
@@ -114,7 +103,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
         .Arg<xla::ffi::AnyBuffer>()
         .Attr<int32_t>("width")
         .Attr<int32_t>("depth")
-        .Attr<rpy::jax::cuda::DegreeBeginSpan>("degree_begin")
+        .Attr<rpy::jax::DegreeBeginSpan>("degree_begin")
         .Attr<int32_t>("mul_max_deg")
         .Attr<int32_t>("exp_max_deg")
         .Attr<int32_t>("mul_min_deg")

@@ -1,102 +1,86 @@
 #include "dense_st_adj_mul.h"
+#include "output_buffer.hpp"
 
-#include <utility>
-
-#include <roughpy_compute/common/basis.hpp>
-#include <roughpy_compute/dense/basic/shuffle_tensor_adjoint_mul.hpp>
-#include <roughpy_compute/dense/views.hpp>
-
-#include "batching_loop.hpp"
-#include "xla_common.hpp"
-
-using namespace rpy::compute;
+#include <rpp/architecture.hpp>
+#include <rpp/cpu/single_thread/operations/basic/st_adj_mul.hpp>
+#include <rpp/cpu/single_thread/strategy.hpp>
+#include <xla_helpers/batch.hpp>
+#include <xla_helpers/static_args.hpp>
+#include <xla_helpers/xla_common.hpp>
 
 namespace rpy::jax::cpu {
 
-struct DenseSTAdjMulStaticArgs {
-    TensorBasis basis;
-    int32_t op_max_deg;
-    int32_t arg_max_deg;
-};
 
-template <ffi::DataType DType>
-struct DenseSTAdjMulFunctor : DenseSTAdjMulStaticArgs {
-    using Scalar = ffi::NativeType<DType>;
-    static constexpr size_t core_dims = 1;
+template <typename Tag>
+struct DenseSTAdjMulFunctor {
+    using Scalar = typename Tag::Scalar;
+    using Accum = typename Tag::Accum;
 
-    using StaticData = DenseSTAdjMulStaticArgs;
+    static ffi::Error eval(ffi::Result<ffi::AnyBuffer> out,
+                           ffi::AnyBuffer op,
+                           ffi::AnyBuffer arg,
+                           DenseSTAdjMulStaticArgs static_args) noexcept {
+        using Arch = rpp::arch::DefaultArchitecture;
+        using Strategy =
+            rpp::cpu::strategies::SingleThreadStrategy<Accum, Arch>;
+        zero_result_buffer(out);
+        auto out_batch =
+            make_tensor_batch<Scalar, Arch>(out, 0, static_args.basis.depth);
+        auto op_batch =
+            make_tensor_batch<Scalar, Arch>(op, 0, static_args.op_max_degree);
+        auto arg_batch =
+            make_tensor_batch<Scalar, Arch>(arg, 0, static_args.arg_max_degree);
 
-    explicit DenseSTAdjMulFunctor(StaticData data)
-        : DenseSTAdjMulStaticArgs(std::move(data))
-    {}
-
-    ffi::Error operator()(
-            Scalar* out_data,
-            const Scalar* op_data,
-            const Scalar* arg_data
-    ) noexcept
-    {
-        DenseTensorView<Scalar*> out_view(out_data, basis, 0, basis.depth);
-        DenseTensorView<const Scalar*> op_view(op_data, basis, 0, op_max_deg);
-        DenseTensorView<const Scalar*>
-                arg_view(arg_data, basis, 0, arg_max_deg);
-
-        std::fill_n(out_view.data(), out_view.size(), Scalar{});
-        basic::st_adj_mul(out_view, op_view, arg_view);
-
-        return ffi::Error::Success();
+        return map_err(rpp::ops::st_adj_mul(Strategy{},
+                                            typename Strategy::LaunchConfig{},
+                                            out_batch,
+                                            op_batch,
+                                            arg_batch,
+                                            static_args.basis,
+                                            get_batch_size(1, out)));
     }
 };
 
-ffi::Error cpu_dense_st_adj_mul(
-        ffi::Result<ffi::AnyBuffer> out,
-        ffi::AnyBuffer op,
-        ffi::AnyBuffer arg,
-        int32_t width,
-        int32_t depth,
-        DegreeBeginSpan degree_begin,
-        int32_t op_max_deg,
-        int32_t arg_max_deg
-) noexcept
-{
+ffi::Error cpu_dense_st_adj_mul_impl(ffi::Result<ffi::AnyBuffer> out,
+                                     ffi::AnyBuffer op,
+                                     ffi::AnyBuffer arg,
+                                     int32_t width,
+                                     int32_t depth,
+                                     DegreeBeginSpan degree_begin,
+                                     int32_t op_max_deg,
+                                     int32_t arg_max_deg) noexcept {
     DenseSTAdjMulStaticArgs static_args{
-            TensorBasis{cast_db_array(degree_begin.begin()), width, depth},
-            op_max_deg,
-            arg_max_deg
-    };
+        HostTensorBasis{width, depth, cast_db_array(degree_begin.begin())},
+        op_max_deg,
+        arg_max_deg};
 
+    RPY_XLA_SUCCESS_OR_RETURN(check_data_degree(out, static_args.basis, depth));
     RPY_XLA_SUCCESS_OR_RETURN(
-            check_data_degree(out, static_args.basis, static_args.basis.depth)
-    );
-
+        check_data_degree(op, static_args.basis, op_max_deg));
     RPY_XLA_SUCCESS_OR_RETURN(
-            check_data_degree(op, static_args.basis, op_max_deg)
-    );
-    RPY_XLA_SUCCESS_OR_RETURN(
-            check_data_degree(arg, static_args.basis, arg_max_deg)
-    );
-
-    return select_implementation_and_go<DenseSTAdjMulFunctor>(
-            std::move(static_args),
-            out->element_type(),
-            out,
-            op,
-            arg
-    );
+        check_data_degree(arg, static_args.basis, arg_max_deg));
+    RPY_XLA_SUCCESS_OR_RETURN(check_batch_dims(1, out, op, arg));
+    if (!all_buffers_match_type(out->element_type(), op, arg)) {
+        return ffi::Error::InvalidArgument(
+            "all tensors should have the same data type");
+    }
+    RPY_XLA_SUCCESS_OR_RETURN(check_batch_size<rpp::arch::DefaultArchitecture>(
+        get_batch_size(1, out)));
+    return select_type_and_go<DenseSTAdjMulFunctor>(
+        out->element_type(), out, op, arg, static_args);
 }
 
-}// namespace rpy::jax::cpu
+} // namespace rpy::jax::cpu
 
 XLA_FFI_DEFINE_HANDLER_SYMBOL(
-        cpu_dense_st_adj_mul,
-        rpy::jax::cpu::cpu_dense_st_adj_mul,
-        xla::ffi::Ffi::Bind()
-                .Ret<xla::ffi::AnyBuffer>()
-                .Arg<xla::ffi::AnyBuffer>()
-                .Arg<xla::ffi::AnyBuffer>()
-                .Attr<int32_t>("width")
-                .Attr<int32_t>("depth")
-                .Attr<rpy::jax::cpu::DegreeBeginSpan>("degree_begin")
-                .Attr<int32_t>("op_max_deg")
-                .Attr<int32_t>("arg_max_deg")
-);
+    cpu_dense_st_adj_mul,
+    rpy::jax::cpu::cpu_dense_st_adj_mul_impl,
+    xla::ffi::Ffi::Bind()
+        .Ret<xla::ffi::AnyBuffer>()
+        .Arg<xla::ffi::AnyBuffer>()
+        .Arg<xla::ffi::AnyBuffer>()
+        .Attr<int32_t>("width")
+        .Attr<int32_t>("depth")
+        .Attr<rpy::jax::DegreeBeginSpan>("degree_begin")
+        .Attr<int32_t>("op_max_deg")
+        .Attr<int32_t>("arg_max_deg"));

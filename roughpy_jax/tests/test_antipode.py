@@ -146,3 +146,33 @@ def test_antipode_check_vjp(trials):
         atol=trials.cond_dtype(2e-3, 1e-6),
         rtol=trials.cond_dtype(2e-3, 1e-6),
     )
+
+
+@pytest.mark.parametrize("no_sign", [False, True])
+@pytest.mark.parametrize("dtype", [jnp.float32, jnp.float64])
+def test_generalised_antipode_signing(no_sign, dtype, rpj_batch):
+    from roughpy_jax.ops import DenseAntipode
+
+    basis = rpj.TensorBasis(2, 3)
+    data = rpj_batch.repeat(jnp.arange(1, basis.size() + 1, dtype=dtype))
+    operation = DenseAntipode(
+        (basis,), dtype, rpj_batch.shape, arg_max_deg=basis.depth, no_sign=no_sign
+    )
+    result = operation(data)[0]
+
+    expected_levels = []
+    offset = 0
+    for degree in range(basis.depth + 1):
+        size = basis.width**degree
+        level = data[..., offset : offset + size].reshape(
+            (*rpj_batch.shape, *((basis.width,) * degree))
+        )
+        batch_rank = len(rpj_batch.shape)
+        axes = (*range(batch_rank), *reversed(range(batch_rank, batch_rank + degree)))
+        level = jnp.transpose(level, axes).reshape((*rpj_batch.shape, size))
+        if not no_sign and degree % 2:
+            level = -level
+        expected_levels.append(level)
+        offset += size
+
+    assert jnp.array_equal(result, jnp.concatenate(expected_levels, axis=-1))

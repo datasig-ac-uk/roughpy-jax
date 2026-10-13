@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.30)
+cmake_minimum_required(VERSION 3.31)
 
 if (SKBUILD AND DEFINED SKBUILD_PROJECT_VERSION)
     set(RPJ_PLUGIN_VERSION ${SKBUILD_PROJECT_VERSION})
@@ -41,7 +41,42 @@ find_package(
         Python 3.11 REQUIRED COMPONENTS Development.Module Interpreter ${SKBUILD_SABI_COMPONENT}
 )
 find_package(CUDAToolkit ${RPJ_CUDA_TOOLKIT_MAJOR} REQUIRED)
-find_package(RoughPathPrimitives CONFIG REQUIRED COMPONENTS GPU)
+
+if (NOT DEFINED RPJ_REPO_ROOT)
+    message(FATAL_ERROR "Set RPJ_REPO_ROOT to the RoughPy JAX repository root.")
+endif ()
+get_filename_component(RPJ_REPO_ROOT "${RPJ_REPO_ROOT}" ABSOLUTE
+        BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+
+if (NOT IS_DIRECTORY "${RPJ_REPO_ROOT}")
+    message(FATAL_ERROR "RPJ repository root does not exist: ${RPJ_REPO_ROOT}")
+endif ()
+
+set(RPJ_RPP_SOURCE_DIR "${RPJ_REPO_ROOT}/third_party/rough_path_primitives")
+set(RPJ_COMMON_SOURCE_DIR "${RPJ_REPO_ROOT}/common")
+
+if (NOT IS_DIRECTORY "${RPJ_COMMON_SOURCE_DIR}/include/xla_helpers")
+    message(FATAL_ERROR "Shared XLA helpers are missing from ${RPJ_COMMON_SOURCE_DIR}/include")
+endif ()
+
+if (NOT IS_DIRECTORY "${RPJ_RPP_SOURCE_DIR}")
+    message(FATAL_ERROR "RPP source directory does not exist: ${RPJ_RPP_SOURCE_DIR}")
+endif ()
+
+if (NOT EXISTS "${RPJ_RPP_SOURCE_DIR}/CMakeLists.txt")
+    message(FATAL_ERROR
+        "No RPP CMakeLists.txt found in ${RPJ_RPP_SOURCE_DIR}. "
+        "Check RPJ_REPO_ROOT and initialise the submodule with "
+        "git submodule update --init --recursive.")
+endif ()
+
+set(RPP_ENABLE_CUDA ON CACHE BOOL "" FORCE)
+set(RPP_ENABLE_TESTS OFF CACHE BOOL "" FORCE)
+set(RPP_ENABLE_BENCHMARKS OFF CACHE BOOL "" FORCE)
+set(RPP_ADD_STUB_TARGET OFF CACHE BOOL "" FORCE)
+add_subdirectory("${RPJ_RPP_SOURCE_DIR}"
+        "${CMAKE_CURRENT_BINARY_DIR}/third_party/rough_path_primitives"
+        EXCLUDE_FROM_ALL)
 
 if (NOT DEFINED RPJ_CUDA_TOOLKIT_MAJOR)
 #    message(FATAL_ERROR "RPJ_CUDA_TOOLKIT_MAJOR must be provided")
@@ -81,29 +116,30 @@ set_target_properties(
 
 
 target_sources(RoughPyJAXCudaPlugin PRIVATE
-        src/cuda/dense_ft_adj_mul.cu
-        src/cuda/dense_ft_adj_mul.h
+        src/cuda/dense_ft_adj_lmul.cu
+        src/cuda/dense_ft_adj_lmul.h
+        src/cuda/dense_ft_adj_rmul.cu
+        src/cuda/dense_ft_adj_rmul.h
         src/cuda/dense_ft_antipode.cu
         src/cuda/dense_ft_antipode.h
         src/cuda/dense_ft_exp.cu
         src/cuda/dense_ft_exp.h
         src/cuda/dense_ft_fma.h
         src/cuda/dense_ft_fma.cu
+        src/cuda/dense_ft_mul.cu
+        src/cuda/dense_ft_mul.h
         src/cuda/dense_ft_fmexp.cu
         src/cuda/dense_ft_fmexp.h
         src/cuda/dense_ft_log.cu
         src/cuda/dense_ft_log.h
-        src/cuda/dense_lie_pairing.cu
-        src/cuda/dense_tensor_pairing.h
         src/cuda/dense_st_adj_mul.cu
         src/cuda/dense_st_adj_mul.h
         src/cuda/dense_st_fma.cu
         src/cuda/dense_st_fma.h
+        src/cuda/dense_st_mul.cu
+        src/cuda/dense_st_mul.h
         src/cuda/dense_tensor_pairing.cu
         src/cuda/dense_tensor_pairing.h
-        src/cuda/xla_headers.hpp
-        src/cuda/scalars.hpp
-        src/cuda/select_strategy.cuh
         src/module.c
 )
 
@@ -115,6 +151,7 @@ target_include_directories(
         RoughPyJAXCudaPlugin
         PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/src"
+        "${RPJ_COMMON_SOURCE_DIR}/include"
 )
 
 target_compile_definitions(

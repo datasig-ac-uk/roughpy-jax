@@ -1,30 +1,23 @@
 #include "dense_st_adj_mul.h"
 
-#include <algorithm>
-#include <functional>
 
 #include <rpp/basis/basis_pack.hpp>
 #include <rpp/basis/tensor_basis.hpp>
-#include <rpp/operations/basic/st_adj_mul.hpp>
 #include <rpp/gpu/block/operations/basic/st_adj_mul.hpp>
+#include <rpp/operations/basic/st_adj_mul.hpp>
 
-#include "batch.cuh"
+#include <xla_helpers/batch.hpp>
+#include <xla_helpers/static_args.hpp>
+#include <xla_helpers/xla_common.hpp>
+#include "output_buffer.cuh"
 #include "scalars.hpp"
 #include "select_strategy.cuh"
-#include "xla_headers.hpp"
-
-namespace ffi = xla::ffi;
 
 namespace rpy::jax::cuda {
 namespace {
-struct DenseSTAdjMulStaticArgs {
-    HostTensorBasis basis;
-    int32_t op_max_deg;
-    int32_t arg_max_deg;
-};
 
 
-template<typename Tag>
+template <typename Tag>
 struct DenseSTAdjMulFunctor {
     using Scalar = typename Tag::Scalar;
     using Accum = typename Tag::Accum;
@@ -35,25 +28,22 @@ struct DenseSTAdjMulFunctor {
                            DenseSTAdjMulStaticArgs static_args,
                            cudaStream_t stream) noexcept {
         const auto tensor_size = static_args.basis.size();
-        const auto out_shape = out->dimensions();
-        const auto n_tensors =
-                std::accumulate(out_shape.begin(),
-                                out_shape.end() - 1,
-                                1LL,
-                                std::multiplies<>{});
-        RPY_XLA_SUCCESS_OR_RETURN(check_batch_size(n_tensors));
+        const auto n_tensors = get_batch_size(1, out);
+
+        RPY_XLA_SUCCESS_OR_RETURN(zero_result_buffer(out, stream));
 
         return select_strategy<Accum>(tensor_size, [&](auto strategy) {
             using LaunchCfg = typename decltype(strategy)::LaunchConfig;
-            return rpp::ops::st_adj_mul(
-                strategy,
-                LaunchCfg{stream},
-                make_tensor_batch<Scalar>(out, 0, static_args.basis.depth),
-                make_tensor_batch<Scalar>(op, 0, static_args.op_max_deg),
-                make_tensor_batch<Scalar>(arg, 0, static_args.arg_max_deg),
-                static_args.basis,
-                n_tensors
-            );
+            return rpp::ops::st_adj_mul(strategy,
+                                        LaunchCfg{stream},
+                                        make_tensor_batch<Scalar, DefaultArch>(
+                                            out, 0, static_args.basis.depth),
+                                        make_tensor_batch<Scalar, DefaultArch>(
+                                            op, 0, static_args.op_max_degree),
+                                        make_tensor_batch<Scalar, DefaultArch>(
+                                            arg, 0, static_args.arg_max_degree),
+                                        static_args.basis,
+                                        n_tensors);
         });
     }
 };
@@ -69,22 +59,26 @@ ffi::Error cuda_dense_st_adj_mul(cudaStream_t stream,
                                  int32_t op_max_deg,
                                  int32_t arg_max_deg) noexcept {
     DenseSTAdjMulStaticArgs static_args{
-        HostTensorBasis{
-            static_cast<HostTensorBasis::Degree>(width),
-            static_cast<HostTensorBasis::Degree>(depth),
-            cast_db_array(degree_begin.begin())
-        },
+        HostTensorBasis{static_cast<HostTensorBasis::Degree>(width),
+                        static_cast<HostTensorBasis::Degree>(depth),
+                        cast_db_array(degree_begin.begin())},
         op_max_deg,
-        arg_max_deg
-    };
+        arg_max_deg};
 
     RPY_XLA_SUCCESS_OR_RETURN(check_data_degree(out, static_args.basis, depth));
-    RPY_XLA_SUCCESS_OR_RETURN(check_data_degree(op, static_args.basis, op_max_deg));
-    RPY_XLA_SUCCESS_OR_RETURN(check_data_degree(arg, static_args.basis, arg_max_deg));
+    RPY_XLA_SUCCESS_OR_RETURN(
+        check_data_degree(op, static_args.basis, op_max_deg));
+    RPY_XLA_SUCCESS_OR_RETURN(
+        check_data_degree(arg, static_args.basis, arg_max_deg));
     if (!all_buffers_match_type(out->element_type(), op, arg)) {
         return ffi::Error::InvalidArgument(
             "all tensors should have the same data type");
     }
+
+    RPY_XLA_SUCCESS_OR_RETURN(check_batch_dims(1, out, op, arg));
+
+    RPY_XLA_SUCCESS_OR_RETURN(
+        check_batch_size<DefaultArch>(get_batch_size(1, out)));
 
     return select_type_and_go<DenseSTAdjMulFunctor>(
         out->element_type(), out, op, arg, static_args, stream);
@@ -95,12 +89,12 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
     cuda_dense_st_adj_mul,
     rpy::jax::cuda::cuda_dense_st_adj_mul,
     xla::ffi::Ffi::Bind()
-    .Ctx<xla::ffi::PlatformStream<cudaStream_t> >()
-    .Ret<xla::ffi::AnyBuffer>()
-    .Arg<xla::ffi::AnyBuffer>()
-    .Arg<xla::ffi::AnyBuffer>()
-    .Attr<int32_t>("width")
-    .Attr<int32_t>("depth")
-    .Attr<rpy::jax::cuda::DegreeBeginSpan>("degree_begin")
-    .Attr<int32_t>("op_max_deg")
-    .Attr<int32_t>("arg_max_deg"));
+        .Ctx<xla::ffi::PlatformStream<cudaStream_t>>()
+        .Ret<xla::ffi::AnyBuffer>()
+        .Arg<xla::ffi::AnyBuffer>()
+        .Arg<xla::ffi::AnyBuffer>()
+        .Attr<int32_t>("width")
+        .Attr<int32_t>("depth")
+        .Attr<rpy::jax::DegreeBeginSpan>("degree_begin")
+        .Attr<int32_t>("op_max_deg")
+        .Attr<int32_t>("arg_max_deg"));
