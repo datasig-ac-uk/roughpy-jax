@@ -40,6 +40,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+        with:
+          submodules: recursive
 
       - uses: pypa/cibuildwheel@v4.2.1
         env:
