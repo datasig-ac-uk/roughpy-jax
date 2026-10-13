@@ -1431,6 +1431,42 @@ class DenseSTAdjMul(Operation[TensorBasis], DenseOperation):
         return tuple(_redepth_data(arg, basis_size) for arg in converted_args)
 
 
+class DenseLeftHSMul(Operation[TensorBasis], DenseOperation):
+    """Left half-shuffle product of an integrator and an integrand."""
+
+    fn_name = "left_hs_mul"
+
+    class StaticArgs(TypedDict):
+        integrator_max_deg: np.int32
+        integrand_max_deg: np.int32
+        integrator_min_deg: np.int32
+        integrand_min_deg: np.int32
+
+
+class DenseLeftHSAdjLMul(Operation[TensorBasis], DenseOperation):
+    """Adjoint in the integrand; inputs are the fixed integrator and cotangent."""
+
+    fn_name = "left_hs_adj_lmul"
+
+    class StaticArgs(TypedDict):
+        integrator_max_deg: np.int32
+        integrand_max_deg: np.int32
+        integrator_min_deg: np.int32
+        integrand_min_deg: np.int32
+
+
+class DenseLeftHSAdjRMul(Operation[TensorBasis], DenseOperation):
+    """Adjoint in the integrator; inputs are the cotangent and fixed integrand."""
+
+    fn_name = "left_hs_adj_rmul"
+
+    class StaticArgs(TypedDict):
+        integrator_max_deg: np.int32
+        integrand_max_deg: np.int32
+        integrator_min_deg: np.int32
+        integrand_min_deg: np.int32
+
+
 cpu_functions: Any
 
 # Register all CPU implementations for dense operations
