@@ -176,6 +176,79 @@ That generates a variant-specific source and metadata tree under
 `cibuildwheel`; compiling it locally additionally requires the matching CUDA
 toolkit and the native RoughPathPrimitives dependencies.
 
+### Testing installed CUDA wheels in Docker
+
+Run both CUDA families with the same manylinux CUDA 12.9 and 13.1 images used
+by the release pipeline:
+
+```bash
+python tools/run_cuda_tests.py
+```
+
+The host needs Docker, NVIDIA Container Toolkit GPU passthrough, and a driver
+compatible with the selected CUDA family. No host CUDA toolkit or Python build
+environment is needed; the runner itself uses only Python's standard library
+(Python 3.11 or newer). These images target Linux x86_64.
+
+Each container mounts the checkout read-only and copies the current sources,
+including uncommitted changes, into a temporary build tree. It builds the main
+wheel and a toolkit-specific plugin using `prepare_cuda_plugin_build.py`, then
+repairs both wheels with `auditwheel`, excluding the CUDA runtime library just
+as the release pipeline does. The RPP checkout is never modified.
+
+A separate virtual environment installs those wheels and the matching JAX CUDA
+extra. The JAX version is resolved once for the build and reused for testing.
+Both environments and both CUDA variants share a persistent pip cache in the
+Docker volume `roughpy-jax-pip-cache`. Docker creates the volume on first use;
+it survives container removal and is reused on later runs, including for the
+large CUDA dependency wheels. Use `--pip-cache VOLUME_NAME` to select another
+cache volume. Pip can still check package-index metadata, but reuses cached
+downloads when available.
+Tests are copied outside the source package so imports use the installed
+wheels. The runner invokes the test environment's `python -m pytest` directly;
+operation execution and validation belong to the test suite.
+Test device fixtures select CUDA explicitly via `RPJ_TEST_PLATFORMS=cuda`;
+CPU remains available for operations' host fallbacks. A missing GPU or plugin
+is an error rather than a successful CPU-only run.
+
+The default runs the complete suite, including `extra` tests, with four build
+jobs, Python 3.11, and native GPU architectures. Both development wheels get
+version `0.0.0` unless `--version` is supplied. Useful variations:
+
+```bash
+# One toolkit and just the half-shuffle tests, including their longer cases.
+python tools/run_cuda_tests.py --variant 12 -- tests/test_left_half_shuffle.py
+python tools/run_cuda_tests.py --variant 13 -- tests/test_left_half_shuffle.py
+
+# Optionally exclude longer tests, matching the release wheel checks.
+python tools/run_cuda_tests.py -- -m "not extra"
+
+# Pin the JAX version and target Python; select a GPU and control build jobs.
+python tools/run_cuda_tests.py --variant 13 --python 3.12 --jax-version 0.10.2 --gpus device=0 --jobs 2
+
+# Build/repair wheels without a GPU. Defaults to architecture 80 in this mode.
+python tools/run_cuda_tests.py --variant 12 --build-only
+
+# Override architectures explicitly, or inspect both Docker commands.
+python tools/run_cuda_tests.py --cuda-architectures "80;90"
+python tools/run_cuda_tests.py --dry-run
+```
+
+Pytest arguments follow `--`; paths are relative to the isolated test working
+directory, where the copied suite is named `tests/`. Normal pytest output
+includes a device summary; verbose output (`-- -v`) shows CUDA fixture IDs.
+CUDA cases replace the corresponding CPU cases. The native dispatch tests
+check the compiled custom-call targets and result devices; fallback-only cases
+are skipped on CUDA. The default images match the release
+workflow; `--image` can override a single variant with a specific image tag or
+digest for reproducible runs.
+
+Wheels, build/test logs (including the toolkit version), installed dependency
+versions, and the pytest JUnit report are saved under
+`build/cuda-tests/cuda12/` and `build/cuda-tests/cuda13/`. Use `--output` to choose
+a different artifact directory. The two variants run sequentially and both are
+attempted even if one fails. The runner exits with a failure if either fails.
+
 ## Example
 
 For examples of how to use the higher-level stream objects, see the `examples/`
