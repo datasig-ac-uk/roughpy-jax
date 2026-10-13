@@ -1,3 +1,5 @@
+import os
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -11,17 +13,43 @@ jax.config.update("jax_enable_x64", True)
 
 
 def _available_test_platforms():
+    supported = get_supported_platforms()
+    requested = os.environ.get("RPJ_TEST_PLATFORMS")
+    selected = set(requested.split(",")) if requested else supported
+    if requested and not selected <= supported:
+        raise pytest.UsageError(
+            f"Requested test platforms are not registered: {selected - supported}"
+        )
     platforms = []
-    for platform in sorted(get_supported_platforms()):
+    for platform in sorted(selected):
         try:
-            if jax.devices(platform):
-                platforms.append(platform)
+            available = bool(jax.devices(platform))
         except RuntimeError:
-            continue
+            available = False
+        if available:
+            platforms.append(platform)
+        elif requested:
+            raise pytest.UsageError(
+                f"Requested test platform has no devices: {platform}"
+            )
     return platforms
 
 
-@pytest.fixture(params=_available_test_platforms())
+TEST_PLATFORMS = _available_test_platforms()
+
+
+def pytest_report_header(config):
+    devices = [
+        str(device) for platform in TEST_PLATFORMS for device in jax.devices(platform)
+    ]
+    return (
+        f"RoughPy JAX platforms: {', '.join(TEST_PLATFORMS)}; "
+        f"devices: {', '.join(devices)}; JAX {jax.__version__}; "
+        f"default backend: {jax.default_backend()}"
+    )
+
+
+@pytest.fixture(params=TEST_PLATFORMS)
 def rpj_platform(request):
     return request.param
 
