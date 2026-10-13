@@ -2380,6 +2380,260 @@ def _st_adjoint_mul_vjp_bwd(residuals, ct_result):
 st_adjoint_mul.defvjp(_st_adjoint_mul_vjp_fwd, _st_adjoint_mul_vjp_bwd)
 
 
+@jax.custom_vjp
+def left_hs_mul(
+    integrator: DenseShuffleTensor,
+    integrand: DenseShuffleTensor,
+    out_basis: TensorBasis | None = None,
+) -> DenseShuffleTensor:
+    """Compute the left half-shuffle of an integrator and an integrand.
+
+    The first operand supplies the distinguished letter. Its scalar part is
+    annihilated; a scalar integrand scales the integrator's positive degrees.
+    ``out_basis`` optionally specifies the result's truncation.
+    """
+    dtype = jnp.result_type(integrator.dtype, integrand.dtype)
+    batch_dims = get_common_batch_shape(integrator, integrand)
+    op_cls = Operation.get_operation("left_hs_mul", "dense")
+    op_call = op_cls(
+        (integrator.basis, integrand.basis),
+        dtype,
+        batch_dims,
+        specific_basis=out_basis,
+        integrator_max_deg=integrator.basis.depth,
+        integrand_max_deg=integrand.basis.depth,
+        integrator_min_deg=0,
+        integrand_min_deg=0,
+    )
+    (result,) = op_call(integrator.data, integrand.data)
+    return DenseShuffleTensor(result, cast(TensorBasis, op_call.basis))
+
+
+@jax.custom_vjp
+def left_hs_adjoint_left_mul(
+    op: DenseShuffleTensor, arg: DenseFreeTensor
+) -> DenseFreeTensor:
+    """Apply the adjoint of ``x -> left_hs_mul(op, x)`` to ``arg``.
+
+    The fixed integrator is a shuffle tensor and the argument and result are
+    free tensors in the dual space.
+    """
+    dtype = jnp.result_type(op.dtype, arg.dtype)
+    batch_dims = get_common_batch_shape(op, arg)
+    op_cls = Operation.get_operation("left_hs_adj_lmul", "dense")
+    op_call = op_cls(
+        (op.basis, arg.basis),
+        dtype,
+        batch_dims,
+        integrator_max_deg=op.basis.depth,
+        integrand_max_deg=arg.basis.depth,
+        integrator_min_deg=0,
+        integrand_min_deg=0,
+    )
+    (result,) = op_call(op.data, arg.data)
+    return DenseFreeTensor(result, cast(TensorBasis, op_call.basis))
+
+
+def left_hs_adjoint_left_mul_derivative(
+    op: DenseShuffleTensor,
+    arg: DenseFreeTensor,
+    t_op: DenseShuffleTensor,
+    t_arg: DenseFreeTensor,
+) -> DenseFreeTensor:
+    """Compute the directional derivative of :func:`left_hs_adjoint_left_mul`.
+
+    Both operands contribute through the same bilinear adjoint operation.
+    The result retains the primal operation's truncation depth.
+    """
+    check_basis_compat(op.basis, arg.basis, t_op.basis, t_arg.basis)
+    basis = result_basis(op.basis, arg.basis)
+    t_result = left_hs_adjoint_left_mul(t_op, arg) + left_hs_adjoint_left_mul(op, t_arg)
+    return t_result.change_depth(basis.depth)
+
+
+def left_hs_adjoint_left_mul_adjoint_derivative(
+    op: DenseShuffleTensor,
+    arg: DenseFreeTensor,
+    ct_result: DenseShuffleTensor,
+) -> tuple[DenseFreeTensor, DenseShuffleTensor]:
+    """Return mathematical cotangents for :func:`left_hs_adjoint_left_mul`.
+
+    The opposite half-shuffle adjoint gives the free-tensor cotangent of
+    ``op``. The half-shuffle product gives the shuffle-tensor cotangent of
+    ``arg``. Both results use their corresponding primal operand's basis.
+    """
+    check_basis_compat(op.basis, arg.basis, ct_result.basis)
+    ct_op = left_hs_adjoint_right_mul(ct_result, arg)
+    ct_arg = left_hs_mul(op, ct_result, out_basis=arg.basis)
+    return ct_op.change_depth(op.basis.depth), ct_arg
+
+
+def _left_hs_adjoint_left_mul_vjp_fwd(op, arg):
+    result = left_hs_adjoint_left_mul(op, arg)
+    return result, (op, arg, result)
+
+
+def _left_hs_adjoint_left_mul_vjp_bwd(residuals, ct_result):
+    op, arg, result = residuals
+    ct_result_math = from_jax_cotangent(DenseShuffleTensor, ct_result, result.basis)
+    ct_op, ct_arg = left_hs_adjoint_left_mul_adjoint_derivative(op, arg, ct_result_math)
+    return (
+        to_jax_cotangent(type(op), ct_op),
+        to_jax_cotangent(type(arg), ct_arg),
+    )
+
+
+left_hs_adjoint_left_mul.defvjp(
+    _left_hs_adjoint_left_mul_vjp_fwd, _left_hs_adjoint_left_mul_vjp_bwd
+)
+
+
+@jax.custom_vjp
+def left_hs_adjoint_right_mul(
+    op: DenseShuffleTensor, arg: DenseFreeTensor
+) -> DenseFreeTensor:
+    """Apply the adjoint of ``x -> left_hs_mul(x, op)`` to ``arg``.
+
+    The fixed integrand is a shuffle tensor. RPP takes the free-tensor
+    cotangent first, followed by this fixed integrand.
+    """
+    dtype = jnp.result_type(op.dtype, arg.dtype)
+    batch_dims = get_common_batch_shape(op, arg)
+    op_cls = Operation.get_operation("left_hs_adj_rmul", "dense")
+    op_call = op_cls(
+        (arg.basis, op.basis),
+        dtype,
+        batch_dims,
+        integrator_max_deg=arg.basis.depth,
+        integrand_max_deg=op.basis.depth,
+        integrator_min_deg=0,
+        integrand_min_deg=0,
+    )
+    (result,) = op_call(arg.data, op.data)
+    return DenseFreeTensor(result, cast(TensorBasis, op_call.basis))
+
+
+def left_hs_adjoint_right_mul_derivative(
+    op: DenseShuffleTensor,
+    arg: DenseFreeTensor,
+    t_op: DenseShuffleTensor,
+    t_arg: DenseFreeTensor,
+) -> DenseFreeTensor:
+    """Compute the directional derivative of :func:`left_hs_adjoint_right_mul`.
+
+    Both operands contribute through the same bilinear adjoint operation.
+    The result retains the primal operation's truncation depth.
+    """
+    check_basis_compat(op.basis, arg.basis, t_op.basis, t_arg.basis)
+    basis = result_basis(op.basis, arg.basis)
+    t_result = left_hs_adjoint_right_mul(t_op, arg) + left_hs_adjoint_right_mul(
+        op, t_arg
+    )
+    return t_result.change_depth(basis.depth)
+
+
+def left_hs_adjoint_right_mul_adjoint_derivative(
+    op: DenseShuffleTensor,
+    arg: DenseFreeTensor,
+    ct_result: DenseShuffleTensor,
+) -> tuple[DenseFreeTensor, DenseShuffleTensor]:
+    """Return mathematical cotangents for :func:`left_hs_adjoint_right_mul`.
+
+    The opposite half-shuffle adjoint gives the free-tensor cotangent of
+    ``op``. The half-shuffle product gives the shuffle-tensor cotangent of
+    ``arg``. Both results use their corresponding primal operand's basis.
+    """
+    check_basis_compat(op.basis, arg.basis, ct_result.basis)
+    ct_op = left_hs_adjoint_left_mul(ct_result, arg)
+    ct_arg = left_hs_mul(ct_result, op, out_basis=arg.basis)
+    return ct_op.change_depth(op.basis.depth), ct_arg
+
+
+def _left_hs_adjoint_right_mul_vjp_fwd(op, arg):
+    result = left_hs_adjoint_right_mul(op, arg)
+    return result, (op, arg, result)
+
+
+def _left_hs_adjoint_right_mul_vjp_bwd(residuals, ct_result):
+    op, arg, result = residuals
+    ct_result_math = from_jax_cotangent(DenseShuffleTensor, ct_result, result.basis)
+    ct_op, ct_arg = left_hs_adjoint_right_mul_adjoint_derivative(
+        op, arg, ct_result_math
+    )
+    return (
+        to_jax_cotangent(type(op), ct_op),
+        to_jax_cotangent(type(arg), ct_arg),
+    )
+
+
+left_hs_adjoint_right_mul.defvjp(
+    _left_hs_adjoint_right_mul_vjp_fwd, _left_hs_adjoint_right_mul_vjp_bwd
+)
+
+
+def left_hs_mul_derivative(
+    integrator: DenseShuffleTensor,
+    integrand: DenseShuffleTensor,
+    t_integrator: DenseShuffleTensor,
+    t_integrand: DenseShuffleTensor,
+    out_basis: TensorBasis | None = None,
+) -> DenseShuffleTensor:
+    """Compute the directional derivative of :func:`left_hs_mul`.
+
+    Bilinearity gives ``left_hs_mul(t_integrator, integrand)`` plus
+    ``left_hs_mul(integrator, t_integrand)``, with the primal truncation.
+    """
+    check_basis_compat(
+        integrator.basis, integrand.basis, t_integrator.basis, t_integrand.basis
+    )
+    if out_basis is not None:
+        check_basis_compat(integrator.basis, out_basis)
+    basis = out_basis or result_basis(integrator.basis, integrand.basis)
+    return left_hs_mul(t_integrator, integrand, out_basis=basis) + left_hs_mul(
+        integrator, t_integrand, out_basis=basis
+    )
+
+
+def left_hs_mul_adjoint_derivative(
+    integrator: DenseShuffleTensor,
+    integrand: DenseShuffleTensor,
+    ct_result: DenseFreeTensor,
+) -> tuple[DenseFreeTensor, DenseFreeTensor]:
+    """Return free-tensor cotangents for the integrator and integrand.
+
+    ``ct_result.basis`` specifies the primal result space. Each cotangent is
+    truncated or padded to its corresponding primal operand's depth.
+    """
+    check_basis_compat(integrator.basis, integrand.basis, ct_result.basis)
+    ct_integrator = left_hs_adjoint_right_mul(integrand, ct_result)
+    ct_integrand = left_hs_adjoint_left_mul(integrator, ct_result)
+    return (
+        ct_integrator.change_depth(integrator.basis.depth),
+        ct_integrand.change_depth(integrand.basis.depth),
+    )
+
+
+def _left_hs_mul_vjp_fwd(integrator, integrand, out_basis=None):
+    result = left_hs_mul(integrator, integrand, out_basis=out_basis)
+    return result, (integrator, integrand, result)
+
+
+def _left_hs_mul_vjp_bwd(residuals, ct_result):
+    integrator, integrand, result = residuals
+    ct_result_math = from_jax_cotangent(DenseFreeTensor, ct_result, result.basis)
+    ct_integrator, ct_integrand = left_hs_mul_adjoint_derivative(
+        integrator, integrand, ct_result_math
+    )
+    return (
+        to_jax_cotangent(type(integrator), ct_integrator),
+        to_jax_cotangent(type(integrand), ct_integrand),
+        None,
+    )
+
+
+left_hs_mul.defvjp(_left_hs_mul_vjp_fwd, _left_hs_mul_vjp_bwd)
+
+
 def to_signature(
     log_signature: DenseLie, tensor_basis: TensorBasis | None = None
 ) -> DenseFreeTensor:
