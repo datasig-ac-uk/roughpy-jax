@@ -10,6 +10,9 @@
 #include "cuda/dense_ft_fmexp.h"
 #include "cuda/dense_ft_log.h"
 #include "cuda/dense_ft_mul.h"
+#include "cuda/dense_left_hs_adj_lmul.h"
+#include "cuda/dense_left_hs_adj_rmul.h"
+#include "cuda/dense_left_hs_mul.h"
 #include "cuda/dense_st_adj_mul.h"
 #include "cuda/dense_st_fma.h"
 #include "cuda/dense_st_mul.h"
@@ -68,6 +71,16 @@ static int make_jax_function_dict(PyObject* module) {
         goto finish;
     }
     if (RPJ_ADD_FN_CAPSULE(dict, cuda_dense_st_adj_mul) < 0) {
+        goto finish;
+    }
+
+    if (RPJ_ADD_FN_CAPSULE(dict, cuda_dense_left_hs_mul) < 0) {
+        goto finish;
+    }
+    if (RPJ_ADD_FN_CAPSULE(dict, cuda_dense_left_hs_adj_lmul) < 0) {
+        goto finish;
+    }
+    if (RPJ_ADD_FN_CAPSULE(dict, cuda_dense_left_hs_adj_rmul) < 0) {
         goto finish;
     }
 

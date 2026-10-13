@@ -138,6 +138,12 @@ target_sources(RoughPyJAXCudaPlugin PRIVATE
         src/cuda/dense_st_fma.h
         src/cuda/dense_st_mul.cu
         src/cuda/dense_st_mul.h
+        src/cuda/dense_left_hs_mul.cu
+        src/cuda/dense_left_hs_mul.h
+        src/cuda/dense_left_hs_adj_lmul.cu
+        src/cuda/dense_left_hs_adj_lmul.h
+        src/cuda/dense_left_hs_adj_rmul.cu
+        src/cuda/dense_left_hs_adj_rmul.h
         src/cuda/dense_tensor_pairing.cu
         src/cuda/dense_tensor_pairing.h
         src/module.c

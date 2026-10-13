@@ -14,6 +14,12 @@ target_sources(Roughpy_JAXModule PRIVATE
     src/cpu/dense_st_fma.cpp
     src/cpu/dense_st_mul.cpp
     src/cpu/dense_st_mul.h
+    src/cpu/dense_left_hs_mul.cpp
+    src/cpu/dense_left_hs_mul.h
+    src/cpu/dense_left_hs_adj_lmul.cpp
+    src/cpu/dense_left_hs_adj_lmul.h
+    src/cpu/dense_left_hs_adj_rmul.cpp
+    src/cpu/dense_left_hs_adj_rmul.h
     src/cpu/dense_st_adj_mul.cpp
     src/cpu/dense_st_adj_mul.h
     src/roughpy_jax_module.c
