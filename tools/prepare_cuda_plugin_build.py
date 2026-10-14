@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import os
-import re
 import shutil
 import tomllib
 from pathlib import Path
@@ -71,17 +70,9 @@ def wheel_python_api(root_pyproject: dict) -> str:
 
 
 def plugin_distribution_name(root_pyproject: dict, family: str) -> str:
-    extra_deps = root_pyproject["project"].get("optional-dependencies", {}).get(family, [])
-    pattern = re.compile(r"^(roughpy-jax-[A-Za-z0-9_.-]+)")
-
-    for dep in extra_deps:
-        match = pattern.match(dep)
-        if match:
-            return match.group(1)
-
-    raise ValueError(
-        f"Root pyproject.toml optional dependency group {family!r} must declare the plugin package name"
-    )
+    if family not in {"cuda12", "cuda13"}:
+        raise ValueError(f"Unsupported CUDA plugin family {family!r}")
+    return f"{root_pyproject['project']['name']}-{family}-plugin"
 
 
 def plugin_runtime_dependencies(family: str) -> list[str]:
