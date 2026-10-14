@@ -8,6 +8,15 @@ endif ()
 
 project(RoughPy_JAX_CUDA VERSION "${RPJ_PLUGIN_VERSION}" LANGUAGES C CXX CUDA)
 
+# CMake's PROJECT_VERSION contains only the numeric release components. Keep
+# the full wheel version (including .devN or a local suffix) for the Python
+# plugin's compatibility check against importlib.metadata.version().
+if (SKBUILD AND DEFINED SKBUILD_PROJECT_VERSION_FULL)
+    set(RPJ_CUDA_PACKAGE_VERSION "${SKBUILD_PROJECT_VERSION_FULL}")
+else ()
+    set(RPJ_CUDA_PACKAGE_VERSION "${PROJECT_VERSION}")
+endif ()
+
 include(GNUInstallDirs)
 
 option(RPJ_CUDA_INPLACE_BUILD "Build the plugin into the local package directory" OFF)
