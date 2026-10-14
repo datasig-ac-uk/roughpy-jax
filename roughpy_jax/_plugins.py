@@ -16,12 +16,14 @@ _cuda_module = None
 
 
 def _check_plugin_version(module) -> None:
-    plugin_version = getattr(module, "PLUGIN_VERSION", None)
-    if plugin_version is None:
-        distribution_name = module.__name__.replace("_", "-")
-        try:
-            plugin_version = version(distribution_name)
-        except PackageNotFoundError:
+    distribution_name = module.__name__.replace("_", "-")
+    try:
+        # Compare wheel metadata with wheel metadata. An embedded version may
+        # lose a development suffix when it passes through CMake.
+        plugin_version = version(distribution_name)
+    except PackageNotFoundError:
+        plugin_version = getattr(module, "PLUGIN_VERSION", None)
+        if plugin_version is None:
             # Permit plugins loaded directly from a development source tree.
             return
 
@@ -59,12 +61,23 @@ def load_plugins():
         if _plugins_loaded:
             return
 
+        import_error = None
         for module_name in CUDA_PLUGIN_MODULES:
             try:
                 _cuda_module = _load_cuda_plugin(module_name)
-            except ImportError:
+            except ModuleNotFoundError as exc:
+                if exc.name != module_name:
+                    import_error = exc
+                _cuda_module = None
+            except ImportError as exc:
+                import_error = exc
                 _cuda_module = None
             else:
                 break
+        else:
+            if import_error is not None:
+                raise ImportError(
+                    "An installed RoughPy JAX CUDA plugin failed to load"
+                ) from import_error
 
         _plugins_loaded = True
