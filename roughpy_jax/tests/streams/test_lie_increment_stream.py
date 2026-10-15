@@ -808,6 +808,59 @@ def test_from_increments_subinterval_satisfies_chen_identity():
     assert jnp.allclose(whole.data, combined.data, atol=1e-6)
 
 
+@pytest.mark.parametrize(
+    ("timestamps", "split", "expected"),
+    [
+        # Support [0, 17/16) at resolution 4, so 0.5 maps to 7.53 cells and
+        # the query [0, 0.5) rounds to cells [0, 8).
+        (
+            (jnp.arange(8) / 8).at[-1].set(1.0),
+            (0.0, 0.5, 1.0),
+            (0b00011111, 0b11100000),
+        ),
+        # Support [0, 9/8) at resolution 3, so 0.5 maps to 3.56 cells.
+        (
+            jnp.linspace(0.0, 0.9, 8).at[-1].set(1.0),
+            (0.0, 0.5, 1.0),
+            (0b00011111, 0b11100000),
+        ),
+        # Support [0, 1/2) at resolution 3, so 0.24 maps to 3.84 cells.
+        (jnp.arange(8) / 16, (0.0, 0.24, 0.5), (0b00001111, 0b11110000)),
+    ],
+)
+def test_from_increments_split_at_offgrid_point_keeps_all_cells(
+    timestamps, split, expected
+):
+    """Queries whose cell count rounds up to a power of two keep every cell.
+
+    Increment ``k`` has first coordinate ``2**k``, so level 1 of the log
+    signature is a bitmask of the increments a query includes. An endpoint
+    inside a cell snaps to the next cell boundary, so the left query also
+    includes the increment in the cell that straddles the split point.
+    """
+    lie_basis = LieBasis(width=2, depth=2)
+    num_increments = timestamps.shape[0]
+    data = jnp.zeros((num_increments, 2)).at[:, 0].set(2.0 ** jnp.arange(8))
+    stream = LieIncrementStream.from_increments(
+        timestamps=timestamps,
+        data=data,
+        resolution=compute_separating_resolution([timestamps]),
+        input_data_basis=None,
+        lie_basis=lie_basis,
+    )
+
+    def level1(inf, sup):
+        interval = RealInterval(inf, sup, IntervalType.ClOpen)
+        return round(float(stream.log_signature(interval).data[0]))
+
+    inf, mid, sup = split
+    expected_left, expected_right = expected
+
+    assert level1(inf, mid) == expected_left
+    assert level1(mid, sup) == expected_right
+    assert level1(inf, sup) == expected_left + expected_right
+
+
 def test_from_increments_is_invariant_to_timestamp_rescaling():
     """The signature depends on increment order, not the timestamp scale/offset.
 
