@@ -142,7 +142,11 @@ def _query_dyadic_cache(
 
     empty = (sups <= infs) | (sup_integer <= inf_integer)
 
-    scaled_length = jnp.ldexp(sup_scaled - inf_scaled, -resolution)
+    # Size the first dyadic from the rounded cell count, not the unrounded
+    # length: rounding can add up to one cell, and init reads a single dyadic,
+    # so a level chosen from the unrounded length can miss half the cells.
+    num_cells = sup_integer - inf_integer
+    scaled_length = jnp.ldexp(num_cells.astype(sup_scaled.dtype), -resolution)
     scaled_length = jnp.where(empty, jnp.ones_like(scaled_length), scaled_length)
     _, exponent = jnp.frexp(scaled_length)
     coarse_resolution = 1 - exponent
