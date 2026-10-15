@@ -478,10 +478,7 @@ def _make_finest_increment_level(
             mask, data[jnp.minimum(positions, data.shape[0] - 1), ...], 0
         )
         exponent = lie_to_tensor(Lie(increment, input_lie_basis))
-        updated = ft_fmexp(accumulator, exponent, out_basis=tensor_basis)
-        accumulator = FreeTensor(
-            jnp.where(mask, updated.data, accumulator.data), tensor_basis
-        )
+        accumulator = ft_fmexp(accumulator, exponent, out_basis=tensor_basis)
         return positions + active.astype(positions.dtype), accumulator
 
     _, accumulator = jax.lax.while_loop(
