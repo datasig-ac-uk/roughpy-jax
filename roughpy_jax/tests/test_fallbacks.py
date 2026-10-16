@@ -59,15 +59,28 @@ def test_fallback_right_adjoint_mixed_depth(monkeypatch, op_depth, arg_depth, co
 
 @pytest.mark.parametrize("compile", [False, True], ids=["eager", "jit"])
 @pytest.mark.parametrize("dtype", [jnp.float16, jnp.float64])
-def test_shuffle_fma_cpu_fallback(monkeypatch, dtype, compile):
+@pytest.mark.parametrize(
+    "force_fallback", [False, True], ids=["no-native-dispatch", "forced"]
+)
+@pytest.mark.parametrize("operation", ["st_mul", "st_fma"])
+def test_shuffle_cpu_fallback(monkeypatch, operation, force_fallback, dtype, compile):
     basis = rpj.TensorBasis(2, 2)
     argument = rpj.ShuffleTensor(jnp.ones(basis.size(), dtype=dtype), basis)
     monkeypatch.setattr(Operation, "no_acceleration", False)
     native_argument = rpj.ShuffleTensor(argument.data.astype(jnp.float64), basis)
-    expected = rpj.st_fma(native_argument, native_argument, native_argument)
-    monkeypatch.setattr(Operation, "no_acceleration", True)
-    evaluate = rpj.st_fma
-    result = (jax.jit(evaluate) if compile else evaluate)(argument, argument, argument)
+    arg_count = 2 if operation == "st_mul" else 3
+    expected = getattr(rpj, operation)(*((native_argument,) * arg_count))
+    monkeypatch.setattr(Operation, "no_acceleration", force_fallback)
+    if not force_fallback:
+        # Exercise automatic fallback even once compiled fp16 kernels exist.
+        # Keep CPU registrations intact for fallback kernel/dtype selection.
+        op_cls = Operation.get_operation(operation)
+        monkeypatch.setattr(op_cls, "get_implementations", lambda self: {})
+
+    def evaluate(*args):
+        return getattr(rpj, operation)(*args)
+
+    result = (jax.jit(evaluate) if compile else evaluate)(*((argument,) * arg_count))
 
     assert result.dtype == dtype
     assert jnp.allclose(result.data, expected.data.astype(dtype))
