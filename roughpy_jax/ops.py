@@ -710,23 +710,25 @@ def _fallback_dense_ft_exp(
     arg_data: Array,
     degree_begin: DegreeBeginArray,
     arg_max_deg: int | np.int32,
+    depth: int | np.int32,
 ):
     # Use Horner's method to compute exp(x) = Σ((x^n) / n!)
     arg_max_deg = int(arg_max_deg)
-    out = jnp.zeros_like(arg_data).at[0].add(1)
+    depth = int(depth)
+    out = jnp.zeros((degree_begin[depth + 1],), dtype=arg_data.dtype).at[0].set(1)
 
-    for deg in range(arg_max_deg, 0, -1):
-        max_level = arg_max_deg - deg + 1
+    for deg in range(depth, 0, -1):
+        max_level = depth - deg + 1
 
         mul = _fallback_dense_ft_mul(
             lhs_data=out,
             rhs_data=arg_data,
             degree_begin=degree_begin,
-            out_max_degree=arg_max_deg,
+            out_max_degree=depth,
             lhs_min_degree=0,
             lhs_max_degree=max_level,
             rhs_min_degree=1,
-            rhs_max_degree=max_level,
+            rhs_max_degree=min(arg_max_deg, max_level),
         )
 
         out = mul / deg
@@ -966,24 +968,6 @@ class DenseSTFma(Operation[TensorBasis], DenseOperation):
             _redepth_data(c_data, basis_size),
         )
 
-    @staticmethod
-    def fallback(
-        a_data: Array,
-        b_data: Array,
-        c_data: Array,
-        width: np.int32,
-        depth: np.int32,
-        degree_begin: DegreeBeginArray,
-        a_max_deg: np.int32,
-        b_max_deg: np.int32,
-        c_max_deg: np.int32,
-        b_min_deg: np.int32,
-        c_min_deg: np.int32,
-    ) -> tuple[Array]:
-        raise NotImplementedError(
-            "st_fma is not implemented for native JAX, use CPU backend"
-        )
-
 
 class DenseSTMul(Operation[TensorBasis], DenseOperation):
     fn_name = "st_mul"
@@ -1057,6 +1041,9 @@ class DenseFTAdjRightMul(Operation[TensorBasis], DenseOperation):
         op_max_deg: np.int32,
         arg_max_deg: np.int32,
     ) -> tuple[Array]:
+        basis_size = degree_begin[int(depth) + 1]
+        op_data = _redepth_data(op_data, basis_size)
+        arg_data = _redepth_data(arg_data, basis_size)
         op_antipode = _fallback_dense_antipode(
             op_data, width, depth, degree_begin, False
         )
@@ -1222,9 +1209,9 @@ class DenseFTExp(Operation[TensorBasis], DenseOperation):
         degree_begin: DegreeBeginArray,
         arg_max_deg: np.int32,
     ) -> tuple[Array]:
-        # Width/depth are part of the operation fallback interface.
-        _ = width, depth
-        exp = _fallback_dense_ft_exp(arg_data, degree_begin, arg_max_deg)
+        # Width is part of the operation fallback interface.
+        _ = width
+        exp = _fallback_dense_ft_exp(arg_data, degree_begin, arg_max_deg, depth)
         return (exp,)
 
 
@@ -1263,14 +1250,14 @@ class DenseFTFMExp(Operation[TensorBasis], DenseOperation):
         # Width is part of the operation fallback interface.
         _ = width
         # multiplier * exp(exponent)
-        exp = _fallback_dense_ft_exp(exponent, degree_begin, exp_max_deg)
+        exp = _fallback_dense_ft_exp(exponent, degree_begin, exp_max_deg, depth)
         mul = _fallback_dense_ft_mul(
             multiplier,
             exp,
             degree_begin,
             out_max_degree=depth,
             lhs_max_degree=mul_max_deg,
-            rhs_max_degree=exp_max_deg,
+            rhs_max_degree=depth,
             lhs_min_degree=mul_min_deg,
             rhs_min_degree=exp_min_deg,
         )
@@ -1302,14 +1289,15 @@ class DenseFTLog(Operation[TensorBasis], DenseOperation):
         degree_begin: DegreeBeginArray,
         arg_max_deg: np.int32,
     ) -> tuple[Array]:
-        # Width/depth are part of the operation fallback interface.
-        _ = width, depth
+        # Width is part of the operation fallback interface.
+        _ = width
         # log(1 + x) = Σ(((-1)^n) * (x^n) / n)
-        log = jnp.zeros_like(arg_data)
+        depth = int(depth)
+        log = jnp.zeros((degree_begin[depth + 1],), dtype=arg_data.dtype)
 
         py_arg_max_deg = int(arg_max_deg)
-        for deg in range(py_arg_max_deg, 0, -1):
-            max_level = py_arg_max_deg - deg + 1
+        for deg in range(depth, 0, -1):
+            max_level = depth - deg + 1
 
             if deg % 2 == 0:
                 log = log.at[0].add(-1 / deg)
@@ -1320,11 +1308,11 @@ class DenseFTLog(Operation[TensorBasis], DenseOperation):
                 lhs_data=log,
                 rhs_data=arg_data,
                 degree_begin=degree_begin,
-                out_max_degree=py_arg_max_deg,
+                out_max_degree=depth,
                 lhs_min_degree=0,
                 lhs_max_degree=max_level,
                 rhs_min_degree=1,
-                rhs_max_degree=max_level,
+                rhs_max_degree=min(py_arg_max_deg, max_level),
             )
 
         return (log,)
