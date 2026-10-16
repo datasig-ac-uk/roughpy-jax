@@ -460,34 +460,35 @@ def _make_finest_increment_level(
     num_buckets = 1 << resolution
     tensor_basis = to_tensor_basis(cache_lie_basis)
 
-    time_dim, *batch_dims, _ = data.shape
+    _time_dim, *batch_dims, _ = data.shape
 
-    assert time_dim == buckets.shape[0]
-
-    lie_dim = cache_lie_basis.size()
-    output = jnp.zeros(
-        (num_buckets, *batch_dims, lie_dim),
-        dtype=data.dtype,
+    offsets = jnp.searchsorted(
+        buckets, jnp.arange(num_buckets + 1, dtype=buckets.dtype), side="left"
     )
+    ends = offsets[1:]
+
     accumulator = FreeTensor.identity(
-        tensor_basis, dtype=data.dtype, batch_dims=tuple(batch_dims)
-    )
-    first_bucket = buckets[0]
-
-    body_fn = partial(
-        _make_finest_increment_body,
-        tensor_basis=tensor_basis,
-        cache_lie_basis=cache_lie_basis,
-        input_lie_basis=input_lie_basis,
+        tensor_basis, dtype=data.dtype, batch_dims=(num_buckets, *batch_dims)
     )
 
-    (final_bucket, final_acc, final_out), _ = jax.lax.scan(
-        body_fn, (first_bucket, accumulator, output), (buckets, data)
+    def has_increments(state):
+        return jnp.any(state[0] < ends)
+
+    def accumulate(state):
+        positions, accumulator = state
+        active = positions < ends
+        mask = active.reshape((num_buckets,) + (1,) * (len(batch_dims) + 1))
+        increment = jnp.where(
+            mask, data[jnp.minimum(positions, data.shape[0] - 1), ...], 0
+        )
+        exponent = lie_to_tensor(Lie(increment, input_lie_basis))
+        accumulator = ft_fmexp(accumulator, exponent, out_basis=tensor_basis)
+        return positions + active.astype(positions.dtype), accumulator
+
+    _, accumulator = jax.lax.while_loop(
+        has_increments, accumulate, (offsets[:-1], accumulator)
     )
-
-    final_logsig = to_log_signature(final_acc, cache_lie_basis)
-
-    return final_out.at[final_bucket, ...].set(final_logsig.data)
+    return to_log_signature(accumulator, cache_lie_basis).data
 
 
 @partial(jax.jit, static_argnames=("resolution", "cache_lie_basis"))
