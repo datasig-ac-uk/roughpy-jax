@@ -119,10 +119,15 @@ def docker_command(args, variant, repo_root):
 def main(argv=None):
     args = parse_args(argv)
     root = Path(__file__).resolve().parents[1]
-    if not (root / "third_party/rough_path_primitives/CMakeLists.txt").is_file():
-        raise SystemExit(
-            "RPP sources are missing; initialise the submodule before running tests."
-        )
+    for name, path in (
+        ("RPP", "third_party/rough_path_primitives"),
+        ("Eigen", "third_party/eigen"),
+    ):
+        if not (root / path / "CMakeLists.txt").is_file():
+            raise SystemExit(
+                f"{name} sources are missing; run git submodule update --init "
+                "--recursive before running tests."
+            )
     variants = IMAGES if args.variant == "all" else [args.variant]
     failures = []
     for variant in variants:
