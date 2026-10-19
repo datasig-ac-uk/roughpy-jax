@@ -209,6 +209,11 @@ install(
 )
 
 install(
+        FILES "${RPJ_RPP_SOURCE_DIR}/LICENSE.txt"
+        DESTINATION "${RPJ_CUDA_PACKAGE_DIR}/licenses/rough_path_primitives"
+)
+
+install(
         DIRECTORY "${RPJ_CUDA_GENERATED_PACKAGE_DIR}/"
         DESTINATION ${RPJ_CUDA_PACKAGE_DIR}
         FILES_MATCHING

@@ -55,6 +55,15 @@ set(RPP_ADD_STUB_TARGET OFF CACHE BOOL "" FORCE)
 add_subdirectory(third_party/rough_path_primitives
         EXCLUDE_FROM_ALL)
 
+# Use the pinned headers without building or installing Eigen's own artifacts.
+if (NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/eigen/CMakeLists.txt")
+    message(FATAL_ERROR
+            "Eigen sources are missing. Run git submodule update --init --recursive.")
+endif ()
+set(EIGEN_BUILD_TESTING OFF CACHE BOOL "" FORCE)
+set(EIGEN_BUILD_DOC OFF CACHE BOOL "" FORCE)
+add_subdirectory(third_party/eigen EXCLUDE_FROM_ALL SYSTEM)
+
 
 if (DEFINED SKBUILD_SABI_VERSION)
     python_add_library(Roughpy_JAXModule MODULE WITH_SOABI USE_SABI ${SKBUILD_SABI_VERSION})
@@ -76,6 +85,7 @@ endif ()
 
 target_link_libraries(Roughpy_JAXModule PRIVATE
         XLA::FFI
+        Eigen3::Eigen
 )
 
 target_include_directories(Roughpy_JAXModule PRIVATE

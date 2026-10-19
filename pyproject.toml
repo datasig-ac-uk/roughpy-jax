@@ -50,6 +50,19 @@ cuda13 = ["jax[cuda13]>=0.4.0; platform_system == 'Linux'"]
 cmake.version = ">=3.30"
 ninja.version = ">=1.11"
 wheel.packages = ["roughpy_jax"]
+wheel.license-files = [
+    "LICENSE.txt",
+    "THIRD_PARTY_NOTICES.txt",
+    "third_party/rough_path_primitives/LICENSE.txt",
+    "third_party/eigen/COPYING.*",
+]
+sdist.include = [
+    "third_party/eigen/**",
+    # Explicit includes override excludes; omit the checkout's Git pointer.
+    "!third_party/eigen/.git",
+    "THIRD_PARTY_NOTICES.txt",
+]
+sdist.exclude = ["third_party/eigen/.git"]
 wheel.exclude = [
     "roughpy_jax/tests/**",
     "roughpy_jax/src/**",

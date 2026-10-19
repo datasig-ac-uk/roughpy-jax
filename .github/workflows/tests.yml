@@ -9,6 +9,9 @@ on:
       - .github/workflows/tests.yml
       - CMakeLists.txt
       - pyproject.toml
+      - .gitmodules
+      - third_party/eigen
+      - THIRD_PARTY_NOTICES.txt
       - roughpy_jax/**
   pull_request:
     branches:
@@ -17,6 +20,9 @@ on:
       - .github/workflows/tests.yml
       - CMakeLists.txt
       - pyproject.toml
+      - .gitmodules
+      - third_party/eigen
+      - THIRD_PARTY_NOTICES.txt
       - roughpy_jax/**
 
 concurrency:

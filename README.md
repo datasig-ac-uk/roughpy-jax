@@ -61,7 +61,7 @@ environment are required.
 Clone the repository and install it into a virtual environment:
 
 ```bash
-git clone https://github.com/datasig-ac-uk/roughpy-jax.git
+git clone --recurse-submodules https://github.com/datasig-ac-uk/roughpy-jax.git
 cd roughpy-jax
 python -m venv .venv
 . .venv/bin/activate

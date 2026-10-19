@@ -1,0 +1,45 @@
+Rough Path Primitives (RPP)
+==========================
+
+The RoughPy JAX CPU and CUDA extensions use Rough Path Primitives, maintained
+by the RoughPy Developers, under the BSD 3-Clause License.
+
+Source repository: https://github.com/datasig-ac-uk/rough-path-primitives
+
+RPP's original copyright notice, license conditions, and disclaimer are
+included in third_party/rough_path_primitives/LICENSE.txt in the CPU wheel's
+license directory and in the source distribution. CUDA plugin wheels include
+the same file under <plugin_package>/licenses/rough_path_primitives/LICENSE.txt.
+
+
+Eigen
+=====
+
+The RoughPy JAX CPU extension uses Eigen as a header-only build dependency.
+Eigen is maintained by the Eigen project and its contributors. Copyright and
+license notices for individual files are retained in the upstream source.
+
+Version: 5.0.1
+Commit: bc3b39870ecb690a623a3f49149a358b95c5781d
+Local modifications: None
+
+The exact Eigen source used for this distribution is available at:
+https://gitlab.com/libeigen/eigen/-/tree/bc3b39870ecb690a623a3f49149a358b95c5781d
+
+A source archive of that revision is available at:
+https://gitlab.com/libeigen/eigen/-/archive/bc3b39870ecb690a623a3f49149a358b95c5781d/eigen-bc3b39870ecb690a623a3f49149a358b95c5781d.tar.gz
+
+Eigen's source is also included under third_party/eigen in the corresponding
+RoughPy JAX source distribution. The Git repository records this revision as
+the third_party/eigen submodule commit.
+
+Eigen is primarily licensed under the Mozilla Public License, version 2.0.
+Some upstream files contain code under BSD or other MPL-compatible licenses.
+The upstream COPYING.README, COPYING.MPL2, COPYING.APACHE, COPYING.BSD, and
+COPYING.MINPACK files accompany this distribution under third_party/eigen
+in the wheel's license directory, or under third_party/eigen in the source
+distribution. Eigen source covered by MPL 2.0 remains available under MPL 2.0.
+
+RoughPy JAX's own code remains licensed under the BSD 3-Clause License in
+LICENSE.txt. Its license does not restrict recipients' rights to Eigen's
+source under the applicable upstream licenses.

@@ -245,6 +245,7 @@ def main() -> None:
         out_dir / "package",
     )
     shutil.copy2(repo_root / "platforms" / "cuda" / "CMakeLists.txt", out_dir / "CMakeLists.txt")
+    shutil.copy2(repo_root / "LICENSE.txt", out_dir / "LICENSE.txt")
     shutil.copytree(
         rpp_source,
         out_dir / "third_party" / "rough_path_primitives",

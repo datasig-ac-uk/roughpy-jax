@@ -1,3 +1,6 @@
 [submodule "third_party/rough_path_primitives"]
 	path = third_party/rough_path_primitives
 	url = https://github.com/datasig-ac-uk/rough-path-primitives
+[submodule "third_party/eigen"]
+	path = third_party/eigen
+	url = https://gitlab.com/libeigen/eigen.git
