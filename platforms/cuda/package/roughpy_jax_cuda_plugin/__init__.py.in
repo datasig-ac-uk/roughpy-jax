@@ -20,7 +20,7 @@ def register() -> None:
     Operation.register_all(
         platform="cuda",
         ops=cuda_functions,
-        supported_dtypes={"float32", "float64"},
+        supported_dtypes={"float16", "bfloat16", "float32", "float64"},
         ffi_register_kwargs={},
     )
     _registered = True
