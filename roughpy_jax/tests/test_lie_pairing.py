@@ -19,9 +19,9 @@ def pairing_trials(request, rpj_device):
     yield DerivativeTrialsHelper(request.param, width=4, depth=4, device=rpj_device)
 
 
-def test_dense_lie_pairing(rpj_batch):
+def test_dense_lie_pairing(rpj_batch, rpj_tensor_dtype):
     basis = rpj.LieBasis(2, 2)
-    dtype = jnp.dtype("float32")
+    dtype = jnp.dtype(rpj_tensor_dtype)
 
     functional = rpj.Lie(rpj_batch.rng_uniform(-1.0, 1.0, basis.size(), dtype), basis)
     argument = rpj.Lie(rpj_batch.rng_uniform(-1.0, 1.0, basis.size(), dtype), basis)

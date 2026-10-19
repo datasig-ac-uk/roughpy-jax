@@ -40,29 +40,35 @@ def test_shuffle_dense_st_mul_array_mismatch(rpj_test_fixture_type_mismatch):
         rpj.st_mul(f.st_f32(2, 2), f.st_f32(3, 2))
 
 
-def test_shuffle_product_commutative(rpj_dtype, rpj_batch, rpj_no_acceleration):
+def test_shuffle_product_commutative(
+    rpj_tensor_dtype, rpj_batch, rpj_no_acceleration, rpj_tensor_tolerances
+):
     basis = rpj.TensorBasis(4, 3)
-    lhs = rpj_batch.rng_shuffle_tensor(basis, rpj_dtype)
-    rhs = rpj_batch.rng_shuffle_tensor(basis, rpj_dtype)
+    lhs = rpj_batch.rng_shuffle_tensor(basis, rpj_tensor_dtype)
+    rhs = rpj_batch.rng_shuffle_tensor(basis, rpj_tensor_dtype)
 
     result1 = rpj.st_mul(lhs, rhs)
     result2 = rpj.st_mul(rhs, lhs)
 
-    atol = 1e-7 if rpj_dtype == jnp.float32 else 1e-16
-    assert jnp.allclose(result1.data, result2.data, atol=atol)
+    atol = 1e-7 if rpj_tensor_dtype == jnp.float32 else 1e-16
+    assert jnp.allclose(result1.data, result2.data, **rpj_tensor_tolerances(atol=atol))
 
 
-def test_shuffle_product_unit(rpj_dtype, rpj_batch, rpj_device, rpj_no_acceleration):
+def test_shuffle_product_unit(
+    rpj_tensor_dtype, rpj_batch, rpj_device, rpj_no_acceleration
+):
     basis = rpj.TensorBasis(4, 3)
-    lhs = rpj_batch.rng_shuffle_tensor(basis, rpj_dtype)
+    lhs = rpj_batch.rng_shuffle_tensor(basis, rpj_tensor_dtype)
 
     unit = rpj.ShuffleTensor.identity(
-        basis, dtype=rpj_dtype, batch_dims=rpj_batch.shape, device=rpj_device
+        basis, dtype=rpj_tensor_dtype, batch_dims=rpj_batch.shape, device=rpj_device
     )
 
     result1 = rpj.st_mul(lhs, unit)
     result2 = rpj.st_mul(unit, lhs)
 
+    assert lhs.data.devices() == unit.data.devices() == {rpj_device}
+    assert result1.data.devices() == result2.data.devices() == {rpj_device}
     assert jnp.allclose(result1.data, lhs.data)
     assert jnp.allclose(result2.data, lhs.data)
 
@@ -206,12 +212,12 @@ def test_st_mul_mixed_depth_adjoint(lhs_depth, rhs_depth):
     assert jnp.allclose(jax_ct_rhs.data, ct_rhs.data)
 
 
-def test_shuffle_product_two_letters(rpj_dtype, rpj_batch, rpj_device):
+def test_shuffle_product_two_letters(rpj_tensor_dtype, rpj_batch, rpj_device):
     basis = rpj.TensorBasis(4, 3)
     to_idx = _word_to_idx_fn(4)
 
-    lhs_data = np.zeros(rpj_batch.tensor_batch_shape(basis), dtype=rpj_dtype)
-    rhs_data = np.zeros(rpj_batch.tensor_batch_shape(basis), dtype=rpj_dtype)
+    lhs_data = np.zeros(rpj_batch.tensor_batch_shape(basis), dtype=rpj_tensor_dtype)
+    rhs_data = np.zeros(rpj_batch.tensor_batch_shape(basis), dtype=rpj_tensor_dtype)
 
     lhs_data[..., 1] = 1.0
     rhs_data[..., 2] = 1.0
@@ -228,12 +234,12 @@ def test_shuffle_product_two_letters(rpj_dtype, rpj_batch, rpj_device):
     assert jnp.allclose(result.data, expected)
 
 
-def test_shuffle_product_letter_and_deg2(rpj_dtype, rpj_batch, rpj_device):
+def test_shuffle_product_letter_and_deg2(rpj_tensor_dtype, rpj_batch, rpj_device):
     basis = rpj.TensorBasis(4, 3)
     to_idx = _word_to_idx_fn(4)
 
-    lhs_data = np.zeros(rpj_batch.tensor_batch_shape(basis), dtype=rpj_dtype)
-    rhs_data = np.zeros(rpj_batch.tensor_batch_shape(basis), dtype=rpj_dtype)
+    lhs_data = np.zeros(rpj_batch.tensor_batch_shape(basis), dtype=rpj_tensor_dtype)
+    rhs_data = np.zeros(rpj_batch.tensor_batch_shape(basis), dtype=rpj_tensor_dtype)
 
     lhs_data[..., to_idx(1, 2)] = 1.0
     rhs_data[..., 3] = 1.0

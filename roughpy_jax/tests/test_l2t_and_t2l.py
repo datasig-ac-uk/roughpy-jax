@@ -1,5 +1,6 @@
 import jax
 import jax.numpy as jnp
+import numpy as np
 import pytest
 from derivative_testing import (
     DerivativeTrialsHelper,
@@ -11,6 +12,36 @@ from derivative_testing import (
 )
 
 import roughpy_jax as rpj
+from roughpy_jax import ops
+
+
+@pytest.mark.parametrize(
+    "first_dtype", [jnp.float16, jnp.bfloat16, jnp.float32, jnp.float64]
+)
+def test_conversion_cache_across_dtypes_and_jit(first_dtype, monkeypatch, rpj_device):
+    monkeypatch.setattr(ops, "_lie_sparse_matrix_cache", {})
+    basis = rpj.LieBasis(2, 2)
+
+    def convert(data):
+        tensor = rpj.lie_to_tensor(rpj.Lie(data, basis))
+        recovered = rpj.tensor_to_lie(tensor)
+        return tensor.data, recovered.data
+
+    # Populate the cache inside jit, then reuse it eagerly and with other dtypes.
+    # Promoted extraction must not swap the two matrices or leak JAX tracers.
+    for dtype in (first_dtype, jnp.float32, jnp.bfloat16, jnp.float16, jnp.float64):
+        data = jax.device_put(jnp.array([1, 2, 3], dtype=dtype), rpj_device)
+        for conversion in (jax.jit(convert), convert):
+            tensor, recovered = conversion(data)
+            assert tensor.dtype == recovered.dtype == dtype
+            np.testing.assert_array_equal(
+                tensor.astype(jnp.float64), [0, 1, 2, 0, 3, -3, 0]
+            )
+            np.testing.assert_array_equal(recovered.astype(jnp.float64), [1, 2, 3])
+        matrices = ops._get_lie_sparse_matrices(basis, jnp.dtype(dtype))
+        for matrix in matrices:
+            assert matrix[0].dtype == jnp.dtype(dtype)
+            assert all(isinstance(array, np.ndarray) for array in matrix)
 
 
 # Test fixture for batch of w=4, d=4 lie tensor
@@ -19,43 +50,49 @@ def lt2_trials(request, rpj_device):
     yield DerivativeTrialsHelper(request.param, width=4, depth=4, device=rpj_device)
 
 
-def test_l2t_t2l_roundtrip(rpj_dtype, rpj_batch, rpj_no_acceleration):
+def test_l2t_t2l_roundtrip(
+    rpj_tensor_dtype, rpj_batch, rpj_no_acceleration, rpj_tensor_tolerances
+):
     lie_basis = rpj.LieBasis(4, 4)
 
-    x_data = rpj_batch.rng_uniform(-1, 1, lie_basis.size(), rpj_dtype)
+    x_data = rpj_batch.rng_uniform(-1, 1, lie_basis.size(), rpj_tensor_dtype)
     x = rpj.Lie(x_data, lie_basis)
 
     tensor_x = rpj.lie_to_tensor(x)
     y = rpj.tensor_to_lie(tensor_x)
 
-    assert y.data.dtype == x.data.dtype == rpj_dtype
-    assert jnp.allclose(x.data, y.data, atol=1e-7)
+    assert y.data.dtype == x.data.dtype == rpj_tensor_dtype
+    assert jnp.allclose(x.data, y.data, **rpj_tensor_tolerances(atol=1e-7))
 
 
-def test_l2t_scaled_t2l_roundtrip(rpj_dtype, rpj_batch, rpj_no_acceleration):
+def test_l2t_scaled_t2l_roundtrip(
+    rpj_tensor_dtype, rpj_batch, rpj_no_acceleration, rpj_tensor_tolerances
+):
     lie_basis = rpj.LieBasis(4, 4)
 
-    x_data = rpj_batch.rng_uniform(-1, 1, lie_basis.size(), rpj_dtype)
+    x_data = rpj_batch.rng_uniform(-1, 1, lie_basis.size(), rpj_tensor_dtype)
     x = rpj.Lie(x_data, lie_basis)
 
     tensor_x = rpj.lie_to_tensor(x, scale_factor=0.5)
     y = rpj.tensor_to_lie(tensor_x)
 
-    assert y.data.dtype == x.data.dtype == rpj_dtype
-    assert jnp.allclose(0.5 * x.data, y.data, atol=1e-7)
+    assert y.data.dtype == x.data.dtype == rpj_tensor_dtype
+    assert jnp.allclose(0.5 * x.data, y.data, **rpj_tensor_tolerances(atol=1e-7))
 
 
-def test_l2t_t2l_scaled_roundtrip(rpj_dtype, rpj_batch, rpj_no_acceleration):
+def test_l2t_t2l_scaled_roundtrip(
+    rpj_tensor_dtype, rpj_batch, rpj_no_acceleration, rpj_tensor_tolerances
+):
     lie_basis = rpj.LieBasis(4, 4)
 
-    x_data = rpj_batch.rng_uniform(-1, 1, lie_basis.size(), rpj_dtype)
+    x_data = rpj_batch.rng_uniform(-1, 1, lie_basis.size(), rpj_tensor_dtype)
     x = rpj.Lie(x_data, lie_basis)
 
     tensor_x = rpj.lie_to_tensor(x)
     y = rpj.tensor_to_lie(tensor_x, scale_factor=0.5)
 
-    assert y.data.dtype == x.data.dtype == rpj_dtype
-    assert jnp.allclose(0.5 * x.data, y.data, atol=1e-7)
+    assert y.data.dtype == x.data.dtype == rpj_tensor_dtype
+    assert jnp.allclose(0.5 * x.data, y.data, **rpj_tensor_tolerances(atol=1e-7))
 
 
 def test_l2t_linear(lt2_trials):
@@ -150,14 +187,16 @@ def test_t2l_adjoint_derivative(lt2_trials):
     )
 
 
-def test_l2t_t2l_l2t_roundtrip(rpj_dtype, rpj_batch, rpj_no_acceleration):
+def test_l2t_t2l_l2t_roundtrip(
+    rpj_tensor_dtype, rpj_batch, rpj_no_acceleration, rpj_tensor_tolerances
+):
     """
     Test to catch any issues, most likely in caching, which would cause the
     second l2t to not be applied properly.
     """
     lie_basis = rpj.LieBasis(4, 4)
 
-    x_data = rpj_batch.rng_uniform(-1, 1, lie_basis.size(), rpj_dtype)
+    x_data = rpj_batch.rng_uniform(-1, 1, lie_basis.size(), rpj_tensor_dtype)
     x = rpj.Lie(x_data, lie_basis)
 
     # Test round-trip property
@@ -166,38 +205,56 @@ def test_l2t_t2l_l2t_roundtrip(rpj_dtype, rpj_batch, rpj_no_acceleration):
     # Test that applying l2t again gives the same result as the first time
     tensor_y = rpj.lie_to_tensor(x)
 
-    assert jnp.allclose(tensor_x.data, tensor_y.data, atol=1e-7)
+    assert jnp.allclose(
+        tensor_x.data, tensor_y.data, **rpj_tensor_tolerances(atol=1e-7)
+    )
 
 
 @pytest.mark.parametrize("scale_factor", [0.0, 0.5, 1.0, 2.0])
-def test_l2t_scale_factor(rpj_batch, rpj_dtype, rpj_no_acceleration, scale_factor):
+def test_l2t_scale_factor(
+    rpj_batch,
+    rpj_tensor_dtype,
+    rpj_no_acceleration,
+    scale_factor,
+    rpj_tensor_tolerances,
+):
     # NOTE: the 0.0 scale factor should actually result in an identity tensor,
     # but this test is still useful to check that the scaling is applied correctly.
 
     """Test that a Lie is correctly scaled by the intersection length."""
     lie_basis = rpj.LieBasis(4, 4)
 
-    x_data = rpj_batch.rng_uniform(-1, 1, lie_basis.size(), rpj_dtype)
+    x_data = rpj_batch.rng_uniform(-1, 1, lie_basis.size(), rpj_tensor_dtype)
     x = rpj.Lie(x_data, lie_basis)
     l_prescaled = scale_factor * x
     t_prescaled = rpj.lie_to_tensor(l_prescaled)
     t_postscaled = rpj.lie_to_tensor(x, scale_factor=scale_factor)
-    assert jnp.allclose(t_prescaled.data, t_postscaled.data, atol=1e-6)
+    assert jnp.allclose(
+        t_prescaled.data, t_postscaled.data, **rpj_tensor_tolerances(atol=1e-6)
+    )
 
 
 @pytest.mark.parametrize("scale_factor", [0.0, 0.5, 1.0, 2.0])
-def test_t2l_scale_factor(rpj_batch, rpj_dtype, rpj_no_acceleration, scale_factor):
+def test_t2l_scale_factor(
+    rpj_batch,
+    rpj_tensor_dtype,
+    rpj_no_acceleration,
+    scale_factor,
+    rpj_tensor_tolerances,
+):
     """Test that a Tensor is correctly scaled by the intersection length."""
     lie_basis = rpj.LieBasis(4, 4)
     tensor_basis = rpj.to_tensor_basis(lie_basis)
 
-    x_data = rpj_batch.rng_uniform(-1, 1, tensor_basis.size(), rpj_dtype)
+    x_data = rpj_batch.rng_uniform(-1, 1, tensor_basis.size(), rpj_tensor_dtype)
     x = rpj.FreeTensor(x_data, tensor_basis)
     t = scale_factor * x
     l_prescaled = rpj.tensor_to_lie(t)
     l_postscaled = rpj.tensor_to_lie(x, scale_factor=scale_factor)
 
-    assert jnp.allclose(l_prescaled.data, l_postscaled.data, atol=1e-6)
+    assert jnp.allclose(
+        l_prescaled.data, l_postscaled.data, **rpj_tensor_tolerances(atol=1e-6)
+    )
 
 
 @pytest.mark.parametrize("scale_factor", [0.0, 0.5])

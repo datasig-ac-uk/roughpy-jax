@@ -1,5 +1,6 @@
 #include "dense_ft_log.h"
 #include "output_buffer.hpp"
+#include "scalars.hpp"
 
 #include <rpp/architecture.hpp>
 #include <rpp/cpu/single_thread/operations/intermediate/ft_log.hpp>

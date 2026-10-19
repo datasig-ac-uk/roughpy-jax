@@ -1,5 +1,6 @@
 #include "dense_ft_fma.h"
 #include "output_buffer.hpp"
+#include "scalars.hpp"
 
 #include <rpp/architecture.hpp>
 #include <xla_helpers/batch.hpp>

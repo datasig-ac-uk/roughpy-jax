@@ -39,31 +39,33 @@ def _antipode_idempotent(x):
     return aax
 
 
-def test_antipode_on_signature(rpj_dtype, rpj_batch, rpj_no_acceleration):
+def test_antipode_on_signature(
+    rpj_tensor_dtype, rpj_batch, rpj_no_acceleration, rpj_tensor_tolerances
+):
     """
     The antipode of a group-like free tensor (like a signature) is the
     inverse of said tensor. Thus the product of antipode(x) and x should
     be the identity.
     """
     basis = rpj.TensorBasis(4, 3)
-    x = rpj_batch.rng_nonzero_free_tensor(basis, rpj_dtype)
+    x = rpj_batch.rng_nonzero_free_tensor(basis, rpj_tensor_dtype)
     product = _antipode_on_signature(x)
 
     # exp * antipode results in identity
-    expected = rpj_batch.identity_zero_data(basis, rpj_dtype)
+    expected = rpj_batch.identity_zero_data(basis, rpj_tensor_dtype)
 
-    atol = 1e-6 if rpj_dtype == jnp.float32 else 1e-15
-    assert jnp.allclose(product.data, expected, atol=atol)
+    atol = 1e-6 if rpj_tensor_dtype == jnp.float32 else 1e-15
+    assert jnp.allclose(product.data, expected, **rpj_tensor_tolerances(atol=atol))
 
 
-def test_antipode_idempotent(rpj_dtype, rpj_batch, rpj_no_acceleration):
+def test_antipode_idempotent(rpj_tensor_dtype, rpj_batch, rpj_no_acceleration):
     """
     The antipode is an idempotent operation; if x is a free tensor
     then antipode(antipode(x)) == x
     """
     basis = rpj.TensorBasis(4, 3)
     shape = rpj_batch.tensor_batch_shape(basis)
-    x_data = rpj_batch.rng.standard_normal(shape, rpj_dtype)
+    x_data = rpj_batch.rng.standard_normal(shape).astype(rpj_tensor_dtype)
 
     x = rpj.FreeTensor(x_data, basis)
     aax = _antipode_idempotent(x)
@@ -149,14 +151,17 @@ def test_antipode_check_vjp(trials):
 
 
 @pytest.mark.parametrize("no_sign", [False, True])
-@pytest.mark.parametrize("dtype", [jnp.float32, jnp.float64])
-def test_generalised_antipode_signing(no_sign, dtype, rpj_batch):
+@pytest.mark.parametrize("arg_max_deg", [1, 3])
+def test_generalised_antipode_signing(
+    no_sign, arg_max_deg, rpj_tensor_dtype, rpj_batch, rpj_no_acceleration, rpj_device
+):
     from roughpy_jax.ops import DenseAntipode
 
     basis = rpj.TensorBasis(2, 3)
+    dtype = jnp.dtype(rpj_tensor_dtype)
     data = rpj_batch.repeat(jnp.arange(1, basis.size() + 1, dtype=dtype))
     operation = DenseAntipode(
-        (basis,), dtype, rpj_batch.shape, arg_max_deg=basis.depth, no_sign=no_sign
+        (basis,), dtype, rpj_batch.shape, arg_max_deg=arg_max_deg, no_sign=no_sign
     )
     result = operation(data)[0]
 
@@ -172,7 +177,11 @@ def test_generalised_antipode_signing(no_sign, dtype, rpj_batch):
         level = jnp.transpose(level, axes).reshape((*rpj_batch.shape, size))
         if not no_sign and degree % 2:
             level = -level
+        if degree > arg_max_deg:
+            level = jnp.zeros_like(level)
         expected_levels.append(level)
         offset += size
 
+    assert result.dtype == dtype
+    assert result.devices() == {rpj_device}
     assert jnp.array_equal(result, jnp.concatenate(expected_levels, axis=-1))

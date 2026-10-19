@@ -45,6 +45,7 @@ def copy_sources(source, destination):
         "roughpy_jax",
         "platforms/cuda",
         "third_party/rough_path_primitives",
+        "third_party/eigen",
     ):
         shutil.copytree(source / name, destination / name, ignore=ignore)
 

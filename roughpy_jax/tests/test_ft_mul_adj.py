@@ -24,16 +24,22 @@ def _random_shuffle_tensor(rng, basis, dtype, shape, device=None):
     return s
 
 
-def test_adjoint_ft_mul_identity(rpj_dtype, rpj_batch, rpj_device, rpj_no_acceleration):
+def test_adjoint_ft_mul_identity(
+    rpj_tensor_dtype, rpj_batch, rpj_device, rpj_no_acceleration
+):
     rng = jax.random.key(12345)
     basis = rpj.TensorBasis(2, 2)
 
     a = rpj.DenseFreeTensor.identity(
-        basis, dtype=rpj_dtype, batch_dims=rpj_batch.shape, device=rpj_device
+        basis, dtype=rpj_tensor_dtype, batch_dims=rpj_batch.shape, device=rpj_device
     )
 
     s = _random_shuffle_tensor(
-        rng, basis, rpj_dtype, rpj_batch.tensor_batch_shape(basis), device=rpj_device
+        rng,
+        basis,
+        rpj_tensor_dtype,
+        rpj_batch.tensor_batch_shape(basis),
+        device=rpj_device,
     )
 
     lmul = rpj.ft_adjoint_left_mul(a, s)
@@ -43,15 +49,23 @@ def test_adjoint_ft_mul_identity(rpj_dtype, rpj_batch, rpj_device, rpj_no_accele
     assert jnp.allclose(rmul.data, s.data)
 
 
-def test_adjoint_ft_mul_letter(rpj_dtype, rpj_batch, rpj_device, rpj_no_acceleration):
+def test_adjoint_ft_mul_letter(
+    rpj_tensor_dtype, rpj_batch, rpj_device, rpj_no_acceleration
+):
     rng = jax.random.key(12345)
 
     basis = rpj.TensorBasis(2, 2)
-    a_data = rpj_batch.repeat(jnp.array([0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0], rpj_dtype))
+    a_data = rpj_batch.repeat(
+        jnp.array([0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0], rpj_tensor_dtype)
+    )
     a = rpj.DenseFreeTensor(a_data, basis)
 
     s = _random_shuffle_tensor(
-        rng, basis, rpj_dtype, rpj_batch.tensor_batch_shape(basis), device=rpj_device
+        rng,
+        basis,
+        rpj_tensor_dtype,
+        rpj_batch.tensor_batch_shape(basis),
+        device=rpj_device,
     )
 
     # Expected values are values from index 1, 3 and 4 going into 0, 1, 2, i.e. for non-batched
@@ -70,17 +84,19 @@ def test_adjoint_ft_mul_letter(rpj_dtype, rpj_batch, rpj_device, rpj_no_accelera
     assert jnp.allclose(rmul.data, expected_rmul)
 
 
-def test_adjoint_ft_mul_random_equivalent(rpj_dtype, rpj_batch, rpj_no_acceleration):
+def test_adjoint_ft_mul_random_equivalent(
+    rpj_tensor_dtype, rpj_batch, rpj_no_acceleration, rpj_tensor_tolerances
+):
     rng = jax.random.key(12345)
     basis = rpj.TensorBasis(2, 2)
 
-    x_data = jax.random.normal(rng, shape=(basis.size(),), dtype=rpj_dtype)
+    x_data = jax.random.normal(rng, shape=(basis.size(),), dtype=rpj_tensor_dtype)
     x = rpj.DenseFreeTensor(x_data, basis)
 
-    y_data = jax.random.normal(rng, shape=(basis.size(),), dtype=rpj_dtype)
+    y_data = jax.random.normal(rng, shape=(basis.size(),), dtype=rpj_tensor_dtype)
     y = rpj.DenseFreeTensor(y_data, basis)
 
-    shuffle = _random_shuffle_tensor(rng, basis, rpj_dtype, (basis.size(),))
+    shuffle = _random_shuffle_tensor(rng, basis, rpj_tensor_dtype, (basis.size(),))
 
     # Pair from dot products for checking adjoint equivalence <T*(x*), y> = <x*, T(y)>
     def pair_dot_data(lhs, rhs):
@@ -88,11 +104,11 @@ def test_adjoint_ft_mul_random_equivalent(rpj_dtype, rpj_batch, rpj_no_accelerat
 
     lmul = pair_dot_data(rpj.ft_adjoint_left_mul(x, shuffle), y)
     expected_lmul = pair_dot_data(shuffle, rpj.ft_mul(x, y))
-    assert jnp.allclose(lmul, expected_lmul)
+    assert jnp.allclose(lmul, expected_lmul, **rpj_tensor_tolerances())
 
     rmul = pair_dot_data(rpj.ft_adjoint_right_mul(x, shuffle), y)
     expected_rmul = pair_dot_data(shuffle, rpj.ft_mul(x, y))
-    assert jnp.allclose(rmul, expected_rmul)
+    assert jnp.allclose(rmul, expected_rmul, **rpj_tensor_tolerances())
 
 
 def _dot_pairing(lhs, rhs):

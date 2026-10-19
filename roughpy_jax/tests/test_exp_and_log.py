@@ -19,54 +19,64 @@ def exp_trials(request, rpj_device):
     yield DerivativeTrialsHelper(request.param, width=2, depth=4, device=rpj_device)
 
 
-def test_dense_ft_exp_zero(rpj_dtype, rpj_batch, rpj_device, rpj_no_acceleration):
+def test_dense_ft_exp_zero(
+    rpj_tensor_dtype, rpj_batch, rpj_device, rpj_no_acceleration
+):
     basis = rpj.TensorBasis(2, 2)
     a = rpj.FreeTensor.zero(
-        basis, dtype=rpj_dtype, batch_dims=rpj_batch.shape, device=rpj_device
+        basis, dtype=rpj_tensor_dtype, batch_dims=rpj_batch.shape, device=rpj_device
     )
 
     exp_a = rpj.ft_exp(a)
 
     expected = rpj.FreeTensor.identity(
-        basis, dtype=rpj_dtype, batch_dims=rpj_batch.shape, device=rpj_device
+        basis, dtype=rpj_tensor_dtype, batch_dims=rpj_batch.shape, device=rpj_device
     )
     assert jnp.allclose(exp_a.data, expected.data)
 
 
-def test_dense_ft_exp_letter(rpj_dtype, rpj_batch, rpj_no_acceleration):
+def test_dense_ft_exp_letter(rpj_tensor_dtype, rpj_batch, rpj_no_acceleration):
     basis = rpj.TensorBasis(2, 2)
-    a_data = rpj_batch.repeat(jnp.array([0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0], rpj_dtype))
+    a_data = rpj_batch.repeat(
+        jnp.array([0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0], rpj_tensor_dtype)
+    )
     a = rpj.FreeTensor(a_data, basis)
 
     exp_a = rpj.ft_exp(a)
 
     expected = rpj_batch.repeat(
-        jnp.array([1.0, 1.0, 0.0, 0.5, 0.0, 0.0, 0.0], rpj_dtype)
+        jnp.array([1.0, 1.0, 0.0, 0.5, 0.0, 0.0, 0.0], rpj_tensor_dtype)
     )
     assert jnp.allclose(exp_a.data, expected)
 
 
-def test_dense_ft_log_identity(rpj_dtype, rpj_batch, rpj_device, rpj_no_acceleration):
+def test_dense_ft_log_identity(
+    rpj_tensor_dtype, rpj_batch, rpj_device, rpj_no_acceleration
+):
     basis = rpj.TensorBasis(2, 2)
-    a_data = rpj_batch.repeat(jnp.array([1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], rpj_dtype))
+    a_data = rpj_batch.repeat(
+        jnp.array([1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], rpj_tensor_dtype)
+    )
     a = rpj.FreeTensor(a_data, basis)
 
     log_a = rpj.ft_log(a)
 
     expected = rpj.FreeTensor.zero(
-        basis, dtype=rpj_dtype, batch_dims=rpj_batch.shape, device=rpj_device
+        basis, dtype=rpj_tensor_dtype, batch_dims=rpj_batch.shape, device=rpj_device
     )
     assert jnp.allclose(log_a.data, expected.data)
 
 
-def test_dense_ft_exp_log_roundtrip(rpj_dtype, rpj_batch, rpj_no_acceleration):
+def test_dense_ft_exp_log_roundtrip(
+    rpj_tensor_dtype, rpj_batch, rpj_no_acceleration, rpj_tensor_tolerances
+):
     basis = rpj.TensorBasis(2, 2)
-    a = rpj_batch.rng_nonzero_free_tensor(basis, rpj_dtype)
+    a = rpj_batch.rng_nonzero_free_tensor(basis, rpj_tensor_dtype)
 
     exp_a = rpj.ft_exp(a)
     log_exp_a = rpj.ft_log(exp_a)
 
-    assert jnp.allclose(log_exp_a.data, a.data)
+    assert jnp.allclose(log_exp_a.data, a.data, **rpj_tensor_tolerances())
 
 
 def test_ft_log_vjp_check_vjp(rpj_batch):
@@ -103,11 +113,13 @@ def test_ft_exp_vjp_check_vjp(rpj_batch):
     )
 
 
-def test_dense_ft_exp_and_fmexp(rpj_dtype, rpj_batch, rpj_no_acceleration):
+def test_dense_ft_exp_and_fmexp(rpj_tensor_dtype, rpj_batch, rpj_no_acceleration):
     basis = rpj.TensorBasis(2, 2)
-    e_data = rpj_batch.repeat(jnp.array([1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], rpj_dtype))
+    e_data = rpj_batch.repeat(
+        jnp.array([1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], rpj_tensor_dtype)
+    )
     e = rpj.FreeTensor(e_data, basis)
-    x = rpj_batch.rng_nonzero_free_tensor(basis, rpj_dtype)
+    x = rpj_batch.rng_nonzero_free_tensor(basis, rpj_tensor_dtype)
 
     e_exp_b = rpj.ft_fmexp(e, x)
     exp_b = rpj.ft_exp(x)
@@ -115,15 +127,19 @@ def test_dense_ft_exp_and_fmexp(rpj_dtype, rpj_batch, rpj_no_acceleration):
     assert jnp.allclose(e_exp_b.data, exp_b.data)
 
 
-def test_dense_ft_fmexp(rpj_dtype, rpj_batch, rpj_no_acceleration):
+def test_dense_ft_fmexp(
+    rpj_tensor_dtype, rpj_batch, rpj_no_acceleration, rpj_tensor_tolerances
+):
     basis = rpj.TensorBasis(2, 2)
-    a_data = rpj_batch.repeat(jnp.array([1.0, 1.0, 0.0, 0.5, 0.0, 0.0, 0.0], rpj_dtype))
+    a_data = rpj_batch.repeat(
+        jnp.array([1.0, 1.0, 0.0, 0.5, 0.0, 0.0, 0.0], rpj_tensor_dtype)
+    )
     a = rpj.FreeTensor(a_data, basis)
-    x = rpj_batch.rng_nonzero_free_tensor(basis, rpj_dtype)
+    x = rpj_batch.rng_nonzero_free_tensor(basis, rpj_tensor_dtype)
     b = rpj.ft_fmexp(a, x)
 
     expected = rpj.ft_mul(a, rpj.ft_exp(x))
-    assert jnp.allclose(b.data, expected.data)
+    assert jnp.allclose(b.data, expected.data, **rpj_tensor_tolerances())
 
 
 @pytest.mark.parametrize(("multiplier_depth", "exponent_depth"), [(1, 2), (2, 1)])
