@@ -1,5 +1,6 @@
 #include "dense_st_adj_mul.h"
 #include "output_buffer.hpp"
+#include "scalars.hpp"
 
 #include <rpp/architecture.hpp>
 #include <rpp/cpu/single_thread/operations/basic/st_adj_mul.hpp>

@@ -1470,6 +1470,6 @@ with registration_lock:
     Operation.register_all(
         platform="cpu",
         ops=cpu_functions,
-        supported_dtypes={"float32", "float64"},
+        supported_dtypes={"float16", "bfloat16", "float32", "float64"},
         ffi_register_kwargs={},
     )

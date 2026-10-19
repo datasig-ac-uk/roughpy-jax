@@ -1,5 +1,6 @@
 #include "dense_ft_adj_lmul.h"
 #include "output_buffer.hpp"
+#include "scalars.hpp"
 
 #include <rpp/architecture.hpp>
 #include <rpp/cpu/single_thread/operations/basic/ft_adj_lmul.hpp>
