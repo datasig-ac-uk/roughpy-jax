@@ -24,15 +24,13 @@ from .bases import (
 from .compressed import csc_matvec
 from .dense_algebra import _redepth_data
 
-# Cache for l2t and t2l sparse matrices keyed by (width, depth, dtype_str).
-# Potentially useful to have cached versions to the l2t and t2l matrices as JAX
-# arrays, as these are used in many operations and converting from the C++
-# buffers to JAX arrays can be expensive.
+# Owned host sparse matrices keyed by (width, depth, dtype_str). Host arrays can
+# be reused across JAX traces and devices without retaining tracers in the cache.
 _lie_sparse_matrix_cache: dict[
     tuple,
     tuple[
-        tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
-        tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
+        tuple[npt.NDArray, npt.NDArray, npt.NDArray],
+        tuple[npt.NDArray, npt.NDArray, npt.NDArray],
     ],
 ] = {}
 
@@ -65,15 +63,36 @@ def _get_lie_sparse_matrices(lie_basis, dtype):
     l2t_arrays = (data, indices, indptr) for the Lie-to-tensor sparse matrix.
     t2l_arrays = (data, indices, indptr) for the tensor-to-Lie sparse matrix.
     """
-    global _lie_sparse_matrix_cache
+    dtype = jnp.dtype(dtype)
     key = (lie_basis.width, lie_basis.depth, str(dtype))
     if key not in _lie_sparse_matrix_cache:
-        # Get l2t FIRST and convert to JAX arrays before t2l can overwrite the buffer
-        l2t = lie_basis.get_l2t_matrix(dtype)
-        l2t_arrays = (l2t.data, l2t.indices, l2t.indptr)
-        # Now get t2l - this amay overwrite the C++ buffer, but l2t is already saved
-        t2l = lie_basis.get_t2l_matrix(dtype)
-        t2l_arrays = (t2l.data, t2l.indices, t2l.indptr)
+        # RoughPy accepts standard floating-point dtypes for matrix extraction.
+        matrix_dtype = jnp.promote_types(jnp.float32, dtype)
+        if matrix_dtype != dtype:
+            # Cache the promoted pair too: querying the same RoughPy basis and
+            # extraction dtype again may return its last sparse matrix buffer.
+            promoted_l2t, promoted_t2l = _get_lie_sparse_matrices(
+                lie_basis, matrix_dtype
+            )
+            _lie_sparse_matrix_cache[key] = (
+                (promoted_l2t[0].astype(dtype), promoted_l2t[1], promoted_l2t[2]),
+                (promoted_t2l[0].astype(dtype), promoted_t2l[1], promoted_t2l[2]),
+            )
+            return _lie_sparse_matrix_cache[key]
+        l2t = lie_basis.get_l2t_matrix(matrix_dtype)
+        # Keep host copies: the next getter may reuse RoughPy's backing buffers.
+        # JAX arrays here could also cache tracers when called while tracing jit.
+        l2t_arrays = (
+            np.array(l2t.data, dtype=dtype, copy=True),
+            np.array(l2t.indices, copy=True),
+            np.array(l2t.indptr, copy=True),
+        )
+        t2l = lie_basis.get_t2l_matrix(matrix_dtype)
+        t2l_arrays = (
+            np.array(t2l.data, dtype=dtype, copy=True),
+            np.array(t2l.indices, copy=True),
+            np.array(t2l.indptr, copy=True),
+        )
         _lie_sparse_matrix_cache[key] = (l2t_arrays, t2l_arrays)
     return _lie_sparse_matrix_cache[key]
 
@@ -921,8 +940,12 @@ class DenseAntipode(Operation[TensorBasis], DenseOperation):
         arg_max_deg: np.int32,
         no_sign: bool,
     ) -> tuple[Array]:
-        # arg_max_deg is part of the operation fallback interface.
-        _ = arg_max_deg
+        # Ignore coefficients above the declared input degree, even when the
+        # input buffer has storage for the full output basis.
+        arg_data = _redepth_data(
+            arg_data[: degree_begin[int(arg_max_deg) + 1]],
+            degree_begin[int(depth) + 1],
+        )
         antipode = _fallback_dense_antipode(
             arg_data, width, depth, degree_begin, no_sign
         )
@@ -1071,7 +1094,7 @@ class DenseLieToTensor(Operation[TensorBasis], DenseOperation):
     fn_name = "lie_to_tensor"
 
     class StaticArgs(TypedDict):
-        l2t_data: npt.NDArray[np.float32]
+        l2t_data: npt.NDArray
         l2t_indices: npt.NDArray[np.int64]
         l2t_indptr: npt.NDArray[np.int64]
         l2t_size: np.int32
@@ -1111,7 +1134,7 @@ class DenseLieToTensor(Operation[TensorBasis], DenseOperation):
         width: np.int32,
         depth: np.int32,
         degree_begin: DegreeBeginArray,
-        l2t_data: npt.NDArray[np.float32],
+        l2t_data: npt.NDArray,
         l2t_indices: npt.NDArray[np.int64],
         l2t_indptr: npt.NDArray[np.int64],
         l2t_size: np.int32,
@@ -1130,7 +1153,7 @@ class DenseTensorToLie(Operation[LieBasis], DenseOperation):
     fn_name = "tensor_to_lie"
 
     class StaticArgs(TypedDict):
-        t2l_data: npt.NDArray[np.float32] | npt.NDArray[np.float64]
+        t2l_data: npt.NDArray
         t2l_indices: npt.NDArray[np.int64]
         t2l_indptr: npt.NDArray[np.int64]
         t2l_size: np.int32
@@ -1169,7 +1192,7 @@ class DenseTensorToLie(Operation[LieBasis], DenseOperation):
         width: np.int32,
         depth: np.int32,
         degree_begin: DegreeBeginArray,
-        t2l_data: npt.NDArray[np.float32] | npt.NDArray[np.float64],
+        t2l_data: npt.NDArray,
         t2l_indices: npt.NDArray[np.int64],
         t2l_indptr: npt.NDArray[np.int64],
         t2l_size: np.int32,
