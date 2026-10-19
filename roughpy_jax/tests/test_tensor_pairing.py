@@ -16,9 +16,9 @@ def pairing_trials(request, rpj_device):
     yield DerivativeTrialsHelper(request.param, width=4, depth=4, device=rpj_device)
 
 
-def test_dense_st_ft_pairing(rpj_batch):
+def test_dense_st_ft_pairing(rpj_batch, rpj_tensor_dtype):
     basis = rpj.TensorBasis(2, 2)
-    dtype = jnp.dtype("float32")
+    dtype = jnp.dtype(rpj_tensor_dtype)
 
     functional = rpj_batch.rng_shuffle_tensor(basis, dtype)
     argument = rpj_batch.rng_nonzero_free_tensor(basis, dtype)

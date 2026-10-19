@@ -35,10 +35,12 @@ def test_shuffle_dense_st_fma_array_mismatch(rpj_test_fixture_type_mismatch):
     ("a_depth", "b_depth", "c_depth"),
     [(2, 1, 2), (2, 2, 1), (1, 2, 2)],
 )
-def test_st_fma_mixed_depth(a_depth, b_depth, c_depth):
+def test_st_fma_mixed_depth(
+    a_depth, b_depth, c_depth, rpj_tensor_dtype, rpj_tensor_tolerances
+):
     def make_shuffle(depth, offset):
         basis = rpj.TensorBasis(2, depth)
-        data = jnp.arange(offset, offset + basis.size(), dtype=jnp.float32)
+        data = jnp.arange(offset, offset + basis.size(), dtype=rpj_tensor_dtype)
         return rpj.ShuffleTensor(data, basis)
 
     a = make_shuffle(a_depth, 1)
@@ -49,7 +51,8 @@ def test_st_fma_mixed_depth(a_depth, b_depth, c_depth):
     expected = a + rpj.st_mul(b.change_depth(a_depth), c.change_depth(a_depth))
 
     assert result.basis == a.basis
-    assert jnp.allclose(result.data, expected.data)
+    assert result.dtype == rpj_tensor_dtype
+    assert jnp.allclose(result.data, expected.data, **rpj_tensor_tolerances())
 
 
 @pytest.mark.parametrize("out_depth", [1, 3])

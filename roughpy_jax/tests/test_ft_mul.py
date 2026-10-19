@@ -14,16 +14,16 @@ from jax import test_util as jtu
 import roughpy_jax as rpj
 
 
-def test_ft_mul(rpj_dtype, rpj_batch, rpj_device, rpj_no_acceleration):
+def test_ft_mul(rpj_tensor_dtype, rpj_batch, rpj_device, rpj_no_acceleration):
     basis = rpj.TensorBasis(3, 3)
 
-    a = rpj_batch.rng_nonzero_free_tensor(basis, rpj_dtype)
-    b = rpj_batch.rng_nonzero_free_tensor(basis, rpj_dtype)
+    a = rpj_batch.rng_nonzero_free_tensor(basis, rpj_tensor_dtype)
+    b = rpj_batch.rng_nonzero_free_tensor(basis, rpj_tensor_dtype)
 
     result = rpj.ft_mul(a, b)
 
     z = rpj.FreeTensor.zero(
-        basis, dtype=rpj_dtype, batch_dims=rpj_batch.shape, device=rpj_device
+        basis, dtype=rpj_tensor_dtype, batch_dims=rpj_batch.shape, device=rpj_device
     )
     expected = rpj.ft_fma(z, a, b)
 
@@ -99,39 +99,60 @@ def test_ft_mul_rejects_incompatible_out_basis():
 
 
 @pytest.mark.parametrize(("lhs_depth", "rhs_depth"), [(1, 2), (2, 1)])
-def test_ft_mul_mixed_depth_adjoint(lhs_depth, rhs_depth):
+def test_ft_mul_mixed_depth_adjoint(
+    lhs_depth, rhs_depth, rpj_tensor_dtype, rpj_small_batch, rpj_tensor_tolerances
+):
     lhs_basis = rpj.TensorBasis(2, lhs_depth)
     rhs_basis = rpj.TensorBasis(2, rhs_depth)
     out_basis = rpj.TensorBasis(2, max(lhs_depth, rhs_depth))
 
     lhs = rpj.FreeTensor(
-        jnp.arange(1, lhs_basis.size() + 1, dtype=jnp.float32), lhs_basis
+        rpj_small_batch.repeat(
+            jnp.arange(1, lhs_basis.size() + 1, dtype=rpj_tensor_dtype)
+        ),
+        lhs_basis,
     )
     rhs = rpj.FreeTensor(
-        jnp.arange(1, rhs_basis.size() + 1, dtype=jnp.float32), rhs_basis
+        rpj_small_batch.repeat(
+            jnp.arange(1, rhs_basis.size() + 1, dtype=rpj_tensor_dtype)
+        ),
+        rhs_basis,
     )
     ct_result = rpj.ShuffleTensor(
-        jnp.arange(1, out_basis.size() + 1, dtype=jnp.float32), out_basis
+        rpj_small_batch.repeat(
+            jnp.arange(1, out_basis.size() + 1, dtype=rpj_tensor_dtype)
+        ),
+        out_basis,
     )
 
     ct_lhs, ct_rhs = rpj.ft_mul_adjoint_derivative(lhs, rhs, ct_result)
 
     assert ct_lhs.basis == lhs_basis
     assert ct_rhs.basis == rhs_basis
+    assert ct_lhs.dtype == ct_rhs.dtype == rpj_tensor_dtype
     assert jnp.allclose(
         jnp.vdot(rpj.ft_mul(lhs, rhs).data, ct_result.data),
         jnp.vdot(lhs.data, ct_lhs.data),
+        **rpj_tensor_tolerances(),
     )
     assert jnp.allclose(
         jnp.vdot(rpj.ft_mul(lhs, rhs).data, ct_result.data),
         jnp.vdot(rhs.data, ct_rhs.data),
+        **rpj_tensor_tolerances(),
     )
 
-    _, pullback = jax.vjp(rpj.ft_mul, lhs, rhs)
-    jax_ct_lhs, jax_ct_rhs = pullback(rpj.FreeTensor(ct_result.data, ct_result.basis))
+    @jax.jit
+    def product_vjp(left, right, cotangent):
+        _, pullback = jax.vjp(rpj.ft_mul, left, right)
+        return pullback(cotangent)
+
+    jax_ct_lhs, jax_ct_rhs = product_vjp(
+        lhs, rhs, rpj.FreeTensor(ct_result.data, ct_result.basis)
+    )
 
     assert jax_ct_lhs.basis == lhs_basis
     assert jax_ct_rhs.basis == rhs_basis
+    assert jax_ct_lhs.dtype == jax_ct_rhs.dtype == rpj_tensor_dtype
     assert jnp.allclose(jax_ct_lhs.data, ct_lhs.data)
     assert jnp.allclose(jax_ct_rhs.data, ct_rhs.data)
 

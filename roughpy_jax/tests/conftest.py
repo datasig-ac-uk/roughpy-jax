@@ -220,3 +220,22 @@ def rpj_no_acceleration(request, rpj_platform):
     Operation.no_acceleration = request.param
     yield request.param
     Operation.no_acceleration = old_setting
+
+
+# Storage dtypes for coefficient operations. Finite-difference fixtures retain
+# higher precision to resolve small perturbations.
+@pytest.fixture(params=[jnp.float16, jnp.bfloat16, jnp.float32, jnp.float64])
+def rpj_tensor_dtype(request):
+    return request.param
+
+
+@pytest.fixture
+def rpj_tensor_tolerances(rpj_tensor_dtype):
+    def tolerances(*, atol=1e-8, rtol=1e-5):
+        if jnp.dtype(rpj_tensor_dtype).itemsize == 2:
+            # Identities compare separately rounded operation sequences.
+            rounding = 4 * float(jnp.finfo(rpj_tensor_dtype).eps)
+            return {"atol": max(atol, rounding), "rtol": max(rtol, rounding)}
+        return {"atol": atol, "rtol": rtol}
+
+    return tolerances

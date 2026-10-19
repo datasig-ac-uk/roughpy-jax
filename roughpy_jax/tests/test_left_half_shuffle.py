@@ -44,10 +44,12 @@ def _half_shuffle_coefficients(width, depth):
 @pytest.mark.parametrize(
     "name", ["left_hs_mul", "left_hs_adj_lmul", "left_hs_adj_rmul"]
 )
-@pytest.mark.parametrize("dtype", [jnp.dtype("float32"), jnp.dtype("float64")])
 @pytest.mark.parametrize("input_depths", [(3, 3), (1, 2), (2, 1)])
 @pytest.mark.parametrize("min_degree", [0, 1])
-def test_half_shuffle_ffi_reference(name, dtype, input_depths, min_degree, rpj_batch):
+def test_half_shuffle_ffi_reference(
+    name, rpj_tensor_dtype, input_depths, min_degree, rpj_batch, rpj_tensor_tolerances
+):
+    dtype = jnp.dtype(rpj_tensor_dtype)
     basis = TensorBasis(2, 3)
     bases = tuple(TensorBasis(2, depth) for depth in input_depths)
     op_cls = Operation.get_operation(name)
@@ -65,7 +67,8 @@ def test_half_shuffle_ffi_reference(name, dtype, input_depths, min_degree, rpj_b
     words, coefficients = _half_shuffle_coefficients(2, 3)
     padded = []
     for data, depth in zip(inputs, input_depths, strict=True):
-        values = np.zeros((*rpj_batch.shape, basis.size()), dtype=np.dtype(dtype))
+        accum_dtype = np.float64 if dtype == jnp.dtype("float64") else np.float32
+        values = np.zeros((*rpj_batch.shape, basis.size()), dtype=accum_dtype)
         values[..., : data.shape[-1]] = np.asarray(data)
         mask = np.array([min_degree <= len(word) <= depth for word in words])
         padded.append(values * mask)
@@ -79,7 +82,12 @@ def test_half_shuffle_ffi_reference(name, dtype, input_depths, min_degree, rpj_b
         expected = np.einsum("kij,...k,...j->...i", coefficients, *padded)
     actual = jax.jit(lambda a, b: operation(a, b)[0])(*inputs)
     assert actual.shape == (*rpj_batch.shape, basis.size())
-    np.testing.assert_allclose(actual, expected, atol=1e-6, rtol=1e-6)
+    assert actual.dtype == dtype
+    np.testing.assert_allclose(
+        actual.astype(jnp.float32) if dtype.itemsize == 2 else actual,
+        expected,
+        **rpj_tensor_tolerances(atol=1e-6, rtol=1e-6),
+    )
 
 
 @pytest.mark.parametrize(
