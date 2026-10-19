@@ -275,3 +275,5 @@ discussed before implementation.
 ## License
 
 `roughpy-jax` is licensed under the BSD 3-Clause License. See `LICENSE.txt`.
+Third party libraries have their own licenses, see `THIRD_PART_NOTICES.txt` for 
+more information.
